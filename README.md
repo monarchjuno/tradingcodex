@@ -32,12 +32,28 @@ the durable service layer, and TradingCodex MCP is the execution boundary.
 ## Quick Start
 
 ```bash
-python3.14 -m pip install tradingcodex
+python3.14 -m venv ~/.tradingcodex/venv
+~/.tradingcodex/venv/bin/python -m pip install --upgrade pip
+~/.tradingcodex/venv/bin/python -m pip install --upgrade tradingcodex
 mkdir -p ~/tradingcodex-workspaces/apple-research
 cd ~/tradingcodex-workspaces/apple-research
-tcx init .
+~/.tradingcodex/venv/bin/tcx init .
 ./tcx doctor
 ```
+
+To install from the GitHub repository instead of PyPI, replace the package
+install line with:
+
+```bash
+~/.tradingcodex/venv/bin/python -m pip install --upgrade \
+  "tradingcodex @ git+https://github.com/monarchjuno/tradingcodex.git@main"
+```
+
+Keep the virtual environment outside the generated workspace. `tcx init .`
+expects the target directory to be empty, and the generated `./tcx` wrapper will
+remember the Python interpreter that created it. The package registers a `tcx`
+console script inside the virtual environment; the commands above call
+`~/.tradingcodex/venv/bin/tcx` directly so setup does not depend on shell `PATH`.
 
 Start an orchestrated Codex workflow from the generated workspace:
 
