@@ -137,7 +137,14 @@ def workspace_root() -> Path:
 
 @api.get("/health", auth=None)
 def health(request):
-    return {"status": "ok", "service": "tradingcodex", "version": __version__, "db_path": str(tradingcodex_db_path()), "central_local_service": True}
+    return {
+        "status": "ok",
+        "service": "tradingcodex",
+        "version": __version__,
+        "db_path": str(tradingcodex_db_path()),
+        "central_local_service": True,
+        "process_scope": os.environ.get("TRADINGCODEX_MCP_SCOPE", "local-service"),
+    }
 
 
 @harness_router.get("/status")

@@ -12,6 +12,7 @@ from tradingcodex_service.application.common import (
     now_iso,
     read_json,
     sanitize_id,
+    stable_hash,
     write_json,
 )
 from tradingcodex_service.application.policy import evaluate_policy
@@ -29,6 +30,9 @@ def validate_order_intent(workspace_root: Path | str, args: dict[str, Any]) -> d
     _validate_positive(order.get("quantity"), "quantity", reasons)
     _validate_positive(order.get("limit_price"), "limit_price", reasons)
     _validate_positive(order.get("estimated_notional_krw"), "estimated_notional_krw", reasons)
+    conflict = order_intent_payload_conflict(Path(workspace_root), order)
+    if conflict:
+        reasons.append(conflict)
     policy = evaluate_policy(workspace_root, {**args, "action": args.get("action") or "order_intent.validate", "order_intent": order})
     all_reasons = list(dict.fromkeys(reasons + policy["reasons"]))
     result = {"valid": not all_reasons and policy["decision"] == "allow", "reasons": all_reasons, "policy": policy, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
@@ -130,7 +134,7 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
     ensure_runtime_database(root)
     from apps.orders.services import finalize_execution_reservation, reserve_execution
 
-    portfolio_id, account_id, strategy_id = portfolio_keys(order)
+    portfolio_id, account_id, strategy_id = portfolio_keys(order, root)
     reservation = reserve_execution(
         order=order,
         receipt=receipt,
@@ -253,6 +257,26 @@ def find_order_intent_by_id(root: Path, order_id: str) -> dict[str, Any] | None:
     return None
 
 
+def order_intent_payload_conflict(root: Path, order: dict[str, Any]) -> str:
+    order_id = order.get("id")
+    if not order_id:
+        return ""
+    try:
+        ensure_runtime_database(root)
+        from apps.orders.models import OrderIntent
+
+        stored = OrderIntent.objects.filter(intent_id=order_id).first()
+        if stored is None:
+            return ""
+        payload = stored.payload or {}
+        stored_order = payload.get("order_intent") if isinstance(payload.get("order_intent"), dict) else {}
+        if stored_order and stable_hash(stored_order) != stable_hash(order):
+            return "order_intent.id already exists with a different payload"
+    except Exception:
+        return ""
+    return ""
+
+
 def find_approval_receipt_by_id(root: Path, receipt_id: str) -> dict[str, Any] | None:
     try:
         ensure_runtime_database(root)
@@ -303,7 +327,9 @@ def persist_order_intent_if_available(root: Path, order: dict[str, Any], validat
         ensure_runtime_database(root)
         from apps.orders.models import OrderIntent
 
-        portfolio_id, account_id, strategy_id = portfolio_keys(order)
+        if order_intent_payload_conflict(root, order):
+            return
+        portfolio_id, account_id, strategy_id = portfolio_keys(order, root)
         OrderIntent.objects.update_or_create(
             intent_id=order["id"],
             defaults={
@@ -358,8 +384,8 @@ def persist_execution_result_if_available(root: Path, order: dict[str, Any], rec
         from apps.orders.services import execution_idempotency_key
         from apps.orders.models import ExecutionResult
 
-        portfolio_id, account_id, strategy_id = portfolio_keys(order)
-        key = str(result.get("idempotency_key") or execution_idempotency_key(order, receipt))
+        portfolio_id, account_id, strategy_id = portfolio_keys(order, root)
+        key = str(result.get("idempotency_key") or execution_idempotency_key(order, receipt, portfolio_id, account_id, strategy_id))
         ExecutionResult.objects.update_or_create(
             idempotency_key=key,
             defaults={

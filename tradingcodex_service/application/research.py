@@ -47,42 +47,72 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
 
     with transaction.atomic():
         existing = ResearchArtifact.objects.filter(artifact_id=artifact_id).first()
-        version = (existing.version + 1) if existing else 1
-        artifact, created = ResearchArtifact.objects.update_or_create(
-            artifact_id=artifact_id,
-            defaults={
-                "artifact_type": artifact_type,
-                "universe": args.get("universe") or "public_equity",
-                "workflow_type": args.get("workflow_type") or "",
-                "symbol": symbol,
-                "title": title,
-                "markdown": markdown,
-                "metadata": metadata,
-                "workspace_context": workspace_context,
-                "source_as_of": args.get("source_as_of") or "",
-                "readiness_label": args.get("readiness_label") or "",
-                "created_by": created_by,
-                "content_hash": content_hash,
-                "version": version,
-                "parent_artifact_id": args.get("parent_artifact_id") or "",
-            },
-        )
-        ResearchArtifactVersion.objects.create(
-            artifact=artifact,
-            version=version,
-            markdown=markdown,
-            metadata=metadata,
-            workspace_context=workspace_context,
-            content_hash=content_hash,
-            created_by=created_by,
-        )
+        append_version = bool(args.get("_append_version"))
+        unchanged = False
+        if existing and not append_version:
+            if existing.content_hash == content_hash:
+                artifact = existing
+                version = existing.version
+                created = False
+                unchanged = True
+            else:
+                raise ValueError("research artifact already exists; use append_research_artifact_version to create a new version")
+        else:
+            version = (existing.version + 1) if existing else 1
+        if not unchanged and existing:
+            artifact = existing
+            artifact.artifact_type = artifact_type
+            artifact.universe = args.get("universe") or "public_equity"
+            artifact.workflow_type = args.get("workflow_type") or ""
+            artifact.symbol = symbol
+            artifact.title = title
+            artifact.markdown = markdown
+            artifact.metadata = metadata
+            artifact.workspace_context = workspace_context
+            artifact.source_as_of = args.get("source_as_of") or ""
+            artifact.readiness_label = args.get("readiness_label") or ""
+            artifact.created_by = created_by
+            artifact.content_hash = content_hash
+            artifact.version = version
+            artifact.parent_artifact_id = args.get("parent_artifact_id") or ""
+            artifact.save()
+            created = False
+        elif not unchanged:
+            artifact = ResearchArtifact.objects.create(
+                artifact_id=artifact_id,
+                artifact_type=artifact_type,
+                universe=args.get("universe") or "public_equity",
+                workflow_type=args.get("workflow_type") or "",
+                symbol=symbol,
+                title=title,
+                markdown=markdown,
+                metadata=metadata,
+                workspace_context=workspace_context,
+                source_as_of=args.get("source_as_of") or "",
+                readiness_label=args.get("readiness_label") or "",
+                created_by=created_by,
+                content_hash=content_hash,
+                version=version,
+                parent_artifact_id=args.get("parent_artifact_id") or "",
+            )
+            created = True
+        if not unchanged:
+            ResearchArtifactVersion.objects.create(
+                artifact=artifact,
+                version=version,
+                markdown=markdown,
+                metadata=metadata,
+                workspace_context=workspace_context,
+                content_hash=content_hash,
+                created_by=created_by,
+            )
 
     export_path = ""
     if args.get("export", True) is not False:
         export = export_research_artifact_md(root, {"artifact_id": artifact_id, "export_path": args.get("export_path")})
         export_path = export.get("export_path", "")
     result = {
-        "status": "stored" if created else "updated",
+        "status": "unchanged" if unchanged else "stored" if created else "updated",
         "db_canonical": True,
         "artifact_id": artifact_id,
         "version": version,
@@ -98,12 +128,19 @@ def append_research_artifact_version(workspace_root: Path | str, args: dict[str,
     if not args.get("artifact_id"):
         raise ValueError("artifact_id is required")
     current = get_research_artifact(workspace_root, {"artifact_id": args["artifact_id"]})
-    return create_research_artifact(workspace_root, {
+    payload = {
         **current,
         **args,
-        "markdown": args.get("markdown") or current.get("markdown"),
+        "_append_version": True,
         "metadata": args.get("metadata") or current.get("metadata") or {},
-    })
+    }
+    if args.get("markdown"):
+        payload["markdown"] = args["markdown"]
+    elif args.get("markdown_path") or args.get("markdown_file"):
+        payload.pop("markdown", None)
+    else:
+        payload["markdown"] = current.get("markdown")
+    return create_research_artifact(workspace_root, payload)
 
 
 def get_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:

@@ -86,16 +86,20 @@ Overrides:
 - `TRADINGCODEX_DB_NAME`
 
 `TRADINGCODEX_WORKSPACE_ROOT` is provenance only. It must not partition
-canonical investment state. Two generated workspaces should share research
-memory, paper portfolio state, MCP ledger, approvals, executions, and audit
-records through the same central DB unless the operator intentionally changes
-the DB path.
+canonical investment state. `.tradingcodex/workspace.json` stores the immutable
+workspace id; `path_hash` remains path provenance and may change if a workspace
+moves.
+
+Two generated workspaces share research memory, MCP ledger, approvals,
+executions, and audit records through the same central DB unless the operator
+intentionally changes the DB path. Paper portfolio state is scoped by active
+profile (`portfolio_id`, `account_id`, `strategy_id`), not by workspace path.
 
 ## Django App Boundaries
 
 | App | Responsibility |
 | --- | --- |
-| `harness` | Subagent roster, role skill map, skill proposals, generated workspace config, workspace provenance. |
+| `harness` | Subagent roster, role skill map, skill proposals, generated workspace config, workspace identity, workspace provenance, active profile metadata. |
 | `workflows` | Workflow lanes, workflow runs, artifact handoffs, readiness labels, process state. |
 | `policy` | Principals, capabilities, restricted list, limits, policy decisions. |
 | `orders` | Order intents, approval receipts, execution results, lifecycle validation. |

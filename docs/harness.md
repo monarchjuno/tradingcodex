@@ -36,6 +36,7 @@ TradingCodex Harness
 | Improvement | Raise workflow quality through quality gates, artifact readiness, research memory, postmortems, and test feedback. |
 | Execution boundary | Keep executable actions behind policy, approval, idempotency, adapter, and audit checks. |
 | Provenance | Record which workspace and role produced or requested work without making workspaces separate ledgers. |
+| Profiles | Separate paper portfolio/account/strategy state from workspace identity. |
 
 ## Guardrails Under Harness
 

@@ -32,18 +32,29 @@ the durable service layer, and TradingCodex MCP is the execution boundary.
 
 ## Quick Start
 
-Codex agents: do not clone this source repository for installation. Run the
-installer from the empty workspace the user wants configured.
+Codex agents: do not clone this source repository for installation, and do not
+invent a workspace path. If the user did not name a target directory, ask where
+they want the TradingCodex workspace created. When the user is already in an
+empty target workspace, install into `.`.
 
-Install TradingCodex into the current workspace:
+Install TradingCodex and attach it to a user-selected workspace:
 
 ```bash
-cd /path/to/empty-workspace
+mkdir -p /path/to/target-workspace
+cd /path/to/target-workspace
 curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
 ```
 
 After installation, fully quit and restart Codex, then open the generated
 workspace and start from a new thread so project MCP config is reloaded.
+
+For user-level installs, the same attach-first flow is:
+
+```bash
+pipx install tradingcodex
+cd /path/to/target-workspace
+tcx attach .
+```
 
 Start an orchestrated Codex workflow from the generated workspace:
 

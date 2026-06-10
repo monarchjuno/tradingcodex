@@ -76,6 +76,11 @@ Codex and subagents should use MCP tools when DB access is available:
 MCP tools read/write through the service layer instead of scraping markdown
 files.
 
+`create_research_artifact` creates a new canonical artifact. It must not
+silently overwrite an existing artifact id with different content. Use
+`append_research_artifact_version` or `./tcx research append <artifact-id>` for
+intentional version updates.
+
 ## Artifact Export Paths
 
 Canonical state lives in the central Django DB. Paths below are readable

@@ -133,6 +133,7 @@ Minimum MCP protocol surface:
 
 Minimum MCP tools:
 
+- `get_tradingcodex_status`
 - `validate_order_intent`
 - `create_approval_receipt`
 - `submit_approved_order`
@@ -160,6 +161,12 @@ For Codex environments that require stdio MCP, `tcx mcp stdio` runs a bridge
 that calls the same service layer. The stdio bridge must never write non-MCP
 logs to stdout.
 
+The project MCP server is named `tradingcodex` and carries the current
+workspace provenance. Optional global safe MCP is named `tradingcodex-home`,
+limits the server-side tool surface to read-only/status/search tools, and must
+not expose approval, execution, cancellation, policy mutation, secret, or broker
+tools.
+
 ## Role-Specific MCP Exposure
 
 The root `head-manager` allowlist exposes research, audit, portfolio/status,
@@ -180,21 +187,27 @@ The CLI entrypoint is `tcx`.
 
 Top-level commands:
 
+- `tcx attach [workspace] [--overwrite]`
 - `tcx init <workspace> [--overwrite]`
 - `tcx doctor [--layer <name>]`
+- `tcx workspace status|list`
+- `tcx profile status|list|create|select`
 - `tcx subagents status|list|plan|skills|prompt|state`
 - `tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal`
-- `tcx research create|get|list|search|export`
+- `tcx research create|append|get|list|search|export`
 - `tcx policy simulate`
 - `tcx db status|path|migrate`
 - `tcx mcp call <tool> [tool args]`
 - `tcx mcp ledger [--tool <name>] [--principal <id>] [--status ok]`
+- `tcx mcp install-global --safe`
 - `tcx mcp stdio`
 - `tcx service runserver`
 
 Generated workspace wrapper commands:
 
 - `./tcx doctor`
+- `./tcx workspace status|list`
+- `./tcx profile status|list|create|select`
 - `./tcx subagents status`
 - `./tcx subagents prompt "<request>"`
 - `./tcx validate order <path>`
@@ -202,7 +215,7 @@ Generated workspace wrapper commands:
 - `./tcx db status|path|migrate`
 - `./tcx mcp call <tool>`
 - `./tcx mcp ledger [--tool <name>]`
-- `./tcx research create|get|list|search|export`
+- `./tcx research create|append|get|list|search|export`
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
 direct user entrypoints: `orchestrate-workflow`,

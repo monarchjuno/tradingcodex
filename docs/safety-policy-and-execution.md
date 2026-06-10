@@ -44,9 +44,14 @@ Policy and approval are revalidated immediately before adapter submission.
 | Execution | `submit_approved_order` through TradingCodex MCP | `execution-operator` | Revalidate order intent and approval receipt in MCP. |
 | Audit/postmortem | audit event, execution result, postmortem | MCP/head-manager | Record rejects, approvals, executions, and policy decisions. |
 
-Approved execution is idempotent by order boundary. A repeated
+Approved execution is idempotent by order/profile boundary. A repeated
 `submit_approved_order` call for an order that already has an
-`ExecutionResult` must be rejected before any adapter is called.
+`ExecutionResult` in the same `portfolio_id` / `account_id` / `strategy_id`
+must be rejected before any adapter is called.
+
+Order intent ids are central-DB ids. If the same `order_intent_id` appears with
+a different payload, validation must fail closed instead of overwriting the
+existing order intent.
 
 ## Required Blocks
 
@@ -60,6 +65,8 @@ TradingCodex must block:
 - restricted symbol orders
 - paper/stub orders without valid order intent and approval receipt
 - repeated adapter submission for an already executed approved order
+- duplicate order intent ids with different payloads
+- global MCP exposure for approval, execution, cancellation, policy mutation, secret, or broker tools
 - Admin actions that try to bypass service-layer policy
 - execution when the principal is inactive or capability is denied
 - raw secrets in API, MCP, audit response, generated prompt, generated docs, or shell output

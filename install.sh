@@ -16,7 +16,7 @@ Options:
   --from <package-spec>  Install from a PyPI name, path, URL, or PEP 508 spec.
   --from-github         Install from monarchjuno/tradingcodex main.
   --python <version>    Python version for uvx. Default: 3.14.
-  --overwrite           Pass --overwrite to tcx init.
+  --overwrite           Pass --overwrite to tcx attach.
   --no-doctor           Skip ./tcx doctor after bootstrap.
   -h, --help            Show this help.
 
@@ -157,9 +157,9 @@ if [ "$OVERWRITE" != "1" ] && [ -d "$WORKSPACE/.git" ] && target_has_only_git_bo
 fi
 
 if [ "$OVERWRITE" = "1" ] || [ "$AUTO_OVERWRITE" = "1" ]; then
-  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli init "$WORKSPACE" --overwrite
+  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli attach "$WORKSPACE" --overwrite
 else
-  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli init "$WORKSPACE"
+  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli attach "$WORKSPACE"
 fi
 
 if [ "$RUN_DOCTOR" = "1" ]; then

@@ -22,6 +22,16 @@ POLICY_ROLES = {"head-manager", "valuation-analyst", "portfolio-manager", "risk-
 PORTFOLIO_ROLES = {"head-manager", "portfolio-manager", "risk-manager", "execution-operator"}
 APPROVAL_ROLES = {"risk-manager"}
 EXECUTION_ROLES = {"execution-operator"}
+SAFE_HOME_TOOL_NAMES = frozenset({
+    "get_tradingcodex_status",
+    "get_order_status",
+    "get_positions",
+    "get_portfolio_snapshot",
+    "list_workflow_artifacts",
+    "get_research_artifact",
+    "list_research_artifacts",
+    "search_research_artifacts",
+})
 
 
 @dataclass(frozen=True)
@@ -63,6 +73,15 @@ def object_schema(properties: dict[str, Any] | None = None, required: list[str] 
 
 
 TOOL_SPECS: tuple[McpToolSpec, ...] = (
+    McpToolSpec(
+        name="get_tradingcodex_status",
+        description="Return TradingCodex service, DB, workspace, and active profile status.",
+        category="harness",
+        risk_level="read",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="get_tradingcodex_status",
+        input_schema=object_schema(),
+    ),
     McpToolSpec(
         name="simulate_policy",
         description="Evaluate TradingCodex policy for a proposed action without bypassing service-layer checks.",
@@ -287,11 +306,23 @@ def prepare_mcp_runtime(workspace_root: Path | str | None = None) -> None:
 
 
 def list_mcp_tools() -> list[dict[str, Any]]:
-    return [tool.public_definition() for tool in TOOL_SPECS if tool_enabled(tool.name)]
+    return [tool.public_definition() for tool in visible_tool_specs() if tool_enabled(tool.name)]
 
 
 def static_mcp_tools() -> list[dict[str, Any]]:
     return [tool.public_definition() for tool in TOOL_SPECS]
+
+
+def visible_tool_specs() -> tuple[McpToolSpec, ...]:
+    if safe_home_mcp_scope():
+        return tuple(tool for tool in TOOL_SPECS if tool.name in SAFE_HOME_TOOL_NAMES)
+    return TOOL_SPECS
+
+
+def safe_home_mcp_scope() -> bool:
+    import os
+
+    return os.environ.get("TRADINGCODEX_MCP_SAFE_TOOLS", "").lower() in {"1", "true", "yes", "on"}
 
 
 def sync_mcp_tool_definitions() -> None:
@@ -346,6 +377,8 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
     tool = TOOL_REGISTRY.get(name)
     if tool is None:
         raise ValueError(f"Unknown TradingCodex tool: {name}")
+    if safe_home_mcp_scope() and name not in SAFE_HOME_TOOL_NAMES:
+        raise PermissionError(f"MCP tool is not available in tradingcodex-home safe scope: {name}")
     if not tool_enabled(name):
         raise PermissionError(f"MCP tool is disabled: {name}")
     principal_id = str(args.get("principal_id") or default_principal_for_tool(tool))
@@ -382,6 +415,18 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
     from tradingcodex_service.application import audit, orders, policy, portfolio, research
 
     name = tool.name
+    if name == "get_tradingcodex_status":
+        from tradingcodex_service.application.runtime import persist_workspace_context_if_available, tradingcodex_db_path
+        from tradingcodex_service.version import TRADINGCODEX_VERSION
+
+        return {
+            "status": "ok",
+            "service": "tradingcodex",
+            "version": TRADINGCODEX_VERSION,
+            "db_path": str(tradingcodex_db_path()),
+            "workspace_context": persist_workspace_context_if_available(workspace_root),
+            "mcp_scope": "global-home" if safe_home_mcp_scope() else "project-scoped",
+        }
     if name == "simulate_policy":
         return policy.simulate_policy(workspace_root, args)
     if name == "validate_order_intent":
@@ -483,7 +528,7 @@ def handle_mcp_rpc(workspace_root: Path | str, message: dict[str, Any]) -> dict[
             "result": {
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {"listChanged": False}, "resources": {}, "prompts": {}},
-                "serverInfo": {"name": "tradingcodex", "version": TRADINGCODEX_VERSION},
+                "serverInfo": {"name": "tradingcodex-home" if safe_home_mcp_scope() else "tradingcodex", "version": TRADINGCODEX_VERSION},
                 "instructions": "TradingCodex MCP is a Django service-layer gateway backed by the central local TradingCodex DB. Codex projects are callers/provenance; research tools use DB-backed memory; execution tools revalidate policy, approval, adapter, and audit.",
             },
         }

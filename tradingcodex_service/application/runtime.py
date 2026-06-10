@@ -1,16 +1,33 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.common import _safe_read, sanitize_id
+from tradingcodex_service.application.common import _safe_read, now_iso, sanitize_id
 
 _RUNTIME_DB_READY = False
 _RUNTIME_DB_NAME = ""
+WORKSPACE_MANIFEST_REL = ".tradingcodex/workspace.json"
+DEFAULT_PROFILE_ID = "default-paper"
+DEFAULT_ACCOUNT_ID = "local-paper"
+DEFAULT_STRATEGY_ID = "default-strategy"
+
+
+def default_active_profile() -> dict[str, Any]:
+    return {
+        "profile_id": DEFAULT_PROFILE_ID,
+        "portfolio_id": DEFAULT_PROFILE_ID,
+        "account_id": DEFAULT_ACCOUNT_ID,
+        "strategy_id": DEFAULT_STRATEGY_ID,
+        "label": "shared central paper profile",
+        "shared": True,
+    }
 
 def tradingcodex_home() -> Path:
     return Path(os.environ.get("TRADINGCODEX_HOME", "~/.tradingcodex")).expanduser().resolve()
@@ -25,6 +42,70 @@ def tradingcodex_db_path() -> Path:
     if configured:
         return Path(configured).expanduser().resolve()
     return tradingcodex_state_dir() / "tradingcodex.sqlite3"
+
+
+def workspace_manifest_path(workspace_root: Path | str) -> Path:
+    return Path(workspace_root).expanduser().resolve() / WORKSPACE_MANIFEST_REL
+
+
+def read_workspace_manifest(workspace_root: Path | str | None = None) -> dict[str, Any]:
+    raw_root = workspace_root or os.environ.get("TRADINGCODEX_WORKSPACE_ROOT") or os.getcwd()
+    path = workspace_manifest_path(raw_root)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def ensure_workspace_manifest(workspace_root: Path | str, project_name: str | None = None, generated_at: str | None = None) -> dict[str, Any]:
+    root = Path(workspace_root).expanduser().resolve()
+    existing = read_workspace_manifest(root)
+    created_at = str(existing.get("created_at") or generated_at or now_iso())
+    workspace_id = str(existing.get("workspace_id") or f"tcxw_{uuid.uuid4().hex}")
+    active_profile = existing.get("active_profile") if isinstance(existing.get("active_profile"), dict) else default_active_profile()
+    manifest = {
+        "schema_version": 1,
+        "workspace_id": workspace_id,
+        "project_name": project_name or existing.get("project_name") or root.name or "tradingcodex-workspace",
+        "created_at": created_at,
+        "updated_at": now_iso(),
+        "active_profile": normalize_active_profile(active_profile),
+        "mcp_scope": "project-scoped",
+        "execution_mode": "paper only",
+    }
+    path = workspace_manifest_path(root)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return manifest
+
+
+def normalize_active_profile(profile: dict[str, Any] | None = None) -> dict[str, Any]:
+    base = default_active_profile()
+    if isinstance(profile, dict):
+        base.update({key: value for key, value in profile.items() if value not in (None, "")})
+    base["profile_id"] = sanitize_id(base.get("profile_id") or base.get("portfolio_id") or DEFAULT_PROFILE_ID)
+    base["portfolio_id"] = sanitize_id(base.get("portfolio_id") or base["profile_id"])
+    base["account_id"] = sanitize_id(base.get("account_id") or DEFAULT_ACCOUNT_ID)
+    base["strategy_id"] = sanitize_id(base.get("strategy_id") or DEFAULT_STRATEGY_ID)
+    base["label"] = str(base.get("label") or base["profile_id"])
+    base["shared"] = bool(base.get("shared"))
+    return base
+
+
+def active_profile_for_workspace(workspace_root: Path | str | None = None) -> dict[str, Any]:
+    manifest = read_workspace_manifest(workspace_root)
+    return normalize_active_profile(manifest.get("active_profile") if isinstance(manifest.get("active_profile"), dict) else None)
+
+
+def set_active_profile_for_workspace(workspace_root: Path | str, profile: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root).expanduser().resolve()
+    manifest = ensure_workspace_manifest(root)
+    manifest["active_profile"] = normalize_active_profile(profile)
+    manifest["updated_at"] = now_iso()
+    path = workspace_manifest_path(root)
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return manifest
 
 
 def configure_tradingcodex_database(workspace_root: Path | str | None = None) -> None:
@@ -63,13 +144,20 @@ def configure_workspace_database(workspace_root: Path | str | None = None) -> No
 def workspace_context_payload(workspace_root: Path | str | None = None) -> dict[str, Any]:
     raw_root = workspace_root or os.environ.get("TRADINGCODEX_WORKSPACE_ROOT") or os.getcwd()
     root = Path(raw_root).expanduser().resolve()
+    manifest = read_workspace_manifest(root)
+    path_hash = hashlib.sha256(str(root).encode("utf-8")).hexdigest()
+    workspace_id = str(manifest.get("workspace_id") or f"legacy-{path_hash[:16]}")
     return {
-        "path_hash": hashlib.sha256(str(root).encode("utf-8")).hexdigest(),
+        "workspace_id": workspace_id,
+        "path_hash": path_hash,
         "project_name": root.name or "tradingcodex-workspace",
         "path": str(root),
         "git_remote": _git_remote(root),
         "git_branch": _git_branch(root),
         "db_path": str(tradingcodex_db_path()),
+        "active_profile": active_profile_for_workspace(root),
+        "mcp_scope": str(manifest.get("mcp_scope") or "project-scoped"),
+        "execution_mode": str(manifest.get("execution_mode") or "paper only"),
     }
 
 
@@ -79,16 +167,30 @@ def persist_workspace_context_if_available(workspace_root: Path | str | None = N
         ensure_runtime_database(None)
         from apps.harness.models import WorkspaceContext
 
-        WorkspaceContext.objects.update_or_create(
-            path_hash=context["path_hash"],
-            defaults={
-                "project_name": context["project_name"],
-                "path": context["path"],
-                "git_remote": context["git_remote"],
-                "git_branch": context["git_branch"],
-                "metadata": {"db_path": context["db_path"]},
-            },
+        existing = (
+            WorkspaceContext.objects.filter(workspace_id=context["workspace_id"]).first()
+            or WorkspaceContext.objects.filter(path_hash=context["path_hash"]).first()
         )
+        defaults = {
+            "workspace_id": context["workspace_id"],
+            "path_hash": context["path_hash"],
+            "project_name": context["project_name"],
+            "path": context["path"],
+            "git_remote": context["git_remote"],
+            "git_branch": context["git_branch"],
+            "active_profile": context["active_profile"],
+            "metadata": {
+                "db_path": context["db_path"],
+                "mcp_scope": context["mcp_scope"],
+                "execution_mode": context["execution_mode"],
+            },
+        }
+        if existing:
+            for key, value in defaults.items():
+                setattr(existing, key, value)
+            existing.save(update_fields=[*defaults.keys(), "last_seen_at"])
+        else:
+            WorkspaceContext.objects.create(**defaults)
     except Exception:
         pass
     return context

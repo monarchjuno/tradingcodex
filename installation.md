@@ -6,11 +6,15 @@ the Quick Start in `README.md`.
 ## Agent Setup
 
 Codex agents setting up `monarchjuno/tradingcodex` for a user should not clone
-this source repository for installation. Use the user's target workspace, then
-run the installer there.
+this source repository for installation. They should also follow this rule: do
+not invent a default workspace path such as `tradingcodex-workspace`. If the
+user did not name a target directory, ask where to create or configure the
+TradingCodex workspace. Use the user's target workspace, then run the installer
+there.
 
 ```bash
-cd /path/to/empty-workspace
+mkdir -p /path/to/target-workspace
+cd /path/to/target-workspace
 curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
 ```
 
@@ -37,7 +41,7 @@ TradingCodex workspaces are separate Codex projects.
 The installer wraps this `uvx` flow:
 
 ```bash
-UV_NO_CACHE=1 uvx --isolated --refresh --python 3.14 --from tradingcodex python -m tradingcodex_cli init . && ./tcx doctor
+UV_NO_CACHE=1 uvx --isolated --refresh --python 3.14 --from tradingcodex python -m tradingcodex_cli attach . && ./tcx doctor
 ```
 
 For repeated workspace creation, installing `tcx` as a user-level tool is also
@@ -47,6 +51,8 @@ available:
 uv python install 3.14
 uv tool install --python 3.14 tradingcodex
 uv tool update-shell
+cd /path/to/target-workspace
+tcx attach .
 ```
 
 ## Codex MCP And Local Service
@@ -74,6 +80,13 @@ Inspect the local MCP surface:
 
 ```bash
 printf '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}\n' | ./tcx mcp stdio
+```
+
+Inspect workspace/profile status:
+
+```bash
+./tcx workspace status
+./tcx profile status
 ```
 
 Create and search DB-backed research memory:

@@ -17,6 +17,8 @@ def main(argv: list[str] | None = None) -> None:
     try:
         if command == "init":
             init(argv)
+        elif command == "attach":
+            attach(argv)
         elif command == "doctor":
             from tradingcodex_cli.workspace import doctor
 
@@ -24,7 +26,7 @@ def main(argv: list[str] | None = None) -> None:
             doctor(root, _option_value(argv, "--layer") or "all")
         elif command == "service":
             service(argv)
-        elif command in {"subagents", "skills", "policy", "mcp", "db", "validate", "risk-check", "approve", "quality-check", "audit", "postmortem", "research", "explain-policy"}:
+        elif command in {"subagents", "skills", "policy", "mcp", "db", "workspace", "profile", "validate", "risk-check", "approve", "quality-check", "audit", "postmortem", "research", "explain-policy"}:
             configure_workspace_env(Path.cwd())
             from tradingcodex_cli.workspace import main as workspace_main
 
@@ -59,18 +61,44 @@ def init(argv: list[str]) -> None:
         print(f"Capabilities: {', '.join(result['capabilities'])}")
         return
     configure_workspace_env(Path(result["targetDir"]))
-    from tradingcodex_service.domain import ensure_runtime_database, persist_workspace_context_if_available, tradingcodex_db_path
+    from tradingcodex_service.domain import ensure_runtime_database, persist_workspace_context_if_available
 
     ensure_runtime_database(Path(result["targetDir"]))
     persist_workspace_context_if_available(Path(result["targetDir"]))
     print(f"TradingCodex workspace created: {result['targetDir']}")
     print(f"Modules: {', '.join(result['modules'])}")
-    print(f"Django DB: {tradingcodex_db_path()}")
+    print_workspace_summary(Path(result["targetDir"]))
     print("\nNext:")
     print(f"  cd {result['targetDir']}")
     print("  ./tcx doctor")
     print("  Open the workspace in Codex and trust it; TradingCodex MCP will start the experimental local dashboard service at http://127.0.0.1:8000/")
     print("  Fully quit and restart Codex, then start from a new thread in this generated workspace so project MCP config is reloaded.")
+
+
+def attach(argv: list[str]) -> None:
+    parser = argparse.ArgumentParser(prog=f"{program_name()} attach")
+    parser.add_argument("project_dir", nargs="?", default=".")
+    parser.add_argument("--overwrite", action="store_true", help="overwrite matching generated workspace files")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args(argv)
+    target = Path(args.project_dir).resolve()
+    force = args.overwrite or (target / ".tradingcodex" / "generated" / "module-lock.json").exists()
+    result = bootstrap_workspace(target, force=force, dry_run=args.dry_run)
+    if args.dry_run:
+        print(f"TradingCodex attach dry run: {result['targetDir']}")
+        print(f"Modules: {', '.join(result['modules'])}")
+        return
+    configure_workspace_env(Path(result["targetDir"]))
+    from tradingcodex_service.domain import ensure_runtime_database, persist_workspace_context_if_available
+
+    ensure_runtime_database(Path(result["targetDir"]))
+    persist_workspace_context_if_available(Path(result["targetDir"]))
+    print(f"TradingCodex workspace attached: {result['targetDir']}")
+    print(f"Modules: {', '.join(result['modules'])}")
+    print_workspace_summary(Path(result["targetDir"]))
+    print("\nNext:")
+    print("  ./tcx doctor")
+    print("  Open this workspace in Codex and trust it so project-scoped TradingCodex MCP is loaded.")
 
 
 def service(argv: list[str]) -> None:
@@ -91,6 +119,19 @@ def configure_workspace_env(root: Path) -> Path:
     return Path(os.environ["TRADINGCODEX_WORKSPACE_ROOT"]).resolve()
 
 
+def print_workspace_summary(root: Path) -> None:
+    from tradingcodex_service.domain import ensure_workspace_manifest, tradingcodex_db_path
+
+    manifest = ensure_workspace_manifest(root)
+    profile = manifest["active_profile"]
+    print(f"Workspace: {manifest['project_name']}")
+    print(f"Workspace ID: {manifest['workspace_id']}")
+    print(f"Active Profile: {profile['label']} ({profile['portfolio_id']}/{profile['account_id']}/{profile['strategy_id']})")
+    print(f"Central DB: {tradingcodex_db_path()}")
+    print(f"MCP Scope: {manifest['mcp_scope']}")
+    print(f"Execution Mode: {manifest['execution_mode']}")
+
+
 def _option_value(args: list[str], name: str) -> str | None:
     try:
         return args[args.index(name) + 1]
@@ -107,9 +148,12 @@ def print_help() -> None:
     print("""TradingCodex Python/Django
 
 Usage:
+  tcx attach [workspace] [--overwrite]
   tcx init <workspace> [--overwrite]
   tcx init --list-modules
   tcx doctor [--layer <layer>]
+  tcx workspace status|list
+  tcx profile status|list|create|select
   tcx subagents status
   tcx skills list [--all]
   tcx db path|status|migrate

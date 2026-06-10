@@ -6,6 +6,7 @@ from tradingcodex_service.domain import (
     create_research_artifact,
     export_research_artifact_md,
     get_research_artifact,
+    append_research_artifact_version,
     list_research_artifacts,
     search_research_artifacts,
 )
@@ -31,6 +32,18 @@ def research(root: Path, argv: list[str]) -> None:
             "export_path": _option_value(args, "--export-path"),
         }
         print_json(create_research_artifact(root, payload))
+        return
+    if sub == "append":
+        artifact_id = args[0] if args and not args[0].startswith("--") else _option_value(args, "--id")
+        markdown_file = _option_value(args, "--markdown-file") or _option_value(args, "--file")
+        if not artifact_id or not markdown_file:
+            raise ValueError("Usage: tcx research append <artifact-id> --markdown-file <file.md>")
+        print_json(append_research_artifact_version(root, {
+            "artifact_id": artifact_id,
+            "markdown_path": markdown_file,
+            "created_by": _option_value(args, "--created-by") or "head-manager",
+            "export_path": _option_value(args, "--export-path"),
+        }))
         return
     if sub == "get":
         artifact_id = args[0] if args and not args[0].startswith("--") else _option_value(args, "--id")

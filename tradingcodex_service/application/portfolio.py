@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.application.common import now_iso
-from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_context_payload
+from tradingcodex_service.application.runtime import active_profile_for_workspace, ensure_runtime_database, workspace_context_payload
 
 DEFAULT_PAPER_CASH_KRW = 100_000_000
 DEFAULT_PORTFOLIO_ID = "default-paper"
@@ -12,7 +12,7 @@ DEFAULT_ACCOUNT_ID = "local-paper"
 DEFAULT_STRATEGY_ID = "default-strategy"
 
 def submit_paper_order(root: Path, order: dict[str, Any]) -> dict[str, Any]:
-    portfolio_id, account_id, strategy_id = portfolio_keys(order)
+    portfolio_id, account_id, strategy_id = portfolio_keys(order, root)
     state = load_paper_portfolio_state(root, portfolio_id, account_id, strategy_id)
     symbol = str(order["symbol"]).upper()
     quantity = float(order["quantity"])
@@ -49,11 +49,12 @@ def submit_paper_order(root: Path, order: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def portfolio_keys(args: dict[str, Any]) -> tuple[str, str, str]:
+def portfolio_keys(args: dict[str, Any], workspace_root: Path | str | None = None) -> tuple[str, str, str]:
+    profile = active_profile_for_workspace(workspace_root)
     return (
-        str(args.get("portfolio_id") or DEFAULT_PORTFOLIO_ID),
-        str(args.get("account_id") or DEFAULT_ACCOUNT_ID),
-        str(args.get("strategy_id") or DEFAULT_STRATEGY_ID),
+        str(args.get("portfolio_id") or profile.get("portfolio_id") or DEFAULT_PORTFOLIO_ID),
+        str(args.get("account_id") or profile.get("account_id") or DEFAULT_ACCOUNT_ID),
+        str(args.get("strategy_id") or profile.get("strategy_id") or DEFAULT_STRATEGY_ID),
     )
 
 
@@ -161,5 +162,5 @@ def persist_paper_portfolio_state(
 
 
 def list_positions(workspace_root: Path | str) -> dict[str, Any]:
-    portfolio_id, account_id, strategy_id = portfolio_keys({})
+    portfolio_id, account_id, strategy_id = portfolio_keys({}, workspace_root)
     return load_paper_portfolio_state(Path(workspace_root), portfolio_id, account_id, strategy_id)

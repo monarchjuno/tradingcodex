@@ -33,7 +33,7 @@ not a black-box trading bot.
 | Individual investor using Codex for research | Provide structured workflows, role prompts, source posture, and readable artifacts. |
 | Operator validating paper/stub execution | Provide deterministic policy, approval, adapter, idempotency, and audit checks. |
 | Developer extending adapters or universes | Provide modular Django apps, service-layer contracts, MCP registry metadata, and template-driven workspace generation. |
-| Research-heavy user with multiple Codex projects | Keep central DB state shared while preserving workspace provenance. |
+| Research-heavy user with multiple Codex projects | Keep central DB state shared while preserving workspace identity/provenance and profile-scoped paper portfolios. |
 | Compliance-minded operator | Make approvals, restricted lists, capability checks, and audit events inspectable through Admin, API, MCP ledger, and exports. |
 
 ## Product Language
@@ -85,6 +85,7 @@ guidance emitted by the product should remain English.
 | Product web orchestration | The web dashboard reviews state and prepares starter prompts; it does not spawn subagents or perform investment analysis. |
 | SDK-backed orchestration by default | Django should not become the agent runtime in v1. Future SDK modes require explicit feature flags and docs. |
 | Workspace-local investment ledgers | Generated workspaces are clients/provenance. Canonical investment state belongs to the central local DB. |
+| Workspace-as-account UX | Workspaces are Codex workbenches. Portfolio/profile scope owns paper account and strategy separation. |
 | Public-equity-only product | Public equity is the first deep sleeve, not the long-term product boundary. |
 | Hidden safety policy | Durable rules must not live only in code, prompts, templates, tests, or hooks. |
 

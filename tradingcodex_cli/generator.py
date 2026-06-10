@@ -4,12 +4,14 @@ import json
 import os
 import shutil
 import sys
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.version import TRADINGCODEX_VERSION
+from tradingcodex_service.application.runtime import ensure_workspace_manifest, read_workspace_manifest
 
 DEFAULT_MODULE_IDS = [
     "codex-base",
@@ -47,9 +49,12 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
     registry = load_module_registry(templates_dir())
     modules = resolve_module_graph(registry, module_ids or DEFAULT_MODULE_IDS)
     subagents = collect_template_subagent_names(modules)
+    existing_manifest = read_workspace_manifest(target)
+    workspace_id = str(existing_manifest.get("workspace_id") or f"tcxw_{uuid.uuid4().hex}")
     context = {
         "PROJECT_NAME": sanitize_project_name(target.name or "tradingcodex-workspace"),
         "PROJECT_DIR": str(target),
+        "WORKSPACE_ID": workspace_id,
         "SOURCE_ROOT": str(repo_root()),
         "PYTHON_EXECUTABLE": sys.executable,
         "GENERATED_AT": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
@@ -59,6 +64,7 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
     }
     result = {
         "targetDir": str(target),
+        "workspaceId": workspace_id,
         "modules": [module.id for module in modules],
         "capabilities": collect_capabilities(modules),
     }
@@ -69,6 +75,7 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
         files_dir = module.dir / "files"
         if files_dir.exists():
             copy_template_tree(files_dir, target, context)
+    ensure_workspace_manifest(target, project_name=context["PROJECT_NAME"], generated_at=context["GENERATED_AT"])
     write_generated_indexes(target, modules, context)
     return result
 

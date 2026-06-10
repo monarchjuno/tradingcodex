@@ -76,7 +76,7 @@ python3.14 -m venv /tmp/tcx-install-test
 rm -rf /tmp/tcx-smoke
 mkdir -p /tmp/tcx-smoke
 cd /tmp/tcx-smoke
-/tmp/tcx-install-test/bin/tcx init .
+/tmp/tcx-install-test/bin/tcx attach .
 ./tcx doctor
 ```
 
@@ -137,7 +137,7 @@ python3.14 -m venv /tmp/tcx-testpypi
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
-/tmp/tcx-testpypi/bin/tcx init .
+/tmp/tcx-testpypi/bin/tcx attach .
 ./tcx doctor
 ```
 
@@ -166,7 +166,7 @@ python3.14 -m venv /tmp/tcx-pypi
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
-/tmp/tcx-pypi/bin/tcx init .
+/tmp/tcx-pypi/bin/tcx attach .
 ./tcx doctor
 ```
 

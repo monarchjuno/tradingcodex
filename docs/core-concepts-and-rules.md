@@ -60,6 +60,10 @@ Use [harness.md](./harness.md) for the top-level model,
 | Django service plane | Durable policy/order/portfolio/research/audit/harness/integration logic, product web, Admin, Ninja, MCP HTTP endpoint | [system-architecture.md](./system-architecture.md), [interfaces-and-surfaces.md](./interfaces-and-surfaces.md) |
 | Workspace system plane | Generated schemas, policy exports, MCP wrappers, readable exports/cache, audit directories | [generated-workspaces.md](./generated-workspaces.md), [research-memory-and-artifacts.md](./research-memory-and-artifacts.md) |
 
+Workspace identity is the Codex workbench identity. Portfolio/profile identity
+is the paper account and strategy scope. Do not use workspace paths as
+investment ledgers.
+
 ## Guardrails And Improvement
 
 | Type | Purpose | Examples | Detailed rules |

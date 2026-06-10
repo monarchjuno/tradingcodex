@@ -35,7 +35,7 @@ responsible for decisions, broker integrations, compliance, and outcomes.
 | MCP | Django-hosted MCP endpoint and stdio bridge as the agent/tool execution boundary. |
 | Execution | Paper/stub adapters only in the initial core; live broker adapters are disabled and unimplemented. |
 | Research memory | Central DB-first, with markdown exports and source/as-of metadata. |
-| Generated workspaces | Codex-readable clients with provenance through `TRADINGCODEX_WORKSPACE_ROOT`, not separate investment ledgers. |
+| Generated workspaces | Codex-readable clients with immutable workspace ids and provenance through `TRADINGCODEX_WORKSPACE_ROOT`, not separate investment ledgers. |
 | Product language | English durable docs, generated guidance, Admin UI, CLI help, role prompts, and product copy. |
 | License posture | Apache-2.0 open core with separate trademark and commercial-offering boundaries. |
 

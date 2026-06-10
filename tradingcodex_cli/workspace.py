@@ -19,6 +19,7 @@ from tradingcodex_cli.commands.doctor import (
 from tradingcodex_cli.commands.mcp import mcp, mcp_ledger, print_mcp_help
 from tradingcodex_cli.commands.orders import approve, audit, postmortem, quality_check, risk_check, validate
 from tradingcodex_cli.commands.policy import policy
+from tradingcodex_cli.commands.profile import profile
 from tradingcodex_cli.commands.research import research
 from tradingcodex_cli.commands.skills import skills
 from tradingcodex_cli.commands.subagents import subagents
@@ -42,6 +43,7 @@ from tradingcodex_cli.commands.utils import (
     text_check,
     write_skill_proposal,
 )
+from tradingcodex_cli.commands.workspaces import workspace
 
 
 def workspace_root() -> Path:
@@ -68,6 +70,10 @@ def main(argv: list[str] | None = None) -> None:
             mcp(root, argv)
         elif command == "db":
             db(root, argv)
+        elif command == "workspace":
+            workspace(root, argv)
+        elif command == "profile":
+            profile(root, argv)
         elif command == "validate":
             validate(root, argv)
         elif command == "risk-check":
@@ -99,6 +105,8 @@ def print_help() -> None:
 
 Usage:
   tcx doctor [--layer service|guidance|enforcement|information-barrier|improvement|mcp|codex-native]
+  tcx workspace status|list
+  tcx profile status|list|create|select
   tcx subagents list|status|state|plan|skills|prompt
   tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal
   tcx policy simulate --principal <id> --action <action> --resource <resource>

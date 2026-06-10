@@ -10,6 +10,7 @@ from tradingcodex_service.domain import (
     EXPECTED_SKILLS,
     EXPECTED_SUBAGENTS,
     ROLE_PERMISSION_PROFILES,
+    read_workspace_manifest,
     ensure_runtime_database,
     tradingcodex_db_path,
 )
@@ -71,6 +72,25 @@ def _central_service_checks(root: Path) -> list[dict[str, Any]]:
             "ok": db_path != (root / ".tradingcodex" / "state" / "tradingcodex.sqlite3").resolve(),
             "codexNative": False,
             "detail": f"workspace={root}",
+        })
+        manifest = read_workspace_manifest(root)
+        has_workspace_id = bool(str(manifest.get("workspace_id", "")).startswith("tcxw_"))
+        checks.append({
+            "layer": "service",
+            "name": "workspace identity manifest installed",
+            "ok": has_workspace_id,
+            "warn": not has_workspace_id,
+            "codexNative": False,
+            "detail": str(manifest.get("workspace_id") or "missing .tradingcodex/workspace.json"),
+        })
+        has_profile = bool((manifest.get("active_profile") or {}).get("portfolio_id"))
+        checks.append({
+            "layer": "service",
+            "name": "active profile configured",
+            "ok": has_profile,
+            "warn": not has_profile,
+            "codexNative": False,
+            "detail": (manifest.get("active_profile") or {}).get("label", "missing active profile"),
         })
         from apps.mcp.models import McpToolCall
 

@@ -27,7 +27,7 @@ from tradingcodex_service.domain import (
     mcp_handle_rpc,
     validate_order_intent,
 )
-from tradingcodex_service.mcp_runtime import static_mcp_tools
+from tradingcodex_service.mcp_runtime import SAFE_HOME_TOOL_NAMES, static_mcp_tools
 from tradingcodex_service.version import TRADINGCODEX_VERSION
 
 
@@ -99,6 +99,7 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
         ".codex/hooks/tradingcodex_hook.py",
         ".agents/skills/orchestrate-workflow/SKILL.md",
         ".tradingcodex/config.yaml",
+        ".tradingcodex/workspace.json",
         "trading/research/.gitkeep",
         "tcx",
     ]:
@@ -107,6 +108,20 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
     assert not list(workspace.rglob("__pycache__"))
     assert not list(workspace.rglob("*.pyc"))
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
+
+
+def test_install_docs_tell_agents_not_to_invent_workspace_paths() -> None:
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    installation = (ROOT / "installation.md").read_text(encoding="utf-8")
+    generated_workspaces = (ROOT / "docs" / "generated-workspaces.md").read_text(encoding="utf-8")
+
+    for text in [readme, installation, generated_workspaces]:
+        normalized = re.sub(r"\s+", " ", text)
+        assert "do not invent" in normalized
+        assert "ask" in normalized.lower()
+
+    assert "tradingcodex-workspace" in installation
+    assert "tradingcodex-workspace" in generated_workspaces
 
 
 def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
@@ -119,6 +134,11 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert (workspace / ".tradingcodex" / "cli.py").exists()
     assert (workspace / ".tradingcodex" / "mcp" / "server.py").exists()
     assert (workspace / ".codex" / "hooks" / "tradingcodex_hook.py").exists()
+    workspace_manifest = json.loads((workspace / ".tradingcodex" / "workspace.json").read_text(encoding="utf-8"))
+    assert workspace_manifest["workspace_id"].startswith("tcxw_")
+    assert workspace_manifest["active_profile"]["label"] == "shared central paper profile"
+    assert workspace_manifest["mcp_scope"] == "project-scoped"
+    assert workspace_manifest["execution_mode"] == "paper only"
     generated_text = "\n".join(
         path.read_text(encoding="utf-8", errors="ignore")
         for path in workspace.rglob("*")
@@ -151,6 +171,11 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert status["installed_count"] == 9
     assert status["fixed_roster_ok"] is True
     assert status["skills_installed"] == 21
+    workspace_status = json.loads(run(["./tcx", "workspace", "status"], workspace).stdout)
+    assert workspace_status["workspace_id"] == workspace_manifest["workspace_id"]
+    assert workspace_status["active_profile"]["portfolio_id"] == "default-paper"
+    profile_status = json.loads(run(["./tcx", "profile", "status"], workspace).stdout)
+    assert profile_status["active_profile"]["label"] == "shared central paper profile"
     doctor = run(["./tcx", "doctor"], workspace).stdout
     assert "TradingCodex doctor passed" in doctor
     assert "improvement" in doctor
@@ -222,6 +247,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert set(root_mcp["enabled_tools"]).issubset(actual_mcp_tools)
     assert stale_mcp_tool_names.isdisjoint(root_mcp["enabled_tools"])
     assert "simulate_policy" in root_mcp["enabled_tools"]
+    assert "get_tradingcodex_status" in root_mcp["enabled_tools"]
     assert "record_audit_event" in root_mcp["enabled_tools"]
     assert "get_portfolio_snapshot" in root_mcp["enabled_tools"]
     assert "submit_approved_order" not in root_mcp["enabled_tools"]
@@ -266,7 +292,11 @@ def test_init_prepares_central_django_runtime(tmp_path: Path) -> None:
     )
     db_path = home / "state" / "tradingcodex.sqlite3"
 
-    assert f"Django DB: {db_path}" in result.stdout
+    assert f"Central DB: {db_path}" in result.stdout
+    assert "Workspace ID: tcxw_" in result.stdout
+    assert "Active Profile: shared central paper profile" in result.stdout
+    assert "MCP Scope: project-scoped" in result.stdout
+    assert "Execution Mode: paper only" in result.stdout
     assert "./tcx doctor" in result.stdout
     assert db_path.exists()
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
@@ -284,6 +314,7 @@ def test_init_prepares_central_django_runtime(tmp_path: Path) -> None:
         assert "mcp_mcptooldefinition" in table_names
         assert connection.execute("select count(*) from django_migrations where app = 'orders' and name = '0001_initial'").fetchone()[0] == 1
         assert connection.execute("select count(*) from harness_workspacecontext where path = ?", (str(workspace.resolve()),)).fetchone()[0] == 1
+        assert connection.execute("select workspace_id from harness_workspacecontext where path = ?", (str(workspace.resolve()),)).fetchone()[0].startswith("tcxw_")
 
 
 def test_init_current_directory_and_overwrite_language(tmp_path: Path) -> None:
@@ -308,6 +339,26 @@ def test_init_current_directory_and_overwrite_language(tmp_path: Path) -> None:
     help_text = run([sys.executable, "-m", "tradingcodex_cli", "init", "--help"], workspace, env_extra=env_extra).stdout
     assert "--overwrite" in help_text
     assert "--force" not in help_text
+
+
+def test_attach_current_directory_preserves_workspace_identity(tmp_path: Path) -> None:
+    workspace = tmp_path / "attach-workspace"
+    workspace.mkdir()
+    home = tmp_path / "tc-home-attach"
+    env_extra = {"TRADINGCODEX_DB_NAME": None, "TRADINGCODEX_HOME": str(home)}
+
+    attached = run([sys.executable, "-m", "tradingcodex_cli", "attach", "."], workspace, env_extra=env_extra)
+    manifest = json.loads((workspace / ".tradingcodex" / "workspace.json").read_text(encoding="utf-8"))
+    workspace_id = manifest["workspace_id"]
+
+    assert f"TradingCodex workspace attached: {workspace.resolve()}" in attached.stdout
+    assert "MCP Scope: project-scoped" in attached.stdout
+    assert workspace_id.startswith("tcxw_")
+
+    refreshed = run([sys.executable, "-m", "tradingcodex_cli", "attach", "."], workspace, env_extra=env_extra)
+    refreshed_manifest = json.loads((workspace / ".tradingcodex" / "workspace.json").read_text(encoding="utf-8"))
+    assert refreshed_manifest["workspace_id"] == workspace_id
+    assert f"TradingCodex workspace attached: {workspace.resolve()}" in refreshed.stdout
 
 
 def test_init_allows_git_initialized_empty_current_directory(tmp_path: Path) -> None:
@@ -394,6 +445,14 @@ def test_workspace_cli_order_policy_and_execution(tmp_path: Path) -> None:
     assert "already has an execution result" in "\n".join(duplicate["reasons"])
     snapshot = json.loads(run(["./tcx", "mcp", "call", "get_portfolio_snapshot"], workspace).stdout)
     assert snapshot["positions"]["AAPL"]["quantity"] == 1.0
+
+    created_profile = json.loads(run(["./tcx", "profile", "create", "strategy-lab"], workspace).stdout)
+    assert created_profile["profile"]["portfolio_id"] == "strategy-lab"
+    selected_profile = json.loads(run(["./tcx", "profile", "select", "strategy-lab"], workspace).stdout)
+    assert selected_profile["active_profile"]["portfolio_id"] == "strategy-lab"
+    isolated_snapshot = json.loads(run(["./tcx", "mcp", "call", "get_portfolio_snapshot"], workspace).stdout)
+    assert isolated_snapshot["portfolio_id"] == "strategy-lab"
+    assert isolated_snapshot["positions"] == {}
 
 
 def test_restricted_and_live_orders_are_blocked(tmp_path: Path) -> None:
@@ -552,6 +611,44 @@ def test_mcp_stdio_and_http_minimum_surface(tmp_path: Path) -> None:
     )
     assert batch.status_code == 200
     assert isinstance(batch.json(), list)
+
+
+def test_global_home_mcp_safe_config_excludes_sensitive_tools(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    config_path = tmp_path / "codex-config.toml"
+
+    installed = json.loads(run(["./tcx", "mcp", "install-global", "--safe", "--config", str(config_path)], workspace).stdout)
+    config = config_path.read_text(encoding="utf-8")
+
+    assert installed["server_name"] == "tradingcodex-home"
+    assert "mcp_servers.tradingcodex-home" in config
+    assert "TRADINGCODEX_MCP_SAFE_TOOLS" in config
+    assert "submit_approved_order" not in installed["safe_tools"]
+    assert "create_approval_receipt" not in installed["safe_tools"]
+    assert "cancel_approved_order" not in installed["safe_tools"]
+    assert set(installed["safe_tools"]) == set(SAFE_HOME_TOOL_NAMES)
+
+    previous = os.environ.get("TRADINGCODEX_MCP_SAFE_TOOLS")
+    os.environ["TRADINGCODEX_MCP_SAFE_TOOLS"] = "1"
+    try:
+        initialized = mcp_handle_rpc(workspace, {"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+        tools = mcp_handle_rpc(workspace, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        tool_names = {tool["name"] for tool in tools["result"]["tools"]}
+        forbidden = mcp_handle_rpc(workspace, {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "submit_approved_order", "arguments": {}},
+        })
+    finally:
+        if previous is None:
+            os.environ.pop("TRADINGCODEX_MCP_SAFE_TOOLS", None)
+        else:
+            os.environ["TRADINGCODEX_MCP_SAFE_TOOLS"] = previous
+
+    assert initialized and initialized["result"]["serverInfo"]["name"] == "tradingcodex-home"
+    assert tool_names == set(SAFE_HOME_TOOL_NAMES)
+    assert forbidden and "safe scope" in forbidden["error"]["message"]
 
 
 def test_django_ninja_control_api() -> None:
@@ -934,6 +1031,11 @@ def test_central_db_is_shared_across_generated_workspaces(tmp_path: Path) -> Non
     assert db_a == db_b
     assert db_a != str((workspace_a / ".tradingcodex" / "state" / "tradingcodex.sqlite3").resolve())
     assert db_b != str((workspace_b / ".tradingcodex" / "state" / "tradingcodex.sqlite3").resolve())
+    manifest_a = json.loads((workspace_a / ".tradingcodex" / "workspace.json").read_text(encoding="utf-8"))
+    manifest_b = json.loads((workspace_b / ".tradingcodex" / "workspace.json").read_text(encoding="utf-8"))
+    assert manifest_a["workspace_id"] != manifest_b["workspace_id"]
+    artifact_id = f"central-shared-note-{manifest_a['workspace_id'][-8:]}"
+    order_id = f"central-cross-workspace-order-{manifest_a['workspace_id'][-8:]}"
 
     note = workspace_a / "shared-note.md"
     note.write_text("# Shared Note\n\n[factual] Central DB research is shared.", encoding="utf-8")
@@ -942,7 +1044,7 @@ def test_central_db_is_shared_across_generated_workspaces(tmp_path: Path) -> Non
         "research",
         "create",
         "--id",
-        "central-shared-note",
+        artifact_id,
         "--title",
         "Central Shared Note",
         "--markdown-file",
@@ -954,10 +1056,31 @@ def test_central_db_is_shared_across_generated_workspaces(tmp_path: Path) -> Non
     assert created["workspace_context"]["path"] == str(workspace_a)
 
     searched = json.loads(run(["./tcx", "research", "search", "Central DB research"], workspace_b).stdout)
-    assert any(item["artifact_id"] == "central-shared-note" for item in searched["artifacts"])
+    assert any(item["artifact_id"] == artifact_id for item in searched["artifacts"])
+
+    conflicting_note = workspace_b / "shared-note-conflict.md"
+    conflicting_note.write_text("# Shared Note\n\n[factual] Different content with a duplicate ID.", encoding="utf-8")
+    conflict = run([
+        "./tcx",
+        "research",
+        "create",
+        "--id",
+        artifact_id,
+        "--title",
+        "Central Shared Note Conflict",
+        "--markdown-file",
+        "shared-note-conflict.md",
+    ], workspace_b, expect_ok=False)
+    assert "research artifact already exists" in conflict.stderr
+
+    appended_note = workspace_b / "shared-note-v2.md"
+    appended_note.write_text("# Shared Note v2\n\n[factual] Explicit version append from workspace B.", encoding="utf-8")
+    appended = json.loads(run(["./tcx", "research", "append", artifact_id, "--markdown-file", "shared-note-v2.md"], workspace_b).stdout)
+    assert appended["version"] == 2
+    assert appended["workspace_context"]["path"] == str(workspace_b)
 
     order = {
-        "id": "central-cross-workspace-order",
+        "id": order_id,
         "symbol": "AAPL",
         "side": "buy",
         "quantity": 1,
@@ -968,9 +1091,14 @@ def test_central_db_is_shared_across_generated_workspaces(tmp_path: Path) -> Non
         "created_by": "portfolio-manager",
         "created_at": "2026-01-01T00:00:00Z",
     }
-    order_path = workspace_a / "trading" / "orders" / "draft" / "central-cross-workspace-order.order_intent.json"
+    order_path = workspace_a / "trading" / "orders" / "draft" / f"{order_id}.order_intent.json"
     order_path.write_text(json.dumps(order), encoding="utf-8")
     assert json.loads(run(["./tcx", "approve", str(order_path.relative_to(workspace_a)), "--approved-by", "risk-manager"], workspace_a).stdout)["status"] == "approved"
+    conflicting_order = {**order, "quantity": 2}
+    conflicting_order_path = workspace_b / "trading" / "orders" / "draft" / "central-cross-workspace-order-conflict.order_intent.json"
+    conflicting_order_path.write_text(json.dumps(conflicting_order), encoding="utf-8")
+    order_conflict = json.loads(run(["./tcx", "validate", "order", str(conflicting_order_path.relative_to(workspace_b))], workspace_b, expect_ok=False).stdout)
+    assert "order_intent.id already exists with a different payload" in "\n".join(order_conflict["reasons"])
     executed = json.loads(run(["./tcx", "mcp", "call", "submit_approved_order", "--order-intent-id", order["id"]], workspace_b).stdout)
     assert executed["status"] == "accepted"
     assert executed["workspace_context"]["path"] == str(workspace_b)

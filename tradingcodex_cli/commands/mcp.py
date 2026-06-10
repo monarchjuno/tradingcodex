@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import os
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.domain import call_tool, ensure_runtime_database, tradingcodex_db_path
+from tradingcodex_service.mcp_runtime import SAFE_HOME_TOOL_NAMES
 from tradingcodex_cli.commands.utils import _option_value, print_json
 
 def mcp(root: Path, argv: list[str]) -> None:
@@ -21,6 +23,9 @@ def mcp(root: Path, argv: list[str]) -> None:
         return
     if argv and argv[0] in {"ledger", "calls"}:
         mcp_ledger(root, argv[1:])
+        return
+    if argv and argv[0] == "install-global":
+        install_global_mcp(argv[1:])
         return
     if not argv or argv[0] != "call":
         raise ValueError("Usage: tcx mcp call <tool> [--order-intent file] [--approval-receipt file] [--order-id id] | tcx mcp ledger [--tool name] | tcx mcp stdio")
@@ -101,12 +106,61 @@ def mcp_ledger(root: Path, args: list[str]) -> None:
     })
 
 
+def install_global_mcp(args: list[str]) -> None:
+    if "--safe" not in args:
+        raise ValueError("Usage: tcx mcp install-global --safe [--config <path>] [--print]")
+    config_path = Path(_option_value(args, "--config") or Path.home() / ".codex" / "config.toml").expanduser().resolve()
+    block = global_home_mcp_config_block()
+    if "--print" in args:
+        print(block)
+        return
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    updated = replace_managed_block(existing, block)
+    config_path.write_text(updated, encoding="utf-8")
+    print_json({
+        "status": "installed",
+        "server_name": "tradingcodex-home",
+        "config_path": str(config_path),
+        "safe_tools": sorted(SAFE_HOME_TOOL_NAMES),
+    })
+
+
+def global_home_mcp_config_block() -> str:
+    tools = ",\n  ".join(json.dumps(tool) for tool in sorted(SAFE_HOME_TOOL_NAMES))
+    return f"""# BEGIN TradingCodex home MCP
+[mcp_servers.tradingcodex-home]
+command = "uvx"
+args = ["--refresh", "--python", "3.14", "--from", "{os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex")}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+enabled = true
+env = {{ TRADINGCODEX_MCP_SAFE_TOOLS = "1", TRADINGCODEX_MCP_SCOPE = "global-home" }}
+enabled_tools = [
+  {tools}
+]
+default_tools_approval_mode = "prompt"
+startup_timeout_sec = 20
+# END TradingCodex home MCP
+"""
+
+
+def replace_managed_block(existing: str, block: str) -> str:
+    start = "# BEGIN TradingCodex home MCP"
+    end = "# END TradingCodex home MCP"
+    if start in existing and end in existing:
+        before, rest = existing.split(start, 1)
+        _, after = rest.split(end, 1)
+        return before.rstrip() + "\n\n" + block.rstrip() + "\n" + after
+    prefix = existing.rstrip() + "\n\n" if existing.strip() else ""
+    return prefix + block
+
+
 def print_mcp_help() -> None:
     print("""TradingCodex MCP
 
 Usage:
   ./tcx mcp call <tool> [--principal <role>] [tool args]
   ./tcx mcp ledger [--tool <name>] [--principal <role>] [--status ok]
+  ./tcx mcp install-global --safe
   ./tcx mcp stdio
 
 Examples:

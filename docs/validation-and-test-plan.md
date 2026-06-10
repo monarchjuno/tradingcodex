@@ -36,7 +36,8 @@ Unit tests should cover:
 - audit append behavior and request/result hash generation
 - DB-backed research artifact creation, versioning, search, source snapshot recording, and markdown export
 - central DB path resolution through `TRADINGCODEX_HOME` and `TRADINGCODEX_DB_NAME`
-- workspace provenance recording without workspace-local DB partitioning
+- workspace identity/provenance recording without workspace-local DB partitioning
+- duplicate research/order ids fail closed unless an explicit append/version path is used
 
 ## API And Admin Test Expectations
 
@@ -58,17 +59,22 @@ Run after template/bootstrap behavior changes:
 
 ```bash
 rm -rf /tmp/tradingcodex-smoke
-python -m tradingcodex_cli init /tmp/tradingcodex-smoke
+python -m tradingcodex_cli attach /tmp/tradingcodex-smoke
 cd /tmp/tradingcodex-smoke
 ./tcx doctor
+./tcx workspace status
+./tcx profile status
 ```
 
 Smoke coverage should verify:
 
-- `tcx init` creates the workspace contract
+- `tcx attach` and `tcx init` create the workspace contract
+- generated workspace contains `.tradingcodex/workspace.json`
 - generated workspace contains no `package.json` or Node MCP/runtime files
 - generated workspace contains nine fixed subagents and twenty-one repo skills
-- two generated workspaces share research memory, paper portfolio state, and MCP ledger through the central DB
+- two generated workspaces have different workspace ids
+- two generated workspaces share research memory and MCP ledger through the central DB
+- profile selection controls paper portfolio separation
 - root, `risk-manager`, and `execution-operator` MCP allowlists match role boundaries
 - generated hooks are callable and classify routing/secret-warning cases
 
@@ -78,6 +84,7 @@ Run after research-memory changes:
 
 ```bash
 ./tcx research create
+./tcx research append
 ./tcx research search
 ./tcx research export
 ```
@@ -87,6 +94,7 @@ The smoke flow should confirm:
 - DB artifact creation
 - source/as-of metadata preservation
 - version and content hash updates
+- duplicate create with changed content is rejected
 - markdown export path generation
 - workspace provenance recording
 - no raw secrets in exported output
@@ -97,6 +105,7 @@ Run after MCP registry, handler, bridge, or role allowlist changes:
 
 ```bash
 ./tcx mcp stdio
+./tcx mcp install-global --safe --print
 ```
 
 Verify at least:
@@ -107,6 +116,7 @@ Verify at least:
 - approval creation is not visible to `head-manager`
 - approval creation is visible only to the approved risk role path
 - experimental execution tools are visible only to `execution-operator`
+- `tradingcodex-home` safe scope exposes only read-only/status/search tools
 - stdio emits no non-MCP logs to stdout
 
 ## Harness And Routing Tests

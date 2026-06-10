@@ -11,7 +11,8 @@ python -m compileall tradingcodex_cli tradingcodex_service apps tests
 The Python migration smoke suite covers:
 
 - workspace generation contract
-- init-time central Django DB setup without workspace-local DB creation
+- attach/init-time central Django DB setup without workspace-local DB creation
+- immutable workspace identity and active profile metadata
 - nine fixed subagents and twenty-one repo skills
 - default user-facing skill listing separated from full internal skill inventory
 - starter prompt routing for negated execution requests
@@ -24,7 +25,8 @@ The Python migration smoke suite covers:
 - MCP registry metadata, role-gated tool calls, JSON-RPC batch handling, and DB tool-call ledger
 - service-layer Admin helpers for MCP registry changes creating audit events
 - generated `mcp ledger` inspection of central DB tool-call history
-- two generated workspaces sharing central research memory, paper portfolio state, and MCP ledger
+- two generated workspaces sharing central research memory and MCP ledger while preserving different workspace ids
+- profile selection controlling paper portfolio separation
 - Django Ninja health, harness, subagent, and policy endpoints
 - DB-backed research artifact create/get/search/export through MCP, Ninja, and generated workspace CLI
 - Django project checks
@@ -35,6 +37,8 @@ For template/bootstrap changes, also create a throwaway workspace and run:
 rm -rf /tmp/tradingcodex-smoke
 mkdir -p /tmp/tradingcodex-smoke
 cd /tmp/tradingcodex-smoke
-tcx init .
+tcx attach .
+tcx workspace status
+tcx profile status
 ./tcx doctor
 ```
