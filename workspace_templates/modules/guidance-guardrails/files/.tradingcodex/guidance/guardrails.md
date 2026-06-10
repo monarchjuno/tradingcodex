@@ -13,3 +13,5 @@ Examples:
 - doctor checks
 
 Execution-sensitive actions still require enforcement through TradingCodex MCP.
+Guidance guardrails sit under the top-level TradingCodex harness alongside
+enforcement guardrails, information barriers, and Improvement loops.

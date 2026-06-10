@@ -1166,6 +1166,42 @@ pre {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.tc-harness-system-grid {
+  display: grid;
+  gap: var(--tc-space-3);
+}
+
+.tc-harness-system {
+  background: color-mix(in srgb, var(--tc-bg-elevated) 64%, var(--tc-bg-panel));
+  border: 1px solid var(--tc-border);
+  border-left: 3px solid var(--tc-blue);
+  border-radius: var(--tc-radius);
+  display: grid;
+  gap: var(--tc-space-3);
+  padding: var(--tc-space-4);
+}
+
+.tc-harness-system--improvement {
+  border-left-color: var(--tc-green);
+}
+
+.tc-harness-system > div:first-child {
+  display: grid;
+  gap: var(--tc-space-1);
+}
+
+.tc-harness-system > div:first-child strong {
+  color: var(--tc-ink);
+  font-size: var(--tc-font-md);
+  font-weight: 850;
+}
+
+.tc-harness-system > div:first-child span {
+  color: var(--tc-muted);
+  font-size: var(--tc-font-sm);
+  line-height: 1.45;
+}
+
 .tc-harness-list > div {
   background: var(--tc-bg-card);
   border: 1px solid var(--tc-border);
@@ -1517,6 +1553,7 @@ pre {
   }
 
   .tc-harness-list,
+  .tc-harness-system-grid,
   .tc-metric-grid,
   .tc-check-grid,
   .tc-record-list--grid,

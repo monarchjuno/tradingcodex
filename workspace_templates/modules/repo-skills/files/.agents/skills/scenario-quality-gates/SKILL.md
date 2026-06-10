@@ -7,6 +7,13 @@ description: "Select the right workflow scenario, role team, artifact path plan,
 
 Use this skill before assigning subagents and again before final synthesis.
 
+Boundary:
+
+- This skill owns scenario classification, minimum useful role team, artifact expectations, blocked actions, and artifact/synthesis quality gates.
+- It does not own fixed-role spawn mechanics, runtime state reuse, or message templates; use `manage-subagents` for those.
+- It does not own universe support mapping or source/as-of posture; use `investment-workflow-map` first when the request is an investment workflow.
+- It does not authorize order drafting, approval, or execution. Readiness labels are quality states, not permissions.
+
 Purpose:
 
 - Match the user request to a scenario archetype.

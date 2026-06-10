@@ -7,6 +7,14 @@ description: "Map investment requests across asset universes into TradingCodex w
 
 Use this skill by `head-manager` before `scenario-quality-gates` or inside `orchestrate-workflow` when the request is an investment workflow. This skill improves routing and artifact quality; it does not replace fixed role subagents or let `head-manager` perform analyst work directly.
 
+Boundary:
+
+- This skill owns universe classification, workflow-type mapping, source/as-of posture, support gaps, hero/support artifact choice, and conservative readiness labels.
+- `scenario-quality-gates` owns final scenario selection, role team, quality gates, and blocked actions.
+- `manage-subagents` owns fixed-role dispatch details and role briefs.
+- `synthesize-decision` owns final user-facing decision states.
+- Readiness labels from this map are not approvals, permissions, or execution authorization.
+
 Reference basis: this map incorporates institutional public-equity workflow patterns such as issuer tearsheets, idea triage, pre-earnings previews, post-earnings deep dives, catalyst calendars, thesis trackers, long/short pitches, valuation/model work, model audit, financial normalization, position sizing, hedge design, and report QC. Treat public equity as the first fully specified sleeve, not the only TradingCodex investment universe.
 
 ## Universe Boundary

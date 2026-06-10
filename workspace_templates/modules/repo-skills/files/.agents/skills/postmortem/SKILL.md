@@ -24,7 +24,7 @@ Quality floor:
 - State whether the failure was user-input, analysis, policy, approval, execution, or harness related.
 - State whether the failure was universe-support, source-readiness, hero/support artifact, or readiness-label related.
 - Do not fabricate audit events, artifacts, command output, approvals, executions, or timestamps.
-- End with one or more concrete harness, policy, or skill improvements.
+- End with one or more concrete harness, guardrail, policy, skill, artifact, or validation improvements.
 
 Write outputs under `trading/reports/postmortem/` using the `*.postmortem_report.json` artifact shape.
 

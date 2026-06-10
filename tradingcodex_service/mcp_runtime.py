@@ -266,14 +266,14 @@ _REGISTRY_SYNCED_DB = ""
 
 def prepare_mcp_runtime(workspace_root: Path | str | None = None) -> None:
     global _REGISTRY_SYNCED, _REGISTRY_SYNCED_DB
-    from tradingcodex_service.domain import tradingcodex_db_path
+    from tradingcodex_service.application.runtime import tradingcodex_db_path
 
     current_db = str(tradingcodex_db_path())
     if _REGISTRY_SYNCED and (not current_db or _REGISTRY_SYNCED_DB == current_db):
         return
     try:
         if workspace_root is not None:
-            from tradingcodex_service.domain import ensure_runtime_database, workspace_file_lock
+            from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_file_lock
 
             ensure_runtime_database(workspace_root)
             with workspace_file_lock(workspace_root, "mcp-registry"):
@@ -341,8 +341,6 @@ def role_for_principal(principal_id: str) -> str:
 
 
 def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | None = None) -> dict[str, Any]:
-    from tradingcodex_service import domain
-
     prepare_mcp_runtime(workspace_root)
     args = dict(args or {})
     tool = TOOL_REGISTRY.get(name)
@@ -365,11 +363,13 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
     started = time.monotonic()
     request_payload = {"tool_name": name, "arguments": args, "principal_id": principal_id}
     try:
-        result = raw_call_tool(domain, workspace_root, tool, args, principal_id)
+        result = raw_call_tool(workspace_root, tool, args, principal_id)
         if isinstance(result, dict):
+            from tradingcodex_service.application.runtime import persist_workspace_context_if_available
+
             result = dict(result)
             result.setdefault("db_canonical", True)
-            result.setdefault("workspace_context", domain.persist_workspace_context_if_available(workspace_root))
+            result.setdefault("workspace_context", persist_workspace_context_if_available(workspace_root))
         record_tool_call(workspace_root, name, principal_id, "ok", request_payload, result, started)
         return result
     except Exception as exc:
@@ -378,42 +378,44 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
         raise
 
 
-def raw_call_tool(domain: Any, workspace_root: Path | str, tool: McpToolSpec, args: dict[str, Any], principal_id: str) -> dict[str, Any]:
+def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str, Any], principal_id: str) -> dict[str, Any]:
+    from tradingcodex_service.application import audit, orders, policy, portfolio, research
+
     name = tool.name
     if name == "simulate_policy":
-        return domain.simulate_policy(workspace_root, args)
+        return policy.simulate_policy(workspace_root, args)
     if name == "validate_order_intent":
-        return domain.validate_order_intent(workspace_root, args)
+        return orders.validate_order_intent(workspace_root, args)
     if name == "validate_approval_receipt":
-        return domain.validate_approval_receipt(workspace_root, args)
+        return orders.validate_approval_receipt(workspace_root, args)
     if name == "create_approval_receipt":
-        order = domain.resolve_order_intent(Path(workspace_root), args)
-        return domain.create_approval_receipt(workspace_root, order, args.get("approved_by") or principal_id, int(args.get("expires_hours") or 24))
+        order = orders.resolve_order_intent(Path(workspace_root), args)
+        return orders.create_approval_receipt(workspace_root, order, args.get("approved_by") or principal_id, int(args.get("expires_hours") or 24))
     if name == "submit_approved_order":
-        return domain.submit_approved_order(workspace_root, {**args, "principal_id": principal_id})
+        return orders.submit_approved_order(workspace_root, {**args, "principal_id": principal_id})
     if name in {"get_positions", "get_portfolio_snapshot"}:
-        return domain.list_positions(workspace_root)
+        return portfolio.list_positions(workspace_root)
     if name == "list_workflow_artifacts":
-        return domain.list_workflow_artifacts(workspace_root)
+        return research.list_workflow_artifacts(workspace_root)
     if name == "create_research_artifact":
-        return domain.create_research_artifact(workspace_root, {**args, "principal_id": principal_id})
+        return research.create_research_artifact(workspace_root, {**args, "principal_id": principal_id})
     if name == "append_research_artifact_version":
-        return domain.append_research_artifact_version(workspace_root, {**args, "principal_id": principal_id})
+        return research.append_research_artifact_version(workspace_root, {**args, "principal_id": principal_id})
     if name == "get_research_artifact":
-        return domain.get_research_artifact(workspace_root, args)
+        return research.get_research_artifact(workspace_root, args)
     if name == "list_research_artifacts":
-        return domain.list_research_artifacts(workspace_root, args)
+        return research.list_research_artifacts(workspace_root, args)
     if name == "search_research_artifacts":
-        return domain.search_research_artifacts(workspace_root, args)
+        return research.search_research_artifacts(workspace_root, args)
     if name == "export_research_artifact_md":
-        return domain.export_research_artifact_md(workspace_root, args)
+        return research.export_research_artifact_md(workspace_root, args)
     if name == "record_source_snapshot":
-        return domain.record_source_snapshot(workspace_root, {**args, "principal_id": principal_id})
+        return research.record_source_snapshot(workspace_root, {**args, "principal_id": principal_id})
     if name == "record_audit_event":
-        return domain.write_audit_event(workspace_root, args.get("event") or args, principal_id, "mcp")
+        return audit.write_audit_event(workspace_root, args.get("event") or args, principal_id, "mcp")
     if name == "cancel_approved_order":
         result = {"status": "not_supported", "order_id": args.get("order_id"), "reason": "cancel is a placeholder in the initial harness"}
-        domain.write_audit_event(workspace_root, {"type": "cancel_approved_order", "payload": result}, principal_id, "mcp")
+        audit.write_audit_event(workspace_root, {"type": "cancel_approved_order", "payload": result}, principal_id, "mcp")
         return result
     if name == "get_order_status":
         return {"order_id": args.get("order_id"), "status": "local-only", "note": "Initial harness has no live broker order status."}
@@ -448,7 +450,8 @@ def record_tool_call(
 ) -> None:
     try:
         from apps.mcp.models import McpToolCall
-        from tradingcodex_service.domain import stable_hash, workspace_context_payload
+        from tradingcodex_service.application.common import stable_hash
+        from tradingcodex_service.application.runtime import workspace_context_payload
 
         McpToolCall.objects.create(
             tool_name=name,
@@ -467,7 +470,7 @@ def record_tool_call(
 
 
 def handle_mcp_rpc(workspace_root: Path | str, message: dict[str, Any]) -> dict[str, Any] | None:
-    from tradingcodex_service.domain import TRADINGCODEX_VERSION
+    from tradingcodex_service.version import TRADINGCODEX_VERSION
 
     prepare_mcp_runtime(workspace_root)
     method = message.get("method")

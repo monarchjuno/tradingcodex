@@ -9,7 +9,7 @@
     <span class="tc-eyebrow">Visual control surface</span>
     <h1>Harness-first dashboard for Codex-native investing workflows.</h1>
     <p>
-      Review the role topology, central DB state, research memory, policy gates, and MCP activity without entering model tables first.
+      Review the top-level harness, its Guardrails, Improvement loops, central DB state, role topology, policy gates, and MCP activity without entering model tables first.
     </p>
   </div>
   <div class="tc-hero-actions">
@@ -65,16 +65,23 @@
 <section class="tc-section-grid">
   <article class="tc-panel">
     <div class="tc-panel-head">
-      <span class="tc-eyebrow">Harnesses</span>
-      <h2>Installed boundaries</h2>
+      <span class="tc-eyebrow">Harness systems</span>
+      <h2>Guardrails and Improvement</h2>
     </div>
-    <div class="tc-harness-list">
-      <div><strong>Skills</strong><span>Role-owned repo skills and head-manager entrypoints.</span></div>
-      <div><strong>Hooks</strong><span>Prompt classification, duplicate markers, and guidance checks.</span></div>
-      <div><strong>Policy</strong><span>Restricted list, explicit deny actions, and validation checks.</span></div>
-      <div><strong>Information barriers</strong><span>Role-local context and secret walls.</span></div>
-      <div><strong>MCP tools</strong><span>Filtered service-layer tool registry with call ledger.</span></div>
-      <div><strong>Research memory</strong><span>Markdown body and versions stored in the central DB.</span></div>
+    <div class="tc-harness-system-grid">
+      {% for system in topology.systems %}
+      <section class="tc-harness-system tc-harness-system--{{ system.key }}">
+        <div>
+          <strong>{{ system.label }}</strong>
+          <span>{{ system.summary }}</span>
+        </div>
+        <div class="tc-harness-list">
+          {% for item in system.items %}
+          <div><strong>{{ item.label }}</strong><span>{{ item.summary }}</span></div>
+          {% endfor %}
+        </div>
+      </section>
+      {% endfor %}
     </div>
   </article>
 

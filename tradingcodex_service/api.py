@@ -8,29 +8,31 @@ from django.contrib.admin.views.decorators import staff_member_required
 from ninja import NinjaAPI, Router, Schema
 
 from tradingcodex_service import __version__
-from tradingcodex_service.domain import (
+from tradingcodex_service.application.harness import (
     EXPECTED_SUBAGENTS,
     EXPECTED_SKILLS,
     ROLE_SKILL_MAP,
     USER_VISIBLE_SKILLS,
     build_subagent_starter_prompt,
-    call_tool,
-    create_approval_receipt,
+)
+from tradingcodex_service.application.orders import create_approval_receipt, validate_order_intent
+from tradingcodex_service.application.policy import simulate_policy as simulate_policy_service
+from tradingcodex_service.application.portfolio import list_positions
+from tradingcodex_service.application.research import (
     create_research_artifact,
     export_research_artifact_md,
     get_research_artifact,
-    ensure_runtime_database,
-    list_positions,
     list_research_artifacts,
     list_workflow_artifacts,
-    persist_workspace_context_if_available,
     record_source_snapshot,
     search_research_artifacts,
-    simulate_policy as simulate_policy_service,
-    tradingcodex_db_path,
-    validate_order_intent,
 )
-from tradingcodex_service.mcp_runtime import list_mcp_tools, prepare_mcp_runtime
+from tradingcodex_service.application.runtime import (
+    ensure_runtime_database,
+    persist_workspace_context_if_available,
+    tradingcodex_db_path,
+)
+from tradingcodex_service.mcp_runtime import call_mcp_tool as call_tool, list_mcp_tools, prepare_mcp_runtime
 
 
 def local_or_staff(request):

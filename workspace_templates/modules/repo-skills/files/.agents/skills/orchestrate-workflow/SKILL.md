@@ -7,6 +7,17 @@ description: "Coordinate workspace investment workflows from intake through rese
 
 Use this skill when `head-manager` receives a multi-step investment request, needs to coordinate subagents, or must move work across research, thesis, portfolio, risk, order intent, approval, execution, and postmortem stages.
 
+Boundary:
+
+- This skill owns workflow sequencing, lane escalation, stage gates, and when to move from intake to dispatch, synthesis, order draft, approval, execution, or postmortem.
+- Base `head-manager` instructions own non-negotiable safety boundaries and fail-closed behavior.
+- `investment-workflow-map` owns universe/workflow/source posture and conservative readiness labels.
+- `scenario-quality-gates` owns scenario selection, role-team selection, artifact expectations, and quality gates.
+- `external-data-source-gate` owns external evidence-source constraints.
+- `manage-subagents` owns runtime state/reuse checks, exact fixed-role dispatch mechanics, compact role briefs, and artifact review.
+- `synthesize-decision` owns the final user-facing decision state after artifacts exist.
+- Do not duplicate those detailed templates here; call the owning skill at the relevant step.
+
 Purpose:
 
 - Classify the user request into a workflow lane before assigning work.
@@ -18,16 +29,7 @@ Purpose:
 - At the start of a main-agent session, `.tradingcodex/mainagent/session-start.json` prepares the roster plan. Use it only after the user explicitly requests subagents or parallel/delegated agent work.
 - Treat explicit `$orchestrate-workflow` invocation as workspace workflow consent. The workflow skill is the primary orchestrator; hooks only nudge the main agent into this skill and prevent direct analysis.
 - Choose only the role perspectives needed for the lane.
-- Plan subagent capacity with `./tcx subagents plan <agents...>` when more than one subagent may be requested.
-- Check existing runtime state with `./tcx subagents state` before creating subagents, and reuse active or completed role work when it matches the same workflow run.
-- Spawn each subagent by its exact role name from `.codex/agents/*.toml`; if the runtime UI exposes a label field, keep that label equal to the role name.
-- Use only fields exposed by the active Codex `spawn_agent` schema. Current preferred shape is `spawn_agent(agent_type="<role>", message="ROLE CARD: ... TASK: ... DELIVERABLE: ... SCOPE: ... VERIFY: ...", fork_context=false)` when the schema lists or accepts the fixed role as `agent_type`.
-- If the active `spawn_agent` schema cannot select the exact fixed role, treat TOML-backed routing as `routing-unverified`; do not spawn a default, explorer, or worker agent with a pasted role card as a substitute for TradingCodex role isolation.
-- Do not pass model, reasoning, or service-tier overrides for fixed roles; the `.codex/agents/*.toml` role file supplies those defaults after the role is selected.
-- Give subagents explicit, non-prescriptive briefs and expected artifact paths.
-- Preserve the original user request and explicit user constraints in every non-startup subagent brief.
-- Keep main-agent assumptions, suggested metrics, or optional frameworks separate from user-explicit requirements.
-- Require material narrative claims to be tagged as `[factual]`, `[inference]`, or `[assumption]`; do not paste the full anti-hallucination checklist into every brief because role skills and `scenario-quality-gates` own the detailed quality floor.
+- Use `manage-subagents` for capacity planning, runtime state checks, reuse, exact fixed-role dispatch mechanics, non-prescriptive briefs, and artifact review.
 - Collect, review, reconcile, and synthesize artifacts before moving to the next stage.
 - Use `synthesize-decision` before giving a user-facing decision state.
 - Keep execution-sensitive steps behind structured artifacts, validation, approval, and the workspace MCP execution boundary.
@@ -62,48 +64,16 @@ Operating loop:
 7. Lane: choose one workflow lane and state what is intentionally out of scope.
 8. Dispatch gate: if the request needs investment research, analysis, valuation, portfolio, risk, strategy, policy, or execution judgment, assign subagents before making a substantive claim.
 9. Explicit subagent request check: if the user did not ask for subagents or parallel/delegated agent work, ask for confirmation or provide a starter prompt; do not analyze directly.
-10. Runtime state: run or consult `./tcx subagents state`. If the same run/role is active, wait or send a follow-up instead of creating a duplicate. If a matching artifact already exists and passes quality checks, reuse it.
-11. Skill view: run or consult `./tcx subagents skills <role>` before briefing each selected role. The default skill roster is a baseline; applied proposals and user-maintained role skills may change the best skill for the task.
-12. Plan: when explicit subagent use is present, select subagents and run `./tcx subagents plan <agents...>` for workflow-specific parallel requests.
-13. Spawn: use the exact role name from `.codex/agents/*.toml`; do not add unsupported alias fields to Codex TOML. Use `spawn_agent(agent_type="<role>", message="ROLE CARD: ... TASK: ... DELIVERABLE: ... SCOPE: ... VERIFY: ...", fork_context=false)` only when the active schema can select that role. If the active schema cannot select the fixed role, stop with `waiting_for_subagent_dispatch`.
-14. Brief: use `manage-subagents` to give each subagent the user instruction contract, objective, inputs, output path, user-explicit/policy-required checks only, forbidden actions, method autonomy, external data source constraints when relevant, and handoff recipient. Do not put internal workflow run ids in the subagent-visible message.
-15. Collect: verify expected artifacts exist and pass role-specific quality checks.
-16. Reconcile: compare outputs, separate facts from judgments, and preserve disagreements.
-17. Gate: before order or execution work, require the right artifacts, validation, policy review, approval, and audit trail.
-18. Synthesize: use `synthesize-decision` to produce the decision state, open questions, and next allowed action.
-19. Respond: summarize decision state, evidence used, open questions, and next allowed action.
+10. Subagent communication: use `manage-subagents` for runtime state, skill view, capacity plan, exact fixed-role dispatch, compact briefs, artifact review, reuse, and routing-unverified handling.
+11. Collect: verify expected artifacts exist and pass role-specific quality checks.
+12. Reconcile: compare outputs, separate facts from judgments, and preserve disagreements.
+13. Gate: before order or execution work, require the right artifacts, validation, policy review, approval, and audit trail.
+14. Synthesize: use `synthesize-decision` to produce the decision state, open questions, and next allowed action.
+15. Respond: summarize decision state, evidence used, open questions, and next allowed action.
 
-Briefing rules:
+Briefing and spawn details:
 
-- Required checks are only checks stated by the user or required by policy/gates.
-- Do not turn broad requests into mandatory metric checklists.
-- Do not require EV/EBITDA, DCF, RSI, peer comps, moving averages, or other frameworks unless the user requested them, policy requires them, or the subagent role skill itself requires them.
-- Let each subagent choose methods from its developer instructions and assigned role skills.
-- Do not treat the built-in analysis skill names as exhaustive. For analysis and review roles, user-added or user-updated skills may be more relevant than the default skill for the specific request.
-- Keep mandatory skill references only for workflow-critical or safety-critical actions such as external data gating, order-intent creation, approval receipt creation, and execution through the workspace MCP boundary.
-- If adding optional examples, label them as non-binding and say the subagent may ignore them.
-- If external data is allowed, specify source class, allowed purpose, allowed tools/categories, forbidden actions, and required evidence fields.
-
-Spawn contract:
-
-```text
-spawn_agent(
-  agent_type="<fixed-role-name>",
-  fork_context=false,
-  message="ROLE CARD: <affiliation, coordinator, assigned role, own artifacts, handoff>\nTASK: <imperative role assignment>\nDELIVERABLE: <artifact path and summary expectation>\nSCOPE: <original request, explicit constraints, allowed sources, forbidden actions>\nVERIFY: <quality checks, claim tags, and handoff criteria>"
-)
-```
-
-Rules:
-
-- Every subagent message must be self-contained because `fork_context=false` does not carry the full parent context.
-- Start every message with `ROLE CARD:` and include `TASK:`, `DELIVERABLE:`, `SCOPE:`, and `VERIFY:`.
-- Keep internal workflow run ids in hook/session-state metadata. Do not put run-id tokens in the subagent-visible `message`.
-- Keep any runtime-visible label human-readable, for example `news-analyst SK hynix research_only`, when the active schema exposes such a field; hooks can still connect starts/stops through `.tradingcodex/mainagent/latest-user-prompt-gate.json`.
-- Treat schemas that only expose generic agent types as `routing-unverified` for TradingCodex; fixed-role MCP/tool isolation is required before investment role work can proceed.
-- Keep role briefs compact: include the claim-tag requirement, but reference role skills and `scenario-quality-gates` for the detailed risk/uncertainty checklist.
-- Do not create duplicate subagents for the same run/role when `./tcx subagents state` shows an active role.
-- If the role is completed and the expected artifact passes quality checks, reuse the artifact; if it failed or closed without usable output, recreate only when the user explicitly invoked the workflow or subagent work.
+Use `manage-subagents` for the exact brief template, dispatch schema, reuse policy, and anti-overprescription rules. This orchestration skill should state the lane, selected team, required artifacts, and stage gates; it should not maintain a second copy of subagent message templates.
 
 Default artifact flow:
 

@@ -143,6 +143,9 @@ role workflow, and policy boundary exist.
 - [Docs index](docs/README.md)
 - [TradingCodex PRD](docs/tradingcodex-prd.md)
 - [Core concepts and rules](docs/core-concepts-and-rules.md)
+- [Harness model](docs/harness.md)
+- [Guardrails](docs/guardrails.md)
+- [Improvement loop](docs/improvement-loop.md)
 - [Deployment](docs/deployment.md)
 - [Licensing and commercialization](docs/licensing-and-commercialization.md)
 

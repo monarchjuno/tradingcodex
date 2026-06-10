@@ -7,7 +7,7 @@ from pathlib import Path
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 
-from tradingcodex_service.domain import tradingcodex_db_path
+from tradingcodex_service.application.runtime import tradingcodex_db_path
 from tradingcodex_service.mcp_runtime import handle_mcp_batch
 
 

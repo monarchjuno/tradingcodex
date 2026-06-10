@@ -5,6 +5,7 @@ This file is the durable working guide for the root source repository at `/Users
 ## Current Direction
 
 - TradingCodex is now a Python/Django-native local-first trading harness, not a Node package workspace.
+- Harness is the top-level product model. Guardrails and Improvement sit under it: guidance guardrails, enforcement guardrails, and information barriers reduce or block risk; Improvement covers workflow quality, research memory, skill proposals, postmortems, and validation feedback.
 - The service target follows the product docs: latest LTS-oriented Python/Django stack, currently Django 5.2.x and the current supported Python line defined in `pyproject.toml` and `docs/tradingcodex-prd.md`.
 - Django is the durable service plane. The product web app at `/` is the visual harness dashboard. Django Admin is the advanced harness operations console. Django Ninja is the typed local/staff control API. Django-hosted MCP is the agent/tool execution boundary.
 - Public equity remains the deepest first investing sleeve, but the product must not be limited to public equities. Preserve extensibility for ETF/index, public crypto, macro/rates/FX/commodities, options, credit-signal, and cross-asset workflows.
@@ -17,13 +18,16 @@ This file is the durable working guide for the root source repository at `/Users
 - Read [docs/README.md](./docs/README.md) before changing product rules, generated workspace behavior, guardrails, subagent roles, artifact contracts, module capabilities, MCP tools, or Admin operations.
 - Use [docs/tradingcodex-prd.md](./docs/tradingcodex-prd.md) as the source of truth for product definition, goals, non-goals, architecture, initial scope, and test expectations.
 - Use [docs/core-concepts-and-rules.md](./docs/core-concepts-and-rules.md) as the source of truth for role responsibilities, guardrails, information barriers, execution lifecycle, artifact paths, and MCP role boundaries.
+- Use [docs/harness.md](./docs/harness.md), [docs/guardrails.md](./docs/guardrails.md), and [docs/improvement-loop.md](./docs/improvement-loop.md) when changing the top-level harness taxonomy, safety taxonomy, or quality/improvement loops.
 - Update the relevant `docs/` files in the same change whenever product direction, rules, permissions, workflows, templates, policy behavior, or MCP/Admin behavior changes.
 - If implementation and docs disagree, resolve the mismatch in the same change. Do not let hidden product rules live only in code, tests, templates, or prompts.
 
 ## Source Layout
 
 - Keep Python CLI code under `tradingcodex_cli/`.
+- Keep CLI command implementations under `tradingcodex_cli/commands/`; keep `tradingcodex_cli/workspace.py` as the public compatibility facade for generated wrappers and imports.
 - Keep Django project code under `tradingcodex_service/`.
+- Keep shared Django service implementation under `tradingcodex_service/application/`; keep `tradingcodex_service/domain.py` as the public compatibility facade.
 - Keep modular Django apps under `apps/`.
 - Keep generated workspace templates under `workspace_templates/modules/*`.
 - Keep TradingCodex product documentation under `docs/`.
@@ -52,7 +56,7 @@ This file is the durable working guide for the root source repository at `/Users
 
 - The product web app at `/` is a user-facing read/review surface for the visual harness dashboard, role topology, research memory, paper portfolio state, orders, policy, activity, and starter prompt generation.
 - Product web routes must not spawn Codex subagents, generate investment analysis, create approvals, submit executions, or mutate execution-sensitive state.
-- The visual harness canvas should show `head-manager`, fixed subagents, role skill ownership, MCP tool exposure, policy gates, and the MCP execution boundary in English.
+- The visual harness canvas should show `head-manager`, fixed subagents, role skill ownership, MCP tool exposure, policy gates, the MCP execution boundary, and the Guardrails/Improvement split in English.
 - Django Admin is an operations console, not a bypass. Admin actions for risky changes must call service functions and create audit events.
 - Useful Admin surfaces include role roster, skill assignments, skill proposals, policy, restricted list, limits, adapter definitions, universe plugins, MCP tool registry, MCP call ledger, workflow runs, artifacts, approvals, executions, portfolio state, and audit logs.
 - Django Ninja is for local/staff status, validation, and control APIs. It must not bypass MCP or service-layer execution policy.
@@ -63,9 +67,9 @@ This file is the durable working guide for the root source repository at `/Users
 ## Subagents And Skills
 
 - Preserve the generated baseline of one `head-manager`, nine fixed subagents, and twenty-one repo skills unless the docs and tests are updated in the same change.
-- Keep role-owned skills as subagent harnesses. The root/head-manager may inspect and assign them, but should not silently perform role work that belongs to a specialist workflow.
+- Keep role-owned skills as specialist role skill bundles. The root/head-manager may inspect and assign them, but should not silently perform role work that belongs to a specialist workflow.
 - When changing role instructions, skill behavior, skill assignments, or workflow routing, update the relevant templates, docs, and tests together.
-- Public Equity Investing plugin skills can inform research quality, evidence handling, and role workflows, but TradingCodex must keep a broader multi-asset universe and its own guardrail model.
+- Public Equity Investing plugin skills can inform research quality, evidence handling, and role workflows, but TradingCodex must keep a broader multi-asset universe and its own harness, guardrail, and improvement model.
 
 ## Generated Workspace Contract
 

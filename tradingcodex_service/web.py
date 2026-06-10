@@ -8,18 +8,24 @@ from django.http import HttpRequest, HttpResponse, HttpResponseForbidden
 from django.shortcuts import render
 from django.views.decorators.http import require_GET
 
-from tradingcodex_service.domain import (
-    DEFAULT_ACCOUNT_ID,
-    DEFAULT_PORTFOLIO_ID,
-    DEFAULT_STRATEGY_ID,
+from tradingcodex_service.application.harness import (
     build_subagent_starter_prompt,
-    default_paper_portfolio_state,
     get_harness_health,
     get_harness_topology,
     get_role_detail,
     list_policy_overview,
     list_recent_activity,
+)
+from tradingcodex_service.application.portfolio import (
+    DEFAULT_ACCOUNT_ID,
+    DEFAULT_PORTFOLIO_ID,
+    DEFAULT_STRATEGY_ID,
+    default_paper_portfolio_state,
+)
+from tradingcodex_service.application.research import (
     list_research_artifacts,
+)
+from tradingcodex_service.application.runtime import (
     tradingcodex_db_path,
     workspace_context_payload,
 )

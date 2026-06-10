@@ -7,13 +7,35 @@
 <section class="tc-page-head">
   <div>
     <span class="tc-eyebrow">Full topology</span>
-    <h1>Main agent, subagents, skills, tools, and gates.</h1>
-    <p>tcx keeps Codex orchestration native while exposing the harness state through Django.</p>
+    <h1>Harness, Guardrails, Improvement, roles, tools, and gates.</h1>
+    <p>tcx keeps Codex orchestration native while exposing the top-level harness state through Django.</p>
   </div>
   <a class="tc-button" href="/workflow/starter-prompt/">Prepare Codex prompt</a>
 </section>
 
 {% include "web/fragments/topology_canvas.html" %}
+
+<section class="tc-panel">
+  <div class="tc-panel-head">
+    <span class="tc-eyebrow">Harness model</span>
+    <h2>Guardrails and Improvement sit under the harness</h2>
+  </div>
+  <div class="tc-harness-system-grid">
+    {% for system in topology.systems %}
+    <section class="tc-harness-system tc-harness-system--{{ system.key }}">
+      <div>
+        <strong>{{ system.label }}</strong>
+        <span>{{ system.summary }}</span>
+      </div>
+      <div class="tc-harness-list">
+        {% for item in system.items %}
+        <div><strong>{{ item.label }}</strong><span>{{ item.summary }}</span></div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+</section>
 
 <section class="tc-section-grid">
   <article class="tc-panel">

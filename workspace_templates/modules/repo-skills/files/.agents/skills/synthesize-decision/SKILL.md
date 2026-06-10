@@ -7,6 +7,13 @@ description: "Synthesize collected subagent artifacts into a user-facing decisio
 
 Use this skill when `head-manager` has collected the required subagent artifacts and needs to produce a user-facing decision state or next-step recommendation.
 
+Boundary:
+
+- This skill owns user-facing synthesis after required subagent artifacts or outputs exist.
+- It does not create new investment research, valuation, technical analysis, news analysis, portfolio sizing, risk approval, order intents, approvals, or execution.
+- If required artifacts are missing, return a waiting state and the exact next role/artifact needed.
+- Use `scenario-quality-gates` for the synthesis gate and readiness language.
+
 Before writing the synthesis, apply `scenario-quality-gates` for the scenario's synthesis gate.
 
 Inputs:

@@ -12,7 +12,14 @@ from pathlib import Path
 from django.contrib.auth import get_user_model
 from django.test import Client
 
-from tradingcodex_cli.generator import bootstrap_workspace, copy_template_tree
+from tradingcodex_cli.generator import (
+    DEFAULT_MODULE_IDS,
+    bootstrap_workspace,
+    copy_template_tree,
+    load_module_registry,
+    resolve_module_graph,
+    templates_dir,
+)
 from tradingcodex_service.domain import (
     build_subagent_starter_prompt,
     call_tool,
@@ -72,6 +79,36 @@ def test_template_copy_skips_python_bytecode_cache(tmp_path: Path) -> None:
     assert not list(target.rglob("*.pyc"))
 
 
+def test_workspace_template_module_contracts(tmp_path: Path) -> None:
+    registry = load_module_registry(templates_dir())
+    assert set(DEFAULT_MODULE_IDS).issubset(registry)
+    for module_id, module in registry.items():
+        assert module.id == module_id
+        assert module.dir.name == module_id
+        for dependency in module.manifest.get("requires", {}).get("modules", []):
+            assert dependency in registry
+
+    resolved = resolve_module_graph(registry, DEFAULT_MODULE_IDS)
+    assert [module.id for module in resolved]
+
+    workspace = make_workspace(tmp_path)
+    for rel in [
+        "AGENTS.md",
+        ".codex/config.toml",
+        ".codex/prompts/base_instructions/head-manager.md",
+        ".codex/hooks/tradingcodex_hook.py",
+        ".agents/skills/orchestrate-workflow/SKILL.md",
+        ".tradingcodex/config.yaml",
+        "trading/research/.gitkeep",
+        "tcx",
+    ]:
+        assert (workspace / rel).exists(), rel
+    assert not (workspace / "package.json").exists()
+    assert not list(workspace.rglob("__pycache__"))
+    assert not list(workspace.rglob("*.pyc"))
+    assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
+
+
 def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     assert (workspace / "pyproject.toml").exists()
@@ -92,13 +129,16 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         assert forbidden.lower() not in generated_text.lower()
     assert "official regulator or exchange disclosure sources" in generated_text
     assert "./tradingcodex" not in generated_text
-    orchestration_guidance = (
-        (workspace / ".agents" / "skills" / "orchestrate-workflow" / "SKILL.md").read_text(encoding="utf-8")
-        + "\n"
-        + (workspace / ".agents" / "skills" / "manage-subagents" / "SKILL.md").read_text(encoding="utf-8")
-    )
+    orchestrate_guidance = (workspace / ".agents" / "skills" / "orchestrate-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    manage_guidance = (workspace / ".agents" / "skills" / "manage-subagents" / "SKILL.md").read_text(encoding="utf-8")
+    orchestration_guidance = orchestrate_guidance + "\n" + manage_guidance
     assert "fork_context=false" in orchestration_guidance
     assert "routing-unverified" in orchestration_guidance
+    assert "This skill owns workflow sequencing" in orchestration_guidance
+    assert "This skill owns fixed-role subagent mechanics" in orchestration_guidance
+    assert "Subagent briefs are assignment envelopes" in manage_guidance
+    assert "Workflow consent:" in manage_guidance
+    assert "ROLE CARD:" not in manage_guidance
     assert "fork_turns" not in orchestration_guidance
     assert "task_name" not in orchestration_guidance
     hook_text = (workspace / ".codex" / "hooks" / "tradingcodex_hook.py").read_text(encoding="utf-8")
@@ -113,10 +153,17 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert status["skills_installed"] == 21
     doctor = run(["./tcx", "doctor"], workspace).stdout
     assert "TradingCodex doctor passed" in doctor
+    assert "improvement" in doctor
     assert "TradingCodex MCP autostarts local service" in doctor
     assert "head-manager MCP execution submit excluded" in doctor
     assert "execution-operator MCP execution allowlist configured" in doctor
     assert "risk-manager MCP approval allowlist configured" in doctor
+    improvement_doctor = run(["./tcx", "doctor", "--layer", "improvement"], workspace).stdout
+    assert "TradingCodex doctor passed" in improvement_doctor
+    assert "skill installed: orchestrate-workflow" in improvement_doctor
+    legacy_doctor = run(["./tcx", "doctor", "--layer", "task-harness"], workspace).stdout
+    assert "TradingCodex doctor passed" in legacy_doctor
+    assert "improvement" in legacy_doctor
     hooks = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))["hooks"]
     expected_hook_events = {
         "SessionStart",
@@ -141,6 +188,27 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     stale_mcp_tool_names = {"evaluate_policy", "get_positions_snapshot", "write_audit_event"}
     root_config = tomllib.loads((workspace / ".codex" / "config.toml").read_text(encoding="utf-8"))
     assert root_config["default_permissions"] == "tradingcodex"
+    assert root_config["model_instructions_file"] == "prompts/base_instructions/head-manager.md"
+    assert "developer_instructions" not in root_config
+    head_manager_instructions = (workspace / ".codex" / "prompts" / "base_instructions" / "head-manager.md").read_text(encoding="utf-8")
+    assert "You are the `head-manager` agent" in head_manager_instructions
+    assert "Codex-based local trading harness" in head_manager_instructions
+    assert "asset-management workflow team" in head_manager_instructions
+    assert "not an autonomous trading bot" not in head_manager_instructions
+    assert "# How you work" in head_manager_instructions
+    assert "# TradingCodex guardrails" in head_manager_instructions
+    assert "# Tool guidelines" in head_manager_instructions
+    assert not re.search(r"[\uac00-\ud7a3]", head_manager_instructions)
+    assert "Use repo skills for repeatable workflow procedures" in head_manager_instructions
+    assert "This base instruction owns" not in head_manager_instructions
+    assert "## Operating style" in head_manager_instructions
+    assert "Head-manager skill routing" in head_manager_instructions
+    assert "apply_patch" in head_manager_instructions
+    assert "investment dispatch gate" in head_manager_instructions
+    workspace_agents = (workspace / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Codex agent working expectations" in workspace_agents
+    assert "Follow every applicable `AGENTS.md`" in workspace_agents
+    assert "Keep prompts lean" in workspace_agents
     assert root_config["permissions"]["tradingcodex"]["extends"] == ":workspace"
     assert root_config["permissions"]["tradingcodex"]["network"]["enabled"] is False
     expected_tcx_mcp_args = ["--refresh", "--python", "3.14", "--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
@@ -572,6 +640,10 @@ def test_product_web_dashboard_routes_render_english_canvas() -> None:
     assert dashboard.status_code == 200
     body = dashboard.content.decode()
     assert "Harness-first dashboard" in body
+    assert "Guardrails and Improvement" in body
+    assert "Guidance" in body
+    assert "Enforcement" in body
+    assert "Validation feedback" in body
     assert "head-manager" in body
     assert "fundamental-analyst" in body
     assert "execution-operator" in body
@@ -587,6 +659,7 @@ def test_product_web_dashboard_routes_render_english_canvas() -> None:
     assert harness.status_code == 200
     assert harness_body.count("tc-node") >= 10
     assert "Head Manager" in harness_body
+    assert "Guardrails and Improvement sit under the harness" in harness_body
     assert "Not bypassable from web" in harness_body
     assert not re.search(r"[\uac00-\ud7a3]", harness_body)
 

@@ -133,7 +133,7 @@ python3.14 -m venv /tmp/tcx-testpypi
 /tmp/tcx-testpypi/bin/pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  tradingcodex==0.1.0a7
+  tradingcodex==0.1.0a8
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
@@ -162,7 +162,7 @@ After the PyPI workflow completes:
 
 ```bash
 python3.14 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.1.0a7
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.1.0a8
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -183,7 +183,7 @@ cd /tmp/tcx-install-sh-smoke
 
 Use PEP 440 versions:
 
-- `0.1.0a1`, `0.1.0a2`, `0.1.0a3`, `0.1.0a4`, `0.1.0a5`, `0.1.0a6`, `0.1.0a7` for alpha releases
+- `0.1.0a1`, `0.1.0a2`, `0.1.0a3`, `0.1.0a4`, `0.1.0a5`, `0.1.0a6`, `0.1.0a7`, `0.1.0a8` for alpha releases
 - `0.1.0b1` for beta releases
 - `0.1.0rc1` for release candidates
 - `0.1.0` only after install, docs, DB migration, and generated workspace
