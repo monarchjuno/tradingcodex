@@ -9,7 +9,7 @@ ownership, service-layer use cases, runtime planes, and core model ownership.
 Multiple Codex projects / subagents / local CLI
   -> product web review dashboard, Django-hosted MCP endpoint, or stdio bridge
   -> Django service layer
-  -> central Django DB-backed policy, research, orders, portfolio, audit, harness, integrations
+  -> workspace-file agent/skill/research state plus central Django DB-backed policy, orders, portfolio, audit, harness, integrations
   -> paper/stub adapter boundary; future live adapters only after separate installation and policy approval
 ```
 
@@ -66,8 +66,8 @@ under `tradingcodex_cli/commands/`.
 | Plane | Responsibility | Durable state |
 | --- | --- | --- |
 | Codex control plane | Role prompts, hooks, skills, workflow guidance, generated project config | Generated workspace files and Codex session state |
-| Django service plane | Policy, orders, approvals, portfolio, research, audit, harness, MCP registry, Admin, REST, web dashboard | Central Django DB |
-| Workspace system plane | Readable exports, schemas, local wrapper, MCP config, artifact directories | Export/cache files and provenance |
+| Django service plane | Policy, orders, approvals, portfolio, audit, harness, MCP registry, Admin, REST, web dashboard, and file-native research indexing | Central Django DB for non-research runtime ledgers |
+| Workspace system plane | Agent TOML, skill files, research markdown, schemas, local wrapper, MCP config, artifact directories | Codex-native workspace files and provenance |
 
 The control plane can request actions. The service plane decides and records
 durable outcomes. The workspace system plane makes those outcomes readable and
@@ -86,15 +86,18 @@ Overrides:
 - `TRADINGCODEX_HOME`
 - `TRADINGCODEX_DB_NAME`
 
-`TRADINGCODEX_WORKSPACE_ROOT` is provenance only. It must not partition
-canonical investment state. `.tradingcodex/workspace.json` stores the immutable
-workspace id; `path_hash` remains path provenance and may change if a workspace
-moves.
+`TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workbench for file-native
+agent, skill, and research state. It must not partition canonical
+execution-sensitive investment state. `.tradingcodex/workspace.json` stores the
+immutable workspace id; `path_hash` remains path provenance and may change if a
+workspace moves.
 
-Two generated workspaces share research memory, MCP ledger, approvals,
-executions, and audit records through the same central DB unless the operator
-intentionally changes the DB path. Paper portfolio state is scoped by active
-profile (`portfolio_id`, `account_id`, `strategy_id`), not by workspace path.
+Two generated workspaces have separate research handoff markdown and source
+snapshot JSON because those files belong to the workspace. They share
+non-research MCP ledger rows, approvals, executions, policy, and audit records
+through the same central DB unless the operator intentionally changes the DB
+path. Paper portfolio state is scoped by active profile (`portfolio_id`,
+`account_id`, `strategy_id`), not by workspace path.
 
 ## Django App Boundaries
 
@@ -105,9 +108,9 @@ profile (`portfolio_id`, `account_id`, `strategy_id`), not by workspace path.
 | `policy` | Principals, capabilities, restricted list, limits, policy decisions. |
 | `orders` | Order intents, approval receipts, execution results, lifecycle validation. |
 | `portfolio` | Cash, positions, exposure snapshots, paper portfolio state. |
-| `research` | DB-backed markdown research artifacts, artifact versions, evidence packs, report metadata, source/as-of records. |
+| `research` | Workspace markdown research artifacts, artifact versions, evidence packs, report metadata, and file-native source/as-of snapshots. No Django DB models or Admin DB surface. |
 | `audit` | Append-only audit events, request hashes, result hashes, policy/action provenance. |
-| `mcp` | Protocol adapter metadata, tool registry, tool call ledger. |
+| `mcp` | Protocol adapter metadata, tool registry, and non-research tool call ledger. |
 | `integrations` | Paper/stub adapters, read-only data adapters, future broker adapter definitions. |
 | `universes` | Public equity, ETF/index, crypto, macro/rates/FX/commodities, options, credit-signal workflow plugins. |
 
@@ -117,7 +120,7 @@ Interfaces must call shared service functions rather than duplicating durable
 logic. This applies to:
 
 - product web routes
-- Django Admin actions
+- Django Admin default model registry
 - Django Ninja endpoints
 - MCP tool handlers
 - CLI commands
@@ -175,9 +178,6 @@ Read-only/status use cases:
 | `Capability` | Explicit allow/deny inputs for actions. |
 | `PolicyDecision` | Deterministic policy outcomes and reasons. |
 | `RestrictedSymbol` | Restricted security/instrument entries. |
-| `ResearchArtifact` | Canonical research object and current metadata. |
-| `ResearchArtifactVersion` | Versioned markdown/content hash/source posture. |
-| `SourceSnapshot` | Retrieved source metadata, as-of posture, and provenance. |
 | `WorkspaceContext` | Calling workspace provenance. |
 | `WorkflowRun` | Workflow lane, status, role participation, and lifecycle. |
 | `ArtifactRef` | Handoff references, role owner, hero/support marker, and acceptance state between workflow runs and artifacts. |
@@ -188,7 +188,7 @@ Read-only/status use cases:
 | `Position` | Instrument position state. |
 | `CashBalance` | Cash state by currency/account context. |
 | `McpToolDefinition` | Admin-visible synced MCP registry entry. |
-| `McpToolCall` | DB-visible MCP call ledger. |
+| `McpToolCall` | DB-visible MCP call ledger for non-research tools. |
 | `AuditEvent` | Append-only audit record. |
 | `UniversePlugin` | Installed universe capability and routing metadata. |
 | `AdapterDefinition` | Adapter availability, risk posture, and enabled state. |

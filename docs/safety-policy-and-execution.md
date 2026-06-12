@@ -67,7 +67,7 @@ TradingCodex must block:
 - repeated adapter submission for an already executed approved order
 - duplicate order intent ids with different payloads
 - global MCP exposure for approval, execution, cancellation, policy mutation, secret, or broker tools
-- Admin actions that try to bypass service-layer policy
+- Any default Admin edit that would bypass service-layer policy for execution-sensitive state
 - execution when the principal is inactive or capability is denied
 - raw secrets in API, MCP, audit response, generated prompt, generated docs, or shell output
 - unsupported live execution for crypto, macro, options, credit, FX, rates, commodities, or other instruments
