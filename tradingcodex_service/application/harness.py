@@ -14,6 +14,7 @@ from tradingcodex_service.application.agents import (
 )
 from tradingcodex_service.application.components import count_harness_component_tags, list_harness_components
 from tradingcodex_service.application.policy import EXPLICIT_DENY_ACTIONS
+from tradingcodex_service.application.research import list_workspace_research_artifacts
 from tradingcodex_service.application.runtime import ensure_runtime_database, tradingcodex_db_path, workspace_context_payload
 from tradingcodex_service.mcp_runtime import static_mcp_tools as _static_mcp_tools
 
@@ -459,7 +460,7 @@ def get_harness_systems() -> list[dict[str, Any]]:
             "summary": "Raise workflow quality and feed lessons back into the harness.",
             "items": [
                 {"label": "Workflow quality", "summary": "Workflow maps, no-overlap handoffs, role briefs, quality gates, and readiness labels."},
-                {"label": "Research memory", "summary": "DB-backed artifacts, versions, source snapshots, and freshness warnings."},
+                {"label": "Research memory", "summary": "Workspace markdown artifacts, versions, source snapshots, and freshness warnings."},
                 {"label": "Skill evolution", "summary": "File proposal, validation, projection, and manifest state."},
                 {"label": "Postmortems", "summary": "Rejected orders, thesis changes, and process failures become concrete improvements."},
                 {"label": "Validation feedback", "summary": "Recurring issues become tests, smoke checks, and routing scenarios."},
@@ -509,7 +510,7 @@ def get_harness_health(workspace_root: Path | str | None = None) -> dict[str, An
         "policy_blocks": _model_count("apps.policy.models", "PolicyDecision", decision="deny"),
         "restricted_symbols": _model_count("apps.policy.models", "RestrictedSymbol", active=True),
         "workspace_contexts": _model_count("apps.harness.models", "WorkspaceContext"),
-        "research_artifacts": _model_count("apps.research.models", "ResearchArtifact"),
+        "research_artifacts": _workspace_research_count(workspace_root),
         "order_intents": _model_count("apps.orders.models", "OrderIntent"),
         "approval_receipts": _model_count("apps.orders.models", "ApprovalReceipt"),
         "execution_results": _model_count("apps.orders.models", "ExecutionResult"),
@@ -650,26 +651,32 @@ def _allowed_tools_for_role(role: str, tools: list[dict[str, Any]]) -> list[dict
 
 def _latest_role_artifacts(role: str, workspace_root: Path | str | None) -> list[dict[str, Any]]:
     try:
-        ensure_runtime_database(workspace_root)
-        from apps.research.models import ResearchArtifact
-
         role_alias = role.replace("-analyst", "").replace("-manager", "").replace("-operator", "")
-        queryset = ResearchArtifact.objects.filter(created_by=role).order_by("-updated_at", "-id")
-        if not queryset.exists():
-            queryset = ResearchArtifact.objects.filter(metadata__role=role_alias).order_by("-updated_at", "-id")
+        artifacts = [
+            artifact
+            for artifact in list_workspace_research_artifacts(Path(workspace_root or Path.cwd()))
+            if artifact.get("created_by") == role or artifact.get("role") in {role, role_alias}
+        ]
         return [
             {
-                "artifact_id": artifact.artifact_id,
-                "title": artifact.title,
-                "artifact_type": artifact.artifact_type,
-                "universe": artifact.universe,
-                "readiness_label": artifact.readiness_label or "unlabeled",
-                "updated_at": artifact.updated_at,
+                "artifact_id": artifact["artifact_id"],
+                "title": artifact["title"],
+                "artifact_type": artifact["artifact_type"],
+                "universe": artifact["universe"],
+                "readiness_label": artifact.get("readiness_label") or "unlabeled",
+                "updated_at": artifact["updated_at"],
             }
-            for artifact in queryset[:5]
+            for artifact in artifacts[:5]
         ]
     except Exception:
         return []
+
+
+def _workspace_research_count(workspace_root: Path | str | None) -> int:
+    try:
+        return len(list_workspace_research_artifacts(Path(workspace_root or Path.cwd())))
+    except Exception:
+        return 0
 
 
 def _latest_role_activity(role: str) -> list[dict[str, Any]]:

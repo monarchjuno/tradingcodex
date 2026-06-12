@@ -25,7 +25,7 @@ def research(root: Path, argv: list[str]) -> None:
             "universe": _option_value(args, "--universe") or "public_equity",
             "workflow_type": _option_value(args, "--workflow-type") or "",
             "symbol": _option_value(args, "--symbol") or "",
-            "title": _option_value(args, "--title") or Path(markdown_file).stem,
+            "title": _option_value(args, "--title"),
             "markdown_path": markdown_file,
             "source_as_of": _option_value(args, "--source-as-of") or "",
             "readiness_label": _option_value(args, "--readiness") or "",

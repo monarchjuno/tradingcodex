@@ -183,7 +183,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="list_workflow_artifacts",
-        description="List workflow artifacts from export paths and DB-backed research memory.",
+        description="List workflow artifacts from workspace paths and file-native research memory.",
         category="workflows",
         risk_level="read",
         allowed_roles=frozenset(RESEARCH_ROLES | {"execution-operator"}),
@@ -192,7 +192,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="create_research_artifact",
-        description="Store markdown research in Django DB and optionally export a markdown cache file.",
+        description="Store markdown research as a workspace-native file through the service layer.",
         category="research",
         risk_level="write",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -212,7 +212,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="append_research_artifact_version",
-        description="Append a DB-backed version for an existing research artifact.",
+        description="Append a workspace-file version for an existing research artifact.",
         category="research",
         risk_level="write",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -222,7 +222,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="get_research_artifact",
-        description="Fetch a DB-backed research artifact by artifact_id.",
+        description="Fetch a workspace-native research artifact by artifact_id.",
         category="research",
         risk_level="read",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -231,7 +231,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="list_research_artifacts",
-        description="List DB-backed research artifacts and metadata.",
+        description="List workspace-native research artifacts and metadata.",
         category="research",
         risk_level="read",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -240,7 +240,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="search_research_artifacts",
-        description="Search DB-backed markdown research artifacts with lexical DB search.",
+        description="Search workspace-native markdown research artifacts with lexical file search.",
         category="research",
         risk_level="read",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -249,7 +249,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="export_research_artifact_md",
-        description="Export a DB-backed research artifact to a markdown cache file.",
+        description="Export or copy a workspace-native research artifact markdown file.",
         category="research",
         risk_level="write",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -259,7 +259,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="record_source_snapshot",
-        description="Record provider/as-of/retrieved metadata and warnings for freshness-sensitive research.",
+        description="Record provider/as-of/retrieved metadata and warnings as a workspace source-snapshot JSON file.",
         category="research",
         risk_level="write",
         allowed_roles=frozenset(RESEARCH_ROLES),
@@ -494,6 +494,8 @@ def record_tool_call(
     started: float,
     error: str = "",
 ) -> None:
+    if _skip_db_tool_call_ledger(name):
+        return
     try:
         from apps.mcp.models import McpToolCall
         from tradingcodex_service.application.common import stable_hash
@@ -515,6 +517,13 @@ def record_tool_call(
         return
 
 
+def _skip_db_tool_call_ledger(name: str) -> bool:
+    tool = TOOL_REGISTRY.get(name)
+    if tool and tool.category == "research":
+        return True
+    return name == "list_workflow_artifacts"
+
+
 def handle_mcp_rpc(workspace_root: Path | str, message: dict[str, Any]) -> dict[str, Any] | None:
     from tradingcodex_service.version import TRADINGCODEX_VERSION
 
@@ -530,7 +539,7 @@ def handle_mcp_rpc(workspace_root: Path | str, message: dict[str, Any]) -> dict[
                 "protocolVersion": "2025-06-18",
                 "capabilities": {"tools": {"listChanged": False}, "resources": {}, "prompts": {}},
                 "serverInfo": {"name": "tradingcodex-home" if safe_home_mcp_scope() else "tradingcodex", "version": TRADINGCODEX_VERSION},
-                "instructions": "TradingCodex MCP is a Django service-layer gateway backed by the central local TradingCodex DB. Codex projects are callers/provenance; research tools use DB-backed memory; execution tools revalidate policy, approval, adapter, and audit.",
+                "instructions": "TradingCodex MCP is a Django service-layer gateway backed by workspace files for agent/skill/research state and the central local TradingCodex DB for runtime ledgers. Codex projects are callers/provenance; research tools use workspace markdown; execution tools revalidate policy, approval, adapter, and audit.",
             },
         }
     if method == "tools/list":

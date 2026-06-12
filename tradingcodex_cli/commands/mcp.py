@@ -41,7 +41,7 @@ def mcp(root: Path, argv: list[str]) -> None:
         "order_intent_id": _option_value(args, "--order-intent-id"),
         "order_id": _option_value(args, "--order-id"),
         "artifact_id": _option_value(args, "--artifact-id") or _option_value(args, "--id"),
-        "artifact_type": _option_value(args, "--type"),
+        "artifact_type": _option_value(args, "--artifact-type") or _option_value(args, "--type"),
         "universe": _option_value(args, "--universe"),
         "workflow_type": _option_value(args, "--workflow-type"),
         "symbol": _option_value(args, "--symbol"),
@@ -52,7 +52,22 @@ def mcp(root: Path, argv: list[str]) -> None:
         "readiness_label": _option_value(args, "--readiness"),
         "query": _option_value(args, "--query") or _option_value(args, "--q"),
         "limit": _option_value(args, "--limit"),
+        "provider": _option_value(args, "--provider"),
+        "source_category": _option_value(args, "--source-category") or _option_value(args, "--category"),
+        "as_of": _option_value(args, "--as-of"),
     })
+    payload_json = _option_value(args, "--payload")
+    if payload_json:
+        parsed_payload = json.loads(payload_json)
+        if not isinstance(parsed_payload, dict):
+            raise ValueError("--payload must be a JSON object")
+        payload["payload"] = parsed_payload
+    warnings_json = _option_value(args, "--warnings")
+    if warnings_json:
+        parsed_warnings = json.loads(warnings_json)
+        if not isinstance(parsed_warnings, list):
+            raise ValueError("--warnings must be a JSON array")
+        payload["warnings"] = parsed_warnings
     payload = {key: value for key, value in payload.items() if value not in (None, "")}
     for raw in args:
         if raw.startswith("{"):
