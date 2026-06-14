@@ -238,7 +238,7 @@ def global_home_mcp_config_block() -> str:
     return f"""# BEGIN TradingCodex home MCP
 [mcp_servers.tradingcodex-home]
 command = "uvx"
-args = ["--refresh", "--python", "3.14", "--from", "{os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex")}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+args = ["--refresh", "--from", "{os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex")}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
 enabled = true
 env = {{ TRADINGCODEX_MCP_SAFE_TOOLS = "1", TRADINGCODEX_MCP_SCOPE = "global-home" }}
 enabled_tools = [

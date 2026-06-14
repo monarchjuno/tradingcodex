@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tradingcodex"
-version = "0.2.0"
+version = "0.2.1"
 description = "Codex-native trading harness with a Django service plane and MCP execution boundary."
 readme = "README.md"
-requires-python = ">=3.14,<3.15"
+requires-python = ">=3.11,<3.15"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
 authors = [
@@ -20,6 +20,9 @@ classifiers = [
   "Framework :: Django :: 5.2",
   "Intended Audience :: Financial and Insurance Industry",
   "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
   "Topic :: Office/Business :: Financial :: Investment",
 ]

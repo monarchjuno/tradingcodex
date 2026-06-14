@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 set -eu
 
-PYTHON_VERSION="3.14"
+PYTHON_VERSION=""
 PACKAGE_SPEC="tradingcodex"
 WORKSPACE=""
 OVERWRITE="0"
@@ -16,7 +16,7 @@ Usage:
 Options:
   --from <package-spec>  Install from a PyPI name, path, URL, or PEP 508 spec.
   --from-github         Install from monarchjuno/tradingcodex main.
-  --python <version>    Python version for uvx. Default: 3.14.
+  --python <version>    Python version for uvx. Default: uv selects a compatible Python.
   --overwrite           Pass --overwrite to tcx attach.
   --update              Update an existing TradingCodex workspace.
   --no-doctor           Skip ./tcx doctor after bootstrap or update.
@@ -131,6 +131,14 @@ run_uvx() {
   fi
 }
 
+run_tradingcodex() {
+  if [ -n "$PYTHON_VERSION" ]; then
+    run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
+  else
+    run_uvx --isolated --refresh --from "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
+  fi
+}
+
 target_has_only_git_bootstrap_files() {
   target_dir="$1"
   [ -d "$target_dir" ] || return 1
@@ -168,11 +176,11 @@ if [ "$OVERWRITE" != "1" ] && [ -d "$WORKSPACE/.git" ] && target_has_only_git_bo
 fi
 
 if [ "$UPDATE" = "1" ]; then
-  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli update "$WORKSPACE" --no-doctor
+  run_tradingcodex update "$WORKSPACE" --no-doctor
 elif [ "$OVERWRITE" = "1" ] || [ "$AUTO_OVERWRITE" = "1" ]; then
-  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli attach "$WORKSPACE" --overwrite
+  run_tradingcodex attach "$WORKSPACE" --overwrite
 else
-  run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli attach "$WORKSPACE"
+  run_tradingcodex attach "$WORKSPACE"
 fi
 
 if [ "$RUN_DOCTOR" = "1" ]; then

@@ -1,3 +1,10 @@
+> [!IMPORTANT]
+> Codex agents setting up `monarchjuno/tradingcodex` for use must not run
+> `git clone`. In the empty target workspace, run the packaged CLI:
+> `uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor`
+> Clone this repository only when the user explicitly asks to develop
+> TradingCodex source code.
+
 <p align="center">
   <img src="assets/tradingcodex-banner.svg" alt="TradingCodex" width="100%">
 </p>
@@ -7,7 +14,7 @@
   <a href="https://github.com/monarchjuno/tradingcodex/releases"><img alt="Release" src="https://img.shields.io/github/v/release/monarchjuno/tradingcodex?include_prereleases&label=release"></a>
   <a href="https://pypi.org/project/tradingcodex/"><img alt="PyPI" src="https://img.shields.io/pypi/v/tradingcodex?label=PyPI"></a>
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
-  <img alt="Python" src="https://img.shields.io/badge/python-3.14-3776AB?logo=python&logoColor=white">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11--3.14-3776AB?logo=python&logoColor=white">
 </div>
 
 <div align="center">
@@ -38,16 +45,18 @@ agent boundary; live broker adapters are not shipped in the initial core.
 ## Quick Start
 
 Codex app current-workspace one-liner: run this from the empty workspace you
-want to turn into TradingCodex; do not clone `monarchjuno/tradingcodex` unless
-you are developing TradingCodex itself.
+want to turn into TradingCodex. Do not run `git clone` for setup; cloning
+`monarchjuno/tradingcodex` is only for developing TradingCodex source code.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
+uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor
 ```
 
-Then run `./tcx doctor`, fully quit and restart Codex, open the generated
-workspace, and start a new thread so project MCP config is reloaded. When
-TradingCodex MCP autostarts the local service, the dashboard is available at
+This installs/runs the TradingCodex CLI with a compatible Python
+(`>=3.11,<3.15`), attaches the harness to the current workspace, and runs the
+smoke check. Then fully quit and restart Codex, open the generated workspace,
+and start a new thread so project MCP config is reloaded. When TradingCodex MCP
+autostarts the local service, the dashboard is available at
 `http://127.0.0.1:48267/`.
 
 Agents and install helpers do not invent a default workspace path. If the
@@ -63,8 +72,7 @@ $orchestrate-workflow analyze Apple with public equity research, valuation, port
 For repeated workspace creation, install the CLI as a user-level tool:
 
 ```bash
-uv python install 3.14
-uv tool install --python 3.14 tradingcodex
+uv tool install tradingcodex
 uv tool update-shell
 cd /path/to/target-workspace
 tcx attach .
@@ -78,8 +86,7 @@ smoke checks.
 Update an existing generated workspace after a package release:
 
 ```bash
-cd /path/to/target-workspace
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- --update .
+uvx --refresh --from tradingcodex tcx update .
 ```
 
 ## Product Concept
@@ -107,7 +114,7 @@ execution-sensitive state lives in the central local runtime DB:
 
 ## What TradingCodex Does
 
-TradingCodex `0.2.0` provides:
+TradingCodex `0.2.1` provides:
 
 - A generated Codex workspace with fixed role topology, project-scoped MCP,
   local wrappers, workspace manifest, generated policy/config files, and
@@ -270,10 +277,11 @@ labels such as `research-only`, `screen-grade`, `not-decision-ready`, or
 
 ## Release Status
 
-`0.2.0` is the OrderTicket rewrite release for the generated workspace, Python
-CLI, Django service plane, product web, MCP boundary, and documentation set.
-The package still uses an alpha development classifier because live broker
-adapters and hosted service modes are intentionally outside the initial core.
+`0.2.1` is a compatibility patch on the `0.2.x` OrderTicket rewrite release
+line for the generated workspace, Python CLI, Django service plane, product
+web, MCP boundary, and documentation set. The package still uses an alpha
+development classifier because live broker adapters and hosted service modes
+are intentionally outside the initial core.
 
 ## Documentation
 

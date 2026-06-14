@@ -51,11 +51,20 @@ The target may be:
 Source checkouts of this repository are development projects, not generated
 TradingCodex workspaces.
 
-Codex agents must not silently create a default target when a user only asks to
+Codex agents must not run `git clone` when a user asks to install, set up,
+attach, or use `monarchjuno/tradingcodex` in a workspace. Run the packaged CLI
+from the target workspace instead:
+
+```bash
+uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor
+```
+
+Agents must also not silently create a default target when a user only asks to
 install `monarchjuno/tradingcodex`. The agent rule is: do not invent a
-workspace path such as `tradingcodex-workspace`. If no target path is supplied,
-ask for the target directory before running the installer. If the user is
-already in an empty target workspace, install into `.`.
+workspace path such as `tradingcodex-workspace`. If no target path is supplied
+and the user did not ask to use the current workspace, ask for the target
+directory before running setup. If the user is already in an empty target
+workspace, install into `.`.
 
 ## Generated Files
 
@@ -130,8 +139,7 @@ the operator wants to ask Codex agents to work.
 Recommended agent-facing flow:
 
 ```bash
-uv python install 3.14
-uv tool install --python 3.14 tradingcodex
+uv tool install tradingcodex
 uv tool update-shell
 cd <user-selected-workspace>
 tcx attach .

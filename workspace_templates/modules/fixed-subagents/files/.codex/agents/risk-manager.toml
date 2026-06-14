@@ -46,7 +46,7 @@ Do not execute orders or bypass the workspace MCP execution boundary.
 
 [mcp_servers.tradingcodex]
 command = "uvx"
-args = ["--refresh", "--python", "3.14", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+args = ["--refresh", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
 enabled = true
 env = { TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1", TRADINGCODEX_SERVICE_ADDR = "127.0.0.1:48267", TRADINGCODEX_WORKSPACE_ROOT = "{{PROJECT_DIR}}" }
 enabled_tools = ["simulate_policy", "validate_approval_receipt", "list_broker_connections", "get_broker_connection_status", "list_reconciliation_runs", "get_positions", "get_portfolio_snapshot", "run_order_checks", "request_order_approval", "get_order_ticket", "list_order_tickets", "record_broker_mapping_review", "list_workflow_artifacts", "record_audit_event"]

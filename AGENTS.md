@@ -1,5 +1,19 @@
 # Repository Guidelines
 
+## Setup Request Guard
+
+If a user asks to set up, install, attach, or use `monarchjuno/tradingcodex` in
+their current workspace, do not run `git clone` and do not turn the workspace
+into a source checkout. Run the packaged CLI from that target workspace
+instead:
+
+```bash
+uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor
+```
+
+Clone this repository only when the user explicitly asks to develop, inspect,
+or modify TradingCodex source code.
+
 ## Project Structure & Module Organization
 
 TradingCodex is a Python/Django local-first trading harness. CLI code lives in `tradingcodex_cli/`, with command implementations in `tradingcodex_cli/commands/`. Django service code lives in `tradingcodex_service/`; shared durable behavior belongs in canonical modules under `tradingcodex_service/application/`. Modular apps live under `apps/`. Product docs live in `README.md`, `installation.md`, and `docs/`; generated workspace templates live in `workspace_templates/modules/*`; tests live in `tests/`. Do not reintroduce Node roots such as `package.json`, `packages/*`, Node MCP runtime files, pre-release compatibility facades, or a Django `apps/universes` app unless product direction changes.
@@ -14,7 +28,7 @@ TradingCodex is a Python/Django local-first trading harness. CLI code lives in `
 
 ## Coding Style & Naming Conventions
 
-Target Python `>=3.14,<3.15` and Django `5.2.x`. Use four-space indentation, clear module-level service functions, and type hints where they clarify contracts. Admin, Django Ninja, MCP, generated hooks, and CLI code should call shared application services rather than duplicating policy, approval, research, order, portfolio, audit, or harness logic. Research artifacts and source snapshots are workspace-file-native, not Django DB models. Prefer direct canonical imports over pre-release compatibility facades. Keep generated workspace template bodies as ordinary files under `workspace_templates/modules/*/files`; use Python for registry loading, dependency resolution, rendering, validation, and generated indexes, not to hide durable prompts, skills, policies, hooks, or workspace-contract content inside string constants.
+Target Python `>=3.11,<3.15` and Django `5.2.x`. Use four-space indentation, clear module-level service functions, and type hints where they clarify contracts. Admin, Django Ninja, MCP, generated hooks, and CLI code should call shared application services rather than duplicating policy, approval, research, order, portfolio, audit, or harness logic. Research artifacts and source snapshots are workspace-file-native, not Django DB models. Prefer direct canonical imports over pre-release compatibility facades. Keep generated workspace template bodies as ordinary files under `workspace_templates/modules/*/files`; use Python for registry loading, dependency resolution, rendering, validation, and generated indexes, not to hide durable prompts, skills, policies, hooks, or workspace-contract content inside string constants.
 
 ## Agent Context & Harness Review
 

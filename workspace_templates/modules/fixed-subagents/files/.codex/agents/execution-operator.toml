@@ -46,7 +46,7 @@ Write execution results to `trading/orders/executed/` and audit events to `tradi
 
 [mcp_servers.tradingcodex]
 command = "uvx"
-args = ["--refresh", "--python", "3.14", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+args = ["--refresh", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
 enabled = true
 env = { TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1", TRADINGCODEX_SERVICE_ADDR = "127.0.0.1:48267", TRADINGCODEX_WORKSPACE_ROOT = "{{PROJECT_DIR}}" }
 enabled_tools = [

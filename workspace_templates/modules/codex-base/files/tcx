@@ -13,7 +13,7 @@ if [ "${1:-}" = "update" ] && command -v uvx >/dev/null 2>&1; then
       export PYTHONPATH="${PYTHONPATH#"$TRADINGCODEX_SOURCE_ROOT:"}"
       ;;
   esac
-  exec uvx --refresh --python 3.14 --from "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}" python -m tradingcodex_cli "$@"
+  exec uvx --refresh --from "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}" python -m tradingcodex_cli "$@"
 fi
 if [ -x "$TRADINGCODEX_PYTHON" ]; then
   export PYTHONPATH="$TRADINGCODEX_SOURCE_ROOT${PYTHONPATH:+:$PYTHONPATH}"
@@ -28,8 +28,8 @@ if command -v uvx >/dev/null 2>&1; then
       export PYTHONPATH="${PYTHONPATH#"$TRADINGCODEX_SOURCE_ROOT:"}"
       ;;
   esac
-  exec uvx --refresh --python 3.14 --from "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}" python -m tradingcodex_cli "$@"
+  exec uvx --refresh --from "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}" python -m tradingcodex_cli "$@"
 fi
 echo "tcx: recorded Python is unavailable: $TRADINGCODEX_PYTHON" >&2
-echo "tcx: install TradingCodex with 'uv tool install --python 3.14 tradingcodex' or install uvx." >&2
+echo "tcx: install TradingCodex with 'uv tool install tradingcodex' or install uvx." >&2
 exit 127

@@ -722,7 +722,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         filesystem_rules = root_config["permissions"][profile_name]["filesystem"][":workspace_roots"]
         assert ".tradingcodex/user/**" not in filesystem_rules
         assert filesystem_rules[".tradingcodex/strategies/**"] == "deny"
-    expected_tcx_mcp_args = ["--refresh", "--python", "3.14", "--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+    expected_tcx_mcp_args = ["--refresh", "--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
     root_mcp = root_config["mcp_servers"]["tradingcodex"]
     assert root_mcp["command"] == "uvx"
     assert root_mcp["args"] == expected_tcx_mcp_args

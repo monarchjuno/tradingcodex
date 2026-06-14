@@ -1,19 +1,26 @@
 # TradingCodex Installation
 
+Codex agents setting up `monarchjuno/tradingcodex` for use must not run
+`git clone`. In the empty target workspace, run the packaged CLI:
+`uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor`.
+Clone this repository only when the user explicitly asks to develop
+TradingCodex source code.
+
 This guide covers install variants and smoke checks. For the shortest path, use
 the Quick Start in `README.md`.
 
 ## Agent Setup
 
-Codex agents setting up `monarchjuno/tradingcodex` for a user should not clone
-this source repository for installation. They should also follow this rule: do
-not invent a default workspace path such as `tradingcodex-workspace`. If the
-user did not name a target directory, ask where to create or configure the
-TradingCodex workspace, unless they explicitly asked to use the current
-workspace. Use the user's target workspace, then run the installer there.
+Codex agents setting up `monarchjuno/tradingcodex` for a user should run the
+installer from the user-selected workspace, not clone the source repository.
+They should also follow this rule: do not invent a default workspace path such
+as `tradingcodex-workspace`. If the user did not name a target directory, ask
+where to create or configure the TradingCodex workspace, unless they explicitly
+asked to use the current workspace. Use the user's target workspace, then run
+the installer there.
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
+uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor
 ```
 
 The target workspace should be empty. A directory with only `.git` already
@@ -30,32 +37,32 @@ Use this when you need the current GitHub `main` source instead of the PyPI
 package:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- --from-github .
+uvx --refresh --from "tradingcodex @ git+https://github.com/monarchjuno/tradingcodex.git@main" tcx attach . && ./tcx doctor
 ```
 
 Source checkouts of this repository are for development. Generated
 TradingCodex workspaces are separate Codex projects.
 
-## Direct uvx Equivalent
+## Installer Script Equivalent
 
-The installer wraps this `uvx` flow:
+The hosted installer wraps the same `uvx` flow and can bootstrap `uv` when it
+is missing:
 
 ```bash
-UV_NO_CACHE=1 uvx --isolated --refresh --python 3.14 --from tradingcodex python -m tradingcodex_cli attach . && ./tcx doctor
+curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
 ```
 
 The update equivalent for an existing generated workspace is:
 
 ```bash
-UV_NO_CACHE=1 uvx --isolated --refresh --python 3.14 --from tradingcodex python -m tradingcodex_cli update . --no-doctor && ./tcx doctor
+uvx --refresh --from tradingcodex tcx update .
 ```
 
 For repeated workspace creation, installing `tcx` as a user-level tool is also
 available:
 
 ```bash
-uv python install 3.14
-uv tool install --python 3.14 tradingcodex
+uv tool install tradingcodex
 uv tool update-shell
 cd /path/to/target-workspace
 tcx attach .
@@ -67,8 +74,7 @@ Use update when TradingCodex has already been attached to a workspace and a new
 package release should refresh generated files and service schema:
 
 ```bash
-cd /path/to/target-workspace
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- --update .
+uvx --refresh --from tradingcodex tcx update .
 ```
 
 `tcx update .` preserves `.tradingcodex/workspace.json`, including

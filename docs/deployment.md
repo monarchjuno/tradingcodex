@@ -10,7 +10,7 @@ not ship live broker execution.
 
 ## Release Policy
 
-The `0.2.0` release is the OrderTicket rewrite contract for the local-first
+The `0.2.x` release line is the OrderTicket rewrite contract for the local-first
 Python/Django harness. Order flows use central DB `OrderTicket` records
 directly; pre-release compatibility shims do not remain in the runtime package.
 The documented Web, API, CLI, MCP, generated workspace, and
@@ -26,8 +26,9 @@ Execution status for this release line:
 
 ## Maintainer Prerequisites
 
-Use Python 3.14 for release verification. The package metadata requires
-`>=3.14,<3.15`, and CI is pinned to Python 3.14.
+Use Python 3.11 for release build verification and keep CI green across the
+supported range. The package metadata requires `>=3.11,<3.15`, and CI runs on
+Python 3.11, 3.12, 3.13, and 3.14.
 
 Create separate PyPI and TestPyPI accounts. TestPyPI is a separate service and
 does not share login state with PyPI.
@@ -53,26 +54,26 @@ On GitHub, create both environments:
 Run the regular validation suite first:
 
 ```bash
-python3.14 -m pytest
-python3.14 manage.py check
-python3.14 manage.py makemigrations --check --dry-run
-python3.14 -m compileall tradingcodex_cli tradingcodex_service apps tests
+python3.11 -m pytest
+python3.11 manage.py check
+python3.11 manage.py makemigrations --check --dry-run
+python3.11 -m compileall tradingcodex_cli tradingcodex_service apps tests
 ```
 
 Build and check the source distribution and wheel:
 
 ```bash
-python3.14 -m pip install --upgrade build twine
+python3.11 -m pip install --upgrade build twine
 rm -rf dist build
 find . -maxdepth 1 -name '*.egg-info' -type d -exec rm -rf {} +
-python3.14 -m build
-python3.14 -m twine check dist/*
+python3.11 -m build
+python3.11 -m twine check dist/*
 ```
 
 Install the built wheel in a clean environment:
 
 ```bash
-python3.14 -m venv /tmp/tcx-install-test
+python3.11 -m venv /tmp/tcx-install-test
 /tmp/tcx-install-test/bin/pip install dist/*.whl
 rm -rf /tmp/tcx-smoke
 mkdir -p /tmp/tcx-smoke
@@ -135,11 +136,11 @@ Use TestPyPI before the first public PyPI release and after packaging changes.
 Example:
 
 ```bash
-python3.14 -m venv /tmp/tcx-testpypi
+python3.11 -m venv /tmp/tcx-testpypi
 /tmp/tcx-testpypi/bin/pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  tradingcodex==0.2.0
+  tradingcodex==0.2.1
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
@@ -167,8 +168,8 @@ publication; tag pushes are intentionally non-publishing.
 After the PyPI workflow completes:
 
 ```bash
-python3.14 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.0
+python3.11 -m venv /tmp/tcx-pypi
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.1
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -220,7 +221,8 @@ Use PEP 440 versions:
 
 - `0.2.0` for the OrderTicket rewrite contract after install, docs, DB
   migration, generated workspace smoke checks, and release e2e checks are stable
-- patch releases such as `0.2.1` for compatible fixes after `0.2.0`
+- `0.2.1` for Python `>=3.11,<3.15` support and clone-free setup guidance
+- later patch releases for compatible fixes after `0.2.1`
 - pre-releases such as `0.3.0a1`, `0.3.0b1`, or `0.3.0rc1` when preparing
   the next minor contract
 
