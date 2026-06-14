@@ -35,6 +35,53 @@ It is not an autonomous trading bot. Codex coordinates and explains the work;
 Django owns durable state and policy; TradingCodex MCP is the only executable
 agent boundary; live broker adapters are not shipped in the initial core.
 
+## Quick Start
+
+Codex app current-workspace one-liner: run this from the empty workspace you
+want to turn into TradingCodex; do not clone `monarchjuno/tradingcodex` unless
+you are developing TradingCodex itself.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
+```
+
+Then run `./tcx doctor`, fully quit and restart Codex, open the generated
+workspace, and start a new thread so project MCP config is reloaded. When
+TradingCodex MCP autostarts the local service, the dashboard is available at
+`http://127.0.0.1:48267/`.
+
+Agents and install helpers do not invent a default workspace path. If the
+target path is not supplied and the user did not say "current workspace", ask
+before creating or attaching a workspace.
+
+Start an orchestrated Codex workflow from the generated workspace:
+
+```text
+$orchestrate-workflow analyze Apple with public equity research, valuation, portfolio, and risk review
+```
+
+For repeated workspace creation, install the CLI as a user-level tool:
+
+```bash
+uv python install 3.14
+uv tool install --python 3.14 tradingcodex
+uv tool update-shell
+cd /path/to/target-workspace
+tcx attach .
+./tcx doctor
+```
+
+See [installation.md](https://github.com/monarchjuno/tradingcodex/blob/main/installation.md)
+for GitHub-main installs, direct `uvx`, MCP/service details, and additional
+smoke checks.
+
+Update an existing generated workspace after a package release:
+
+```bash
+cd /path/to/target-workspace
+curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- --update .
+```
+
 ## Product Concept
 
 TradingCodex exists because serious Codex-assisted investment work should not
@@ -95,66 +142,6 @@ TradingCodex `0.2.0` provides:
 - A managed External MCP Gate that imports discovery metadata,
   classifies tool risk, scopes role access, and blocks unsafe direct proxy
   paths by default.
-
-## Quick Start
-
-Choose an empty target directory for the generated Codex workspace. Source
-checkouts of this repository are for TradingCodex development; generated
-TradingCodex workspaces are separate Codex projects.
-
-Agents and install helpers do not invent a default workspace path. If the
-target path is not supplied, ask the user before creating or attaching a
-workspace.
-
-Install TradingCodex and attach it to a user-selected workspace:
-
-```bash
-mkdir -p /path/to/target-workspace
-cd /path/to/target-workspace
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
-```
-
-Run the smoke check:
-
-```bash
-./tcx doctor
-```
-
-After installation, fully quit and restart Codex, then open the generated
-workspace and start from a new thread so project MCP config is reloaded. When
-TradingCodex MCP autostarts the local service, the dashboard is available at:
-
-```text
-http://127.0.0.1:48267/
-```
-
-Start an orchestrated Codex workflow from the generated workspace:
-
-```text
-$orchestrate-workflow analyze Apple with public equity research, valuation, portfolio, and risk review
-```
-
-For repeated workspace creation, install the CLI as a user-level tool:
-
-```bash
-uv python install 3.14
-uv tool install --python 3.14 tradingcodex
-uv tool update-shell
-cd /path/to/target-workspace
-tcx attach .
-./tcx doctor
-```
-
-See [installation.md](https://github.com/monarchjuno/tradingcodex/blob/main/installation.md)
-for GitHub-main installs, direct `uvx`, MCP/service details, and additional
-smoke checks.
-
-Update an existing generated workspace after a package release:
-
-```bash
-cd /path/to/target-workspace
-curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- --update .
-```
 
 ## Local Web Dashboard
 
