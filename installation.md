@@ -9,12 +9,10 @@ Codex agents setting up `monarchjuno/tradingcodex` for a user should not clone
 this source repository for installation. They should also follow this rule: do
 not invent a default workspace path such as `tradingcodex-workspace`. If the
 user did not name a target directory, ask where to create or configure the
-TradingCodex workspace. Use the user's target workspace, then run the installer
-there.
+TradingCodex workspace, unless they explicitly asked to use the current
+workspace. Use the user's target workspace, then run the installer there.
 
 ```bash
-mkdir -p /path/to/target-workspace
-cd /path/to/target-workspace
 curl -fsSL https://raw.githubusercontent.com/monarchjuno/tradingcodex/main/install.sh | sh -s -- .
 ```
 
