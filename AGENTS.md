@@ -34,9 +34,117 @@ Target Python `>=3.11,<3.15` and Django `5.2.x`. Use four-space indentation, cle
 
 When changing or reviewing agent, workflow, MCP, policy, template, or harness behavior, do not infer behavior from Python code alone. Read the relevant harness flow and instruction surfaces first: `docs/harness.md`, `docs/roles-skills-and-workflows.md`, `tradingcodex_service/application/components.py`, and generated workspace files under `workspace_templates/modules/*/files`, especially `.agents/skills/*/SKILL.md`, `.codex/agents/*.toml`, `.codex/prompts/*`, `.codex/hooks/*`, `.tradingcodex/policies/*`, and `.tradingcodex/workflows/*`. Treat skill bodies, role TOML, hooks, policies, docs, and service-layer code as one product contract; keep them aligned when routing, permissions, role boundaries, quality gates, or workflow behavior changes.
 
+## Agent Skill Authoring
+
+When creating or substantially updating agent skills, use `$skill-creator` for
+generic skill authoring discipline before applying TradingCodex-specific
+projection rules. Treat every skill as a folder bundle, not a lone `SKILL.md`:
+`SKILL.md` is required, `agents/openai.yaml` is required for TradingCodex UI and
+projection, and `scripts/`, `references/`, or `assets/` should be included when
+they make the skill more reliable or avoid bloating the main skill body. Skills
+must be concise, dependency-light capability procedures with `SKILL.md`
+frontmatter and a matching folder/name. Keep durable role identity, role
+eligibility, MCP allowlists, permission profiles, approval authority, execution
+authority, and policy boundaries out of skill bodies; those belong to base
+instructions, `.codex/agents/*.toml`, `ROLE_SKILL_MAP`, service-layer policy,
+and generated projection indexes.
+
+Do not hand-roll optional or strategy skill state around the shared services.
+For role-local optional subagent skills, author the procedure with
+`$skill-creator` expectations, then create/update it through the shared
+TradingCodex path such as `./tcx skills optional create|update ...` so
+frontmatter, `agents/openai.yaml`, `agents/tradingcodex.json`, validation,
+status, and TOML projection stay aligned. Optional skills may add work style,
+checklists, evidence-quality rules, or output shapes inside an existing role
+boundary only; they must not change locked core skills or widen tool,
+permission, approval, execution, secret, or broker surfaces.
+
+For user strategy skills, route authoring through `strategy-creator`, CLI, API,
+or the shared service so `strategy-*` naming, required frontmatter, required
+strategy sections, `agents/openai.yaml`, active/archive status, and root
+projection are validated. Strategy bodies must remain standalone judgment
+procedures and must not mention TradingCodex roles, MCP, approval gates,
+execution gates, policy overrides, or handoff mechanics.
+
+After agent-skill changes, validate the exact generated shape: run
+`./tcx doctor --layer improvement`, inspect `./tcx skills list --all`, inspect
+the affected role with `./tcx subagents skills <role>` or the affected strategy
+with `./tcx strategies inspect <name>`, and review
+`.tradingcodex/generated/skill-index.json` plus
+`.tradingcodex/generated/projection-manifest.json` in a disposable generated
+workspace.
+
 ## Testing Guidelines
 
-Use pytest; test files and functions should follow `test_*.py` and `test_*`. Run focused tests while iterating, then `python -m pytest` before handoff. Template or bootstrap changes must regenerate a clean workspace and run `./tcx doctor`. Research-memory changes should verify file-native create, search, source-snapshot, and export flows. MCP changes should verify `tools/list`.
+Use pytest; test files and functions should follow `test_*.py` and `test_*`.
+Run focused tests while iterating, then `python -m pytest` before handoff when
+scope justifies it. Run `python manage.py check` after Django settings, model,
+admin, API, MCP, or service wiring changes, and run `python -m compileall
+tradingcodex_cli tradingcodex_service apps tests` after broad import,
+packaging, or migration changes.
+
+Harness, agent, workflow, MCP, policy, skill, hook, or template changes need
+Codex-native validation, not just repository tests. Bootstrap a disposable
+workspace from the current checkout and inspect the generated contract:
+
+```bash
+rm -rf /tmp/tradingcodex-harness-smoke
+python -m tradingcodex_cli attach /tmp/tradingcodex-harness-smoke
+cd /tmp/tradingcodex-harness-smoke
+./tcx doctor
+./tcx doctor --layer codex-native
+./tcx doctor --layer improvement
+./tcx subagents status
+./tcx skills list --all
+./tcx subagents prompt "Analyze NVDA. No order, no trading, no valuation."
+printf '{"prompt":"Analyze NVDA. No order, no trading, no valuation."}\n' | python .codex/hooks/tradingcodex_hook.py user-prompt-submit
+```
+
+When skill text, role TOML, head-manager instructions, hooks, routing, or
+handoff behavior changes, also run a real Codex CLI smoke from the disposable
+workspace so the generated `AGENTS.md`, `.codex/config.toml`, hook context, and
+skill discovery load together:
+
+```bash
+codex exec -C /tmp/tradingcodex-harness-smoke --skip-git-repo-check --dangerously-bypass-hook-trust --output-last-message /tmp/tradingcodex-codex-smoke.txt \
+  'Harness smoke only. Do not produce investment analysis. Confirm the TradingCodex head-manager instructions loaded, identify the selected team for "Analyze NVDA. No order, no trading, no valuation.", and stop at dispatch/waiting status.'
+```
+
+Inspect `/tmp/tradingcodex-codex-smoke.txt`,
+`.tradingcodex/mainagent/latest-user-prompt-gate.json`,
+`.tradingcodex/mainagent/subagent-session-state.json` when present, and
+`trading/audit/codex-hooks.jsonl`. Passing pytest alone is insufficient when
+the user-visible behavior depends on prompt text, skill bodies, role allowlists,
+or generated workspace projection. If Codex CLI or authentication is
+unavailable, record that blocker and still run the generated workspace, hook,
+and starter-prompt checks above.
+
+Judge agent behavior and artifacts as product quality, not just command
+success. Treat a smoke as failed if `head-manager` gives substantive investment
+analysis before accepted subagent artifacts, expands beyond the selected team,
+ignores negated scope such as "no order" or "no valuation", bypasses role/tool
+boundaries, or cannot state `waiting`, `revise`, `blocked`, or accepted
+handoff status. Treat generated role artifacts as failed if they miss the
+artifact path, source/as-of or retrieved-at posture, claim discipline
+(`[factual]`, `[inference]`, `[assumption]` where material), confidence,
+missing evidence, readiness/support gaps, role-boundary conflicts, next
+eligible recipient, or blocked actions. Downstream roles should return
+`revise`, `blocked`, or `waiting` for weak upstream work instead of filling
+another role's missing analysis. For skill or prompt changes that affect a
+specific role, run at least one Codex or generated-workspace scenario that
+exercises that path and inspect the final message plus any written artifacts;
+convert reproducible quality regressions into tests or template/doc fixes.
+
+Research-memory changes should verify file-native create, search,
+source-snapshot, and export flows. MCP changes should verify `tools/list`, role
+allowlists, and audit behavior when touched:
+
+```bash
+printf '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n' | ./tcx mcp stdio
+```
+
+Template or bootstrap changes must regenerate a clean workspace; hand edits in
+`/tmp` smoke workspaces are debugging only, not durable fixes.
 
 ## Commit & Pull Request Guidelines
 
