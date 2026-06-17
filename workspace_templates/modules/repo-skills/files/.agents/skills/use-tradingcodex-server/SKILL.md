@@ -1,6 +1,6 @@
 ---
 name: use-tradingcodex-server
-description: Operate TradingCodex Server broker connectors and MCP setup. Use when the head-manager needs to attach, register, inspect, validate, troubleshoot, or explain native broker/API connectors across equities, ETFs, options, futures, FX/CFD, crypto, fixed income, funds, or cash without granting execution authority.
+description: Operate TradingCodex Server broker connectors and MCP setup. Use when the coordinator needs to attach, register, inspect, validate, troubleshoot, or explain native broker/API connectors across equities, ETFs, options, futures, FX/CFD, crypto, fixed income, funds, or cash without granting execution authority.
 ---
 
 # Use TradingCodex Server
@@ -28,22 +28,25 @@ Load only the reference needed for the current task.
 5. Validate profile JSON with `scripts/validate_connector_profile.py` when a profile payload is available.
 6. Run health checks and read-only sync before using account, position, or order-read data.
 7. Use `preview_order_translation` and `run_order_checks` for readiness; treat preview output as validation only.
-8. Route approval work to `risk-manager` and execution work to `execution-operator`.
+8. Use `get_order_status` for local ticket/broker-order reads when asked to inspect execution state.
+9. Route approval, status refresh, cancellation, and execution work to the configured approval/execution roles
+   instead of naming or widening role authority inside this skill.
 
 ## Useful Commands
 
 ```bash
 ./tcx doctor
 ./tcx mcp call list_broker_connector_templates --principal head-manager
-./tcx mcp call register_broker_connector --principal head-manager --template alpaca_rest --broker-id alpaca-paper --credential-ref env:ALPACA_PAPER --environment paper
-./tcx mcp call get_broker_capability_profile --principal head-manager --broker-id alpaca-paper
-./tcx mcp call get_broker_instrument_constraints --principal head-manager --broker-id alpaca-paper --symbol AAPL
-./tcx mcp call preview_order_translation --principal head-manager '{"broker_id":"alpaca-paper","symbol":"AAPL","side":"buy","quantity":1,"order_type":"limit","limit_price":180,"time_in_force":"day"}'
+./tcx mcp call register_broker_connector --principal head-manager --template <template_id> --broker-id <broker-id> --credential-ref env:<BROKER_REF> --environment <paper|sandbox|testnet>
+./tcx mcp call get_broker_capability_profile --principal head-manager --broker-id <broker-id>
+./tcx mcp call get_broker_instrument_constraints --principal head-manager --broker-id <broker-id> --symbol <symbol-or-instrument>
+./tcx mcp call preview_order_translation --principal head-manager '{"broker_id":"<broker-id>","symbol":"<symbol>","side":"buy","quantity":1,"order_type":"limit","limit_price":100,"time_in_force":"day"}'
+./tcx mcp call get_order_status --principal head-manager --ticket-id <ticket-id>
 ```
 
 ## Hard Stops
 
-Stop and report blocked reasons if the user asks head-manager to:
+Stop and report blocked reasons if the user asks the coordinator to:
 
 - add broker MCP servers directly to `.codex/config.toml` or `.codex/agents/*.toml`
 - call raw broker APIs or SDKs from shell, hooks, scripts, or ad hoc code

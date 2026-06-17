@@ -72,7 +72,7 @@ def ensure_workspace_manifest(workspace_root: Path | str, project_name: str | No
         "updated_at": now_iso(),
         "active_profile": normalize_active_profile(active_profile),
         "mcp_scope": "project-scoped",
-        "execution_mode": "paper only",
+        "execution_mode": "non-live: paper/stub/broker-validation",
     }
     path = workspace_manifest_path(root)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -157,7 +157,7 @@ def workspace_context_payload(workspace_root: Path | str | None = None) -> dict[
         "db_path": str(tradingcodex_db_path()),
         "active_profile": active_profile_for_workspace(root),
         "mcp_scope": str(manifest.get("mcp_scope") or "project-scoped"),
-        "execution_mode": str(manifest.get("execution_mode") or "paper only"),
+        "execution_mode": str(manifest.get("execution_mode") or "non-live: paper/stub/broker-validation"),
     }
 
 

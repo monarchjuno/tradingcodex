@@ -60,6 +60,7 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         text_check(root, "guidance", "scenario quality gates configured", ".codex/prompts/base_instructions/head-manager.md", "scenario-quality-gates", True),
         text_check(root, "guidance", "investment workflow map configured", ".codex/prompts/base_instructions/head-manager.md", "investment-workflow-map", True),
         text_check(root, "guidance", "handoff quality gate configured", ".codex/prompts/base_instructions/head-manager.md", "## Handoff quality", True),
+        text_check(root, "guidance", "context efficiency contract configured", ".codex/prompts/base_instructions/head-manager.md", "## Context efficiency", True),
         {"layer": "guidance", "name": "subagent max_threads matches roster", "ok": read_thread_policy(root)["max_threads"] == len(list_subagents(root)), "codexNative": True, "detail": f"max_threads={read_thread_policy(root)['max_threads']}, subagents={len(list_subagents(root))}"},
     ]
 
@@ -110,7 +111,7 @@ def _central_service_checks(root: Path) -> list[dict[str, Any]]:
 
 
 def _enforcement_checks(root: Path) -> list[dict[str, Any]]:
-    schemas = ["evidence_pack.schema.json", "fundamental_report.schema.json", "technical_report.schema.json", "news_report.schema.json", "thesis.schema.json", "valuation.schema.json", "portfolio_review.schema.json", "risk_report.schema.json", "order_ticket.schema.json", "approval_receipt.schema.json", "execution_result.schema.json", "postmortem_report.schema.json", "audit_event.schema.json"]
+    schemas = ["research_artifact.schema.json", "evidence_pack.schema.json", "fundamental_report.schema.json", "technical_report.schema.json", "news_report.schema.json", "thesis.schema.json", "valuation.schema.json", "portfolio_review.schema.json", "risk_report.schema.json", "order_ticket.schema.json", "approval_receipt.schema.json", "execution_result.schema.json", "postmortem_report.schema.json", "audit_event.schema.json"]
     return [
         text_check(root, "enforcement", "command rules configured", ".codex/rules/tradingcodex.rules", "prefix_rule(", True),
         *_codex_mcp_config_checks(root),
@@ -207,6 +208,7 @@ def _information_barrier_checks(root: Path) -> list[dict[str, Any]]:
     return [
         path_check(root, "information-barrier", "capabilities installed", ".tradingcodex/capabilities.yaml", False),
         path_check(root, "information-barrier", "information barriers installed", ".tradingcodex/policies/information-barriers.yaml", False),
+        text_check(root, "information-barrier", "information barrier ownership contract installed", ".tradingcodex/policies/information-barriers.yaml", "future_role_change_requires", False),
         path_check(root, "information-barrier", "restricted list installed", ".tradingcodex/policies/restricted-list.yaml", False),
         path_check(root, "information-barrier", "approvals directory installed", "trading/approvals", False),
     ]
@@ -235,6 +237,7 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(path_check(root, "improvement", "skill index projected", ".tradingcodex/generated/skill-index.json", False))
     checks.append(path_check(root, "improvement", "projection manifest projected", ".tradingcodex/generated/projection-manifest.json", False))
     checks.append(text_check(root, "improvement", "no-overlap handoff contract installed", ".codex/prompts/base_instructions/head-manager.md", "Only accepted artifacts move downstream", False))
+    checks.append(text_check(root, "improvement", "context-efficient subagent briefs installed", ".agents/skills/manage-subagents/SKILL.md", "CONTEXT BUDGET:", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))
     checks.append(path_check(root, "improvement", "postmortem workflow installed", ".tradingcodex/workflows/postmortem.yaml", False))
     return checks

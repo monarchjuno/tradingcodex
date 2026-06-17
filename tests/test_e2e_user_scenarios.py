@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shlex
@@ -55,6 +56,10 @@ def hook_context(workspace: Path, prompt: str, env_extra: dict[str, str | None],
         return None
     output = json.loads(result.stdout)
     return json.loads(output["hookSpecificOutput"]["additionalContext"])
+
+
+def hook_event(workspace: Path, event: str, payload: dict[str, Any], env_extra: dict[str, str | None]) -> subprocess.CompletedProcess[str]:
+    return run([str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), event], workspace, input_text=json.dumps(payload), env_extra=env_extra)
 
 
 def tcx(workspace: Path, env_extra: dict[str, str | None], *args: str, expect_ok: bool = True) -> subprocess.CompletedProcess[str]:
@@ -131,13 +136,27 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         assert gate["required_subagents"] == roles
         assert gate["secret_warning"] is secret_warning
         assert gate["confirmation_required"] is False
+        assert gate["context_mode"] == "compact_workflow_gate_v1"
+        assert gate["starter_prompt_path"] == ".tradingcodex/mainagent/latest-user-prompt-gate.json"
+        assert "starter_prompt" not in gate
+        assert len(json.dumps(gate, ensure_ascii=False)) < 1600
         if roles:
-            starter = gate["starter_prompt"]
+            persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
+            starter = persisted_gate["starter_prompt"]
             assert "This selected team is binding for the current lane" in starter
             assert "Research artifact language:" in starter
             assert "Use handoff states: accepted, revise, blocked, waiting." in starter
             assert "source/as-of posture" in starter
+            assert "Context budget:" in starter
+            assert "context_summary" in starter
             assert "Blocked actions before artifacts:" in starter
+
+    hook_audit_path = workspace / "trading" / "audit" / "codex-hooks.jsonl"
+    assert hook_audit_path.exists()
+    hook_audit_text = hook_audit_path.read_text(encoding="utf-8")
+    assert "prompt_sha256" in hook_audit_text
+    assert hashlib.sha256("Analyze Apple stock".encode("utf-8")).hexdigest() in hook_audit_text
+    assert "Analyze Apple stock" not in hook_audit_text
 
     assert hook_context(workspace, "Analyze AGENTS.md for stale guidance", env_extra) is None
     assert hook_context(workspace, "Create a quality income strategy for dividend stocks", env_extra) is None
@@ -220,6 +239,20 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
             "2026-06-12",
             "--readiness",
             "research-grade",
+            "--context-summary",
+            "E2E source/as-of smoke evidence for downstream reuse.",
+            "--handoff-state",
+            "accepted",
+            "--confidence",
+            "medium",
+            "--missing-evidence",
+            "updated filing snapshot",
+            "--next-recipient",
+            "head-manager",
+            "--blocked-actions",
+            "order_drafting",
+            "--source-snapshot-ids",
+            "e2e-manual-source",
             "--created-by",
             "fundamental-analyst",
         ).stdout
@@ -231,6 +264,9 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     assert exported["export_path"] == "trading/reports/fundamental/e2e-nvda.md"
     quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/e2e-nvda-evidence.evidence.md").stdout)
     assert quality["status"] == "pass"
+    strict_quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/e2e-nvda-evidence.evidence.md", "--strict").stdout)
+    assert strict_quality["status"] == "pass"
+    assert strict_quality["context_efficiency"]["context_summary_present"] is True
     bad_json_path = workspace / "trading" / "research" / "bad.json"
     bad_json_path.write_text("{", encoding="utf-8")
     bad_quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/bad.json", expect_ok=False).stdout)
@@ -296,3 +332,160 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     isolated_snapshot = json.loads(tcx(workspace, env_extra, "mcp", "call", "get_portfolio_snapshot").stdout)
     assert isolated_snapshot["portfolio_id"] == "strategy-lab"
     assert isolated_snapshot["positions"] == {}
+
+
+def test_long_multi_subagent_context_budget_audit(tmp_path: Path) -> None:
+    workspace, env_extra = init_workspace(tmp_path)
+    sentinel = "SENTINEL_FULL_ARTIFACT_BODY_SHOULD_NOT_ENTER_GATE"
+    scenarios = [
+        (
+            "Analyze NVDA. No order, no trading, no valuation.",
+            "research_only",
+        ),
+        (
+            "NVDA earnings preview, catalyst review, and valuation range. No order and no trading.",
+            "thesis_review",
+        ),
+        (
+            "Rates and oil impact on my NVDA position, no order. Do not place trades.",
+            "portfolio_risk_review",
+        ),
+        (
+            "Draft a paper buy order for NVDA if analysis passes. No approval and no execution.",
+            "order_ticket_draft_gate",
+        ),
+        (
+            "Submit approved paper order for NVDA using the existing approval receipt.",
+            "order_ticket_approval_execution_gate",
+        ),
+        (
+            "BTC trend review no trading.",
+            "research_only",
+        ),
+        (
+            "Review SPY ETF structure and trend, no trading, no valuation.",
+            "research_only",
+        ),
+        (
+            "AAPL options volatility surface review, no order, no trading.",
+            "research_only",
+        ),
+    ]
+    created_artifacts = 0
+
+    for round_index, (prompt, expected_lane) in enumerate(scenarios, start=1):
+        context = hook_context(workspace, prompt, env_extra)
+        assert context is not None
+        assert context["workflow_lane"] == expected_lane
+        assert "starter_prompt" not in context
+        assert len(json.dumps(context, ensure_ascii=False)) < 1600
+
+        persisted_gate = (workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8")
+        assert sentinel not in persisted_gate
+        assert "Context budget:" in persisted_gate
+        assert "context_summary" in persisted_gate
+
+        for role in context["required_subagents"]:
+            artifact_id = f"long-{round_index}-{role}"
+            hook_event(workspace, "subagent-start", {"agent_type": role, "task_name": f"{role} round {round_index}"}, env_extra)
+            markdown = (
+                f"# {role} Round {round_index}\n\n"
+                f"[factual] {sentinel} appears only inside this stored artifact body.\n\n"
+                + "\n".join(f"[inference] Evidence row {i} remains in the artifact, not in the hook context." for i in range(520))
+            )
+            stored = json.loads(
+                tcx(
+                    workspace,
+                    env_extra,
+                    "mcp",
+                    "call",
+                    "create_research_artifact",
+                    "--artifact-id",
+                    artifact_id,
+                    "--artifact-type",
+                    "evidence_pack",
+                    "--symbol",
+                    "NVDA",
+                    "--role",
+                    role,
+                    "--title",
+                    f"{role} long context smoke",
+                    "--markdown",
+                    markdown,
+                    "--source-as-of",
+                    "2026-06-17",
+                    "--readiness",
+                    "research-grade",
+                    "--context-summary",
+                    f"{role} round {round_index} compact summary for downstream reuse.",
+                    "--handoff-state",
+                    "accepted",
+                    "--confidence",
+                    "medium",
+                    "--missing-evidence",
+                    "[]",
+                    "--next-recipient",
+                    "head-manager",
+                    "--blocked-actions",
+                    '["order_drafting","execution"]',
+                    "--source-snapshot-ids",
+                    f'["snapshot-{round_index}-{role}"]',
+                ).stdout
+            )
+            assert stored["export_path"] == f"trading/research/{artifact_id}.evidence.md"
+            hook_event(workspace, "subagent-stop", {"agent_type": role, "task_name": f"{role} round {round_index}"}, env_extra)
+            created_artifacts += 1
+
+    state = json.loads(tcx(workspace, env_extra, "subagents", "state").stdout)
+    state_text = json.dumps(state, ensure_ascii=False)
+    assert sentinel not in state_text
+    assert state["event_count_total"] == created_artifacts * 2
+    assert state["completed_count_total"] == created_artifacts
+    assert len(state["events"]) <= 12
+    assert len(state["completed"]) <= 12
+    assert state["retention"]["full_event_log"] == "trading/audit/subagent-session-events.jsonl"
+
+    audit = json.loads(tcx(workspace, env_extra, "subagents", "context-audit", "--strict").stdout)
+    assert audit["status"] == "pass"
+    assert audit["latest_gate"]["compact_context_estimated_tokens"] <= 500
+    assert audit["latest_gate"]["starter_prompt_estimated_tokens"] <= 1200
+    assert audit["session_state"]["event_count"] == created_artifacts * 2
+    assert audit["session_state"]["retained_event_count"] <= 12
+    assert audit["session_state"]["estimated_tokens"] <= 2000
+    assert audit["prompt_gate_history"]["entries"] == len(scenarios)
+    assert audit["prompt_gate_history"]["max_compact_context_estimated_tokens"] <= 500
+    assert set(audit["prompt_gate_history"]["workflow_lanes"]) >= {
+        "research_only",
+        "thesis_review",
+        "portfolio_risk_review",
+        "order_ticket_draft_gate",
+        "order_ticket_approval_execution_gate",
+    }
+    assert audit["artifacts"]["checked"] == created_artifacts
+    assert audit["artifacts"]["missing_context_summary"] == []
+    assert audit["artifacts"]["large_body_count"] == created_artifacts
+    assert sentinel not in json.dumps(audit, ensure_ascii=False)
+    assert any(check["name"] == "gate and state avoid pasted markdown artifacts" and check["status"] == "pass" for check in audit["checks"])
+
+    weak_artifact = workspace / "trading" / "research" / "missing-context-summary.evidence.md"
+    weak_artifact.write_text(
+        "---\n"
+        'artifact_id: "missing-context-summary"\n'
+        'artifact_type: "evidence_pack"\n'
+        'role: "fundamental-analyst"\n'
+        'title: "Missing Context Summary"\n'
+        'source_as_of: "2026-06-17"\n'
+        'readiness_label: "research-grade"\n'
+        'handoff_state: "accepted"\n'
+        'confidence: "medium"\n'
+        "missing_evidence: []\n"
+        'next_recipient: "head-manager"\n'
+        "blocked_actions: []\n"
+        "source_snapshot_ids: []\n"
+        "---\n\n"
+        "# Missing Context Summary\n\n[factual] This should fail the strict context audit.\n",
+        encoding="utf-8",
+    )
+    failed_audit = json.loads(tcx(workspace, env_extra, "subagents", "context-audit", "--strict", expect_ok=False).stdout)
+    assert failed_audit["status"] == "fail"
+    assert "trading/research/missing-context-summary.evidence.md" in failed_audit["artifacts"]["missing_context_summary"]

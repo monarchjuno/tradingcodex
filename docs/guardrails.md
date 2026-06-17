@@ -73,6 +73,11 @@ Information barriers cover:
 - role-specific MCP allowlists
 - generated subagent permission profiles
 
+Information barriers are also a maintainability boundary. A new role or tool
+surface should update the barrier policy, role TOML, MCP allowlist, and tests
+together. Generic skills should not become the hidden place where file access,
+role eligibility, or tool authority is widened.
+
 The root `head-manager` may coordinate and inspect, but should not silently
 perform role work that belongs to specialist workflows.
 

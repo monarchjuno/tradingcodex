@@ -6,8 +6,13 @@ from typing import Any
 
 from tradingcodex_service.application.common import _status_class, _unique
 from tradingcodex_service.application.agents import (
+    AGENT_SPECS,
     EXPECTED_SKILLS,
     EXPECTED_SUBAGENTS,
+    ROLE_DISPLAY_GROUPS,
+    ROLE_FORBIDDEN_ACTIONS,
+    ROLE_HANDOFF_CONTRACTS,
+    ROLE_PURPOSES,
     ROLE_PERMISSION_PROFILES,
     ROLE_SKILL_MAP,
     USER_VISIBLE_SKILLS,
@@ -56,69 +61,24 @@ SECRET_ONLY_IGNORE_TERMS = re.compile(
     r"save|store|write|read|rotate|keep|put|here|is|my|to|in|the|a|an|this"
     r")\b|\.env"
 )
+CONNECTOR_OPERATION_TERMS = re.compile(
+    r"\b("
+    r"connector|connectors|broker connector|broker profile|capability profile|credential_ref|"
+    r"register_broker_connector|list_broker_connector_templates|get_broker_capability_profile|"
+    r"get_broker_instrument_constraints|sync_broker_account|broker sync|sandbox broker|test broker|"
+    r"test/sandbox broker|broker setup|attach broker|configure broker"
+    r")\b",
+    re.I,
+)
+REMAINING_ORDER_APPROVAL_EXECUTION_TERMS = re.compile(
+    r"\b(submit|already approved|approved paper|execute|execution|approve|approval|order ticket|paper order|buy order|sell order|trade|trading|place order|place-order)\b",
+    re.I,
+)
+REMAINING_APPROVAL_EXECUTION_TERMS = re.compile(
+    r"\b(submit|already approved|approved paper|execute|execution|approve|approval|place order|place-order|trade|trading)\b",
+    re.I,
+)
 HANDOFF_STATES = ("accepted", "revise", "blocked", "waiting")
-ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
-    "head-manager": {
-        "receives": "User request, accepted role artifacts, workflow/service state.",
-        "returns": "Lane, selected team, compact briefs, accepted artifacts, conflicts, and next allowed action.",
-        "quality_gate": "Marks handoffs accepted, revise, blocked, or waiting before moving the workflow forward.",
-        "overlap_rule": "Coordinates and synthesizes; does not replace specialist role analysis.",
-    },
-    "fundamental-analyst": {
-        "receives": "Assigned evidence and source references.",
-        "returns": "Fundamental report with source/as-of posture, confidence, and missing evidence.",
-        "quality_gate": "Business, financial, filing, and economics claims stay evidence-backed and role-owned.",
-        "overlap_rule": "Does not create valuation, order-ticket, approval, or execution posture.",
-    },
-    "technical-analyst": {
-        "receives": "Assigned market-data references and user-stated technical constraints.",
-        "returns": "Technical report with setup observations, data posture, confidence, and invalidation gaps.",
-        "quality_gate": "Price, volume, volatility, and liquidity claims show data timing and uncertainty.",
-        "overlap_rule": "Does not turn a setup into a standalone investment conclusion or order ticket.",
-    },
-    "news-analyst": {
-        "receives": "Assigned filings, disclosures, news, and source references.",
-        "returns": "Dated event report with source-quality caveats and unresolved claims.",
-        "quality_gate": "Events separate verified facts, source claims, narrative inference, and rumor risk.",
-        "overlap_rule": "Does not approve execution or assert unverified rumors as facts.",
-    },
-    "macro-analyst": {
-        "receives": "Assigned macro sources and relevant accepted role artifacts.",
-        "returns": "Macro transmission report with source/as-of posture and regime uncertainty.",
-        "quality_gate": "Transmission channels distinguish factual data, assumptions, and inference.",
-        "overlap_rule": "Does not imply futures, FX, commodity, rates, options, or live execution support.",
-    },
-    "instrument-analyst": {
-        "receives": "Assigned instrument sources, contract/methodology references, and support questions.",
-        "returns": "Instrument support report with mechanics, liquidity/support gaps, and blocked execution implications.",
-        "quality_gate": "Instrument facts, market-structure claims, and support gaps are source-backed.",
-        "overlap_rule": "Does not infer execution eligibility from data availability or router coverage.",
-    },
-    "valuation-analyst": {
-        "receives": "Accepted research artifacts and user-stated method constraints.",
-        "returns": "Valuation report with assumptions, sensitivity, confidence, and readiness for portfolio/risk review.",
-        "quality_gate": "Valuation assumptions and current-price implications are explicit and source-aware.",
-        "overlap_rule": "Does not approve, execute, or replace missing research evidence.",
-    },
-    "portfolio-manager": {
-        "receives": "Accepted research/valuation artifacts and portfolio state.",
-        "returns": "Portfolio fit report and, only when allowed, draft order-ticket readiness or draft OrderTicket.",
-        "quality_gate": "Sizing, cash, concentration, liquidity, and opportunity-cost assumptions are visible.",
-        "overlap_rule": "Does not self-approve, execute, or repair missing research/valuation work.",
-    },
-    "risk-manager": {
-        "receives": "Accepted portfolio/order artifacts, policy state, restricted-list state, and audit evidence.",
-        "returns": "Risk/policy report, approval readiness state, approval receipt when allowed, or blocked reasons.",
-        "quality_gate": "Downside, limits, restricted-list, and approval-readiness checks are explicit.",
-        "overlap_rule": "Does not draft orders, submit execution, or loosen policy in the same workflow.",
-    },
-    "execution-operator": {
-        "receives": "Approved order ticket, matching approval receipt, and policy allow state.",
-        "returns": "Execution result, MCP response, audit reference, or rejected/blocked reasons.",
-        "quality_gate": "Execution uses only approved paper/stub MCP paths and records audit evidence.",
-        "overlap_rule": "Does not approve, change policy, read secrets, or call raw broker APIs.",
-    },
-}
 EDGE_GROUP_CONTRACTS: dict[str, str] = {
     "dispatch": "Assignment envelope only: original request, constraints, research artifact language, lane, artifact path, out-of-scope actions, and return contract.",
     "research-handoff": "Accepted research artifacts move to valuation; weak or missing evidence returns to the owning research role.",
@@ -138,6 +98,8 @@ def is_investment_workflow_request(request: str) -> bool:
     if "$orchestrate-workflow" in lower:
         return True
     if STRATEGY_AUTHORING_TERMS.search(lower):
+        return False
+    if is_connector_operations_only_request(text):
         return False
     if INVESTMENT_WORKFLOW_TERMS.search(lower):
         return True
@@ -161,6 +123,14 @@ def is_secret_only_request(request: str) -> bool:
     return not (INVESTMENT_ACTION_WITH_SYMBOL.search(reduced) and SYMBOL_LIKE_TOKEN.search(request))
 
 
+def is_connector_operations_only_request(request: str) -> bool:
+    lower = request.lower()
+    if not CONNECTOR_OPERATION_TERMS.search(lower):
+        return False
+    action_text = strip_guardrail_verification_phrases(strip_negated_action_phrases(lower))
+    return not REMAINING_ORDER_APPROVAL_EXECUTION_TERMS.search(action_text)
+
+
 def classify_starter_request(request: str) -> dict[str, Any]:
     text = request.lower()
     universe = classify_investment_universe(text)
@@ -168,7 +138,8 @@ def classify_starter_request(request: str) -> dict[str, Any]:
     valuation_blocked = negates_scope(text, r"valuation|fair value|target price|price target|multiples|dcf")
     technical_blocked = negates_scope(text, r"technical(?: analysis)?|chart|price action")
     news_blocked = negates_scope(text, r"news(?: analysis)?|headline|event review")
-    wants_approval_execution = bool(re.search(r"submit|already approved|approved paper|execute|execution|approve|approval|broker|live", action_text))
+    connector_only = is_connector_operations_only_request(request)
+    wants_approval_execution = False if connector_only else bool(REMAINING_APPROVAL_EXECUTION_TERMS.search(action_text))
     wants_order_draft = bool(re.search(r"draft|order ticket|buy order|sell order|paper buy order|paper sell order", action_text))
     wants_decision = bool(re.search(r"should i buy|should i sell|recommend|fair value|target price|buy|sell", action_text))
     wants_thesis_review = bool(re.search(r"earnings|filing|catalyst|preview|thesis|valuation|disclosure|narrative", action_text))
@@ -193,6 +164,8 @@ def classify_starter_request(request: str) -> dict[str, Any]:
     if wants_instrument:
         research.append("instrument-analyst")
     thesis_roles = research + ([] if valuation_blocked else ["valuation-analyst"])
+    if connector_only:
+        return {"universe": "broker_connector_operations", "lane": "head_manager_connector_operations", "subagents": [], "blockedActions": ["order ticket", "approval", "execution", "direct broker API", "secret read"]}
     if wants_approval_execution:
         return {"universe": universe, "lane": "order_ticket_approval_execution_gate", "subagents": _unique((["macro-analyst"] if wants_macro else []) + (["instrument-analyst"] if wants_instrument else []) + ["portfolio-manager", "risk-manager", "execution-operator"]), "blockedActions": ["natural-language order", "direct broker API", "secret read", "execution without approved artifacts"]}
     if wants_order_draft:
@@ -245,6 +218,20 @@ def base_research_team(universe: str, wants_technical: bool, wants_news: bool) -
 def build_subagent_starter_prompt(request: str) -> str:
     plan = classify_starter_request(request)
     artifact_language = infer_research_artifact_language(request)
+    spawn_line = ", ".join(plan["subagents"]) if plan["subagents"] else "none"
+    if not plan["subagents"]:
+        return "\n".join([
+            "Use this workspace's head-manager operational workflow.",
+            "No fixed-role subagent dispatch is required for this lane.",
+            f'Original user request (verbatim): "{request}"',
+            f"Workflow lane: {plan['lane']}",
+            f"Operational universe: {plan['universe']}",
+            "Use `$use-tradingcodex-server` for connector setup, profile inspection, health checks, and translation preview.",
+            "Do not read, print, store, or transform raw secrets.",
+            "Do not call broker APIs directly from shell, hooks, skills, or ad hoc code.",
+            "Do not create order tickets, approvals, or execution artifacts unless the user later asks for them explicitly.",
+            f"Blocked actions: {', '.join(plan['blockedActions'])}",
+        ])
     return "\n".join([
         "Use this workspace's fixed-role subagent workflow.",
         "Explicitly use Codex subagents.",
@@ -252,13 +239,15 @@ def build_subagent_starter_prompt(request: str) -> str:
         f"Research artifact language: {artifact_language}",
         f"Investment universe: {plan['universe']}",
         f"Workflow lane: {plan['lane']}",
-        f"Spawn these fixed role subagents in parallel: {', '.join(plan['subagents'])}",
+        f"Spawn these fixed role subagents in parallel: {spawn_line}",
         "This selected team is binding for the current lane; do not spawn roles outside this exact list unless the user later asks for a broader lane.",
         "For `research_only`, do not add valuation, portfolio, risk, approval, or execution roles.",
         "When calling `spawn_agent` for a fixed role, use `agent_type` and a compact `message`; do not set `fork_context` to true.",
         "Use each role's exact `.codex/agents/*.toml` name as the runtime label.",
         "Preserve the original user request and explicit constraints in every subagent brief.",
+        "Context budget: use artifact paths, context_summary, source/as-of metadata, and short deltas; do not paste full prior artifacts, source dumps, or unrelated chat history.",
         "Tell each subagent to write reader-facing research artifacts in the research artifact language unless the user explicitly requested a different artifact language.",
+        "Tell each subagent to include concise context_summary frontmatter in stored research markdown for downstream reuse.",
         "Do not let head-manager perform substantive investment analysis before subagent outputs exist.",
         "Require each role handoff to include artifact path, handoff state, source/as-of posture, confidence, missing evidence, readiness/support gaps, next eligible recipient, and blocked actions.",
         "Use handoff states: accepted, revise, blocked, waiting.",
@@ -266,6 +255,27 @@ def build_subagent_starter_prompt(request: str) -> str:
         "Wait for all selected subagents, then synthesize their outputs with artifact paths, handoff states, disagreements, missing evidence, and next allowed action.",
         f"Blocked actions before artifacts: {', '.join(plan['blockedActions'])}",
     ])
+
+
+def build_compact_dispatch_context(request: str) -> dict[str, Any]:
+    plan = classify_starter_request(request)
+    return {
+        "context_mode": "compact_workflow_gate_v1",
+        "investment_universe": plan["universe"],
+        "workflow_lane": plan["lane"],
+        "required_subagents": plan["subagents"],
+        "research_artifact_language": infer_research_artifact_language(request),
+        "selected_team_binding": True,
+        "blocked_actions": plan["blockedActions"],
+        "starter_prompt_path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
+        "dispatch_rules": [
+            "dispatch_or_reuse_selected_subagents_before_substantive_analysis",
+            "treat_selected_team_as_closed_for_current_lane",
+            "use_agent_type_with_compact_message_and_no_full_history_fork",
+            "return_waiting_for_subagent_dispatch_if_exact_role_routing_is_unavailable",
+            "do_not_repair_missing_upstream_work_inside_downstream_roles",
+        ],
+    }
 
 
 def infer_research_artifact_language(request: str) -> str:
@@ -315,74 +325,6 @@ def negates_scope(text: str, scope_pattern: str) -> bool:
     )
 
 
-ROLE_UI_PROFILES: dict[str, dict[str, Any]] = {
-    "head-manager": {
-        "label": "Head Manager",
-        "group": "main",
-        "purpose": "Routes the request, coordinates fixed subagents, waits for artifacts, and synthesizes the workflow state.",
-        "forbidden_actions": [
-            "Do not replace specialist analysis with direct analysis.",
-            "Do not call broker APIs directly.",
-            "Do not bypass policy, approval, adapter, or audit checks.",
-        ],
-    },
-    "fundamental-analyst": {
-        "label": "Fundamental Analyst",
-        "group": "research",
-        "purpose": "Reviews business quality, financial statements, official disclosures, and competitive position.",
-        "forbidden_actions": ["No order ticket.", "No approval.", "No execution.", "No secret access."],
-    },
-    "technical-analyst": {
-        "label": "Technical Analyst",
-        "group": "research",
-        "purpose": "Reviews price action, trend, volatility, liquidity, volume, and market setup.",
-        "forbidden_actions": ["No order ticket.", "No execution.", "No standalone investment conclusion."],
-    },
-    "news-analyst": {
-        "label": "News Analyst",
-        "group": "research",
-        "purpose": "Reviews news, official disclosures, event risk, catalysts, and narrative change.",
-        "forbidden_actions": ["No unverified rumor claims.", "No execution.", "No secret access."],
-    },
-    "macro-analyst": {
-        "label": "Macro Analyst",
-        "group": "research",
-        "purpose": "Reviews rates, FX, commodities, liquidity, policy, and cross-asset transmission.",
-        "forbidden_actions": ["No order ticket.", "No execution.", "No unsupported implementation claims."],
-    },
-    "instrument-analyst": {
-        "label": "Instrument Analyst",
-        "group": "research",
-        "purpose": "Reviews ETF/index, options, derivatives, crypto public markets, credit signals, and instrument mechanics.",
-        "forbidden_actions": ["No order ticket.", "No execution.", "No unsupported instrument execution claims."],
-    },
-    "valuation-analyst": {
-        "label": "Valuation Analyst",
-        "group": "analysis",
-        "purpose": "Builds valuation, scenario, multiple, DCF, reverse DCF, and expected-return views.",
-        "forbidden_actions": ["No approval.", "No execution.", "No broker API calls."],
-    },
-    "portfolio-manager": {
-        "label": "Portfolio Manager",
-        "group": "portfolio",
-        "purpose": "Reviews portfolio fit, sizing, cash, concentration, and draft order-ticket readiness.",
-        "forbidden_actions": ["No self-approval.", "No execution.", "No arbitrary policy changes."],
-    },
-    "risk-manager": {
-        "label": "Risk Manager",
-        "group": "risk",
-        "purpose": "Reviews risk, restricted list, downside, policy readiness, and approval receipt eligibility.",
-        "forbidden_actions": ["No order drafting.", "No execution.", "No arbitrary policy changes."],
-    },
-    "execution-operator": {
-        "label": "Execution Operator",
-        "group": "execution",
-        "purpose": "Submits approved order tickets through TradingCodex MCP using paper or stub adapters only.",
-        "forbidden_actions": ["No raw broker API.", "No secret read.", "No policy change.", "No live broker path in core."],
-    },
-}
-
-
 ROLE_NODE_POSITIONS: dict[str, tuple[int, int]] = {
     "head-manager": (50, 10),
     "fundamental-analyst": (12, 29),
@@ -428,13 +370,13 @@ def get_harness_topology(workspace_root: Path | str | None = None) -> dict[str, 
     nodes = []
     for role, skills in ROLE_SKILL_MAP.items():
         x, y = ROLE_NODE_POSITIONS[role]
-        profile = ROLE_UI_PROFILES[role]
+        spec = AGENT_SPECS[role]
         allowed_tools = _allowed_tools_for_role(role, tools)
         nodes.append({
             "role": role,
-            "label": profile["label"],
-            "group": profile["group"],
-            "purpose": profile["purpose"],
+            "label": spec.label,
+            "group": ROLE_DISPLAY_GROUPS.get(role, spec.group),
+            "purpose": ROLE_PURPOSES.get(role, ""),
             "skills_count": len(skills),
             "tools_count": len(allowed_tools),
             "x": x,
@@ -514,17 +456,17 @@ def get_role_detail(role: str, workspace_root: Path | str | None = None) -> dict
     if role not in ROLE_SKILL_MAP:
         role = "head-manager"
     tools = _static_mcp_tools()
-    profile = ROLE_UI_PROFILES[role]
+    spec = AGENT_SPECS[role]
     return {
         "role": role,
-        "label": profile["label"],
-        "group": profile["group"],
-        "purpose": profile["purpose"],
+        "label": spec.label,
+        "group": ROLE_DISPLAY_GROUPS.get(role, spec.group),
+        "purpose": ROLE_PURPOSES.get(role, ""),
         "skills": ROLE_SKILL_MAP[role],
-        "handoff_contract": ROLE_HANDOFF_CONTRACTS[role],
+        "handoff_contract": ROLE_HANDOFF_CONTRACTS.get(role, {}),
         "handoff_states": list(HANDOFF_STATES),
         "allowed_tools": _allowed_tools_for_role(role, tools),
-        "forbidden_actions": profile["forbidden_actions"],
+        "forbidden_actions": list(ROLE_FORBIDDEN_ACTIONS.get(role, ())),
         "latest_artifacts": _latest_role_artifacts(role, workspace_root),
         "latest_activity": _latest_role_activity(role),
         "db_canonical": True,

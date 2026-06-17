@@ -38,5 +38,8 @@ Quality floor:
 - Label the evidence pack `factual-baseline`, `screen-grade`, or `not-decision-ready` when source gaps limit downstream use.
 - Do not fabricate source dates, prices, filings, metrics, or tool output.
 - Include confidence: high, medium, or low, with one reason.
+- When writing markdown, include context summary, handoff state, confidence,
+  missing-evidence, next-recipient, blocked-action, and source-snapshot metadata
+  in frontmatter.
 
 Write evidence packs under `trading/research/`.

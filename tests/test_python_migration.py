@@ -40,6 +40,9 @@ from tradingcodex_service.application.agents import (
     AGENT_SPECS,
     EXPECTED_SKILLS,
     EXPECTED_SUBAGENTS,
+    ROLE_FORBIDDEN_ACTIONS,
+    ROLE_HANDOFF_CONTRACTS,
+    ROLE_PURPOSES,
     SKILL_SPECS,
     create_or_update_strategy_skill,
     project_agent_configuration,
@@ -300,6 +303,8 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
     for module_id, module in registry.items():
         assert module.id == module_id
         assert module.dir.name == module_id
+        assert not list(module.dir.rglob("__pycache__"))
+        assert not list(module.dir.rglob("*.pyc"))
         for dependency in module.manifest.get("requires", {}).get("modules", []):
             assert dependency in registry
 
@@ -319,6 +324,30 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
         "tcx",
     ]:
         assert (workspace / rel).exists(), rel
+    assert "future_role_change_requires" in (workspace / ".tradingcodex" / "policies" / "information-barriers.yaml").read_text(encoding="utf-8")
+    assert "context-efficiency-contract" in {component["id"] for component in list_harness_components()}
+    import yaml
+
+    workspace_config = yaml.safe_load((workspace / ".tradingcodex" / "config.yaml").read_text(encoding="utf-8"))
+    assert workspace_config["execution"]["enabled_adapters"] == ["stub-execution", "paper-trading"]
+    assert workspace_config["execution"]["enabled_execution_postures"] == ["paper_only", "broker_validation_only"]
+    access_policy_text = (workspace / ".tradingcodex" / "policies" / "access-policies.yaml").read_text(encoding="utf-8")
+    assert 'order.execution_posture in ["paper_only", "broker_validation_only"]' in access_policy_text
+    reusable_agent_surfaces = "\n".join(
+        [
+            (workspace / ".codex" / "prompts" / "base_instructions" / "head-manager.md").read_text(encoding="utf-8"),
+            (workspace / ".codex" / "agents" / "execution-operator.toml").read_text(encoding="utf-8"),
+            (workspace / ".agents" / "skills" / "use-tradingcodex-server" / "SKILL.md").read_text(encoding="utf-8"),
+            (workspace / ".agents" / "skills" / "use-tradingcodex-server" / "references" / "connector-templates.md").read_text(encoding="utf-8"),
+            (workspace / ".tradingcodex" / "subagents" / "skills" / "execution-operator" / "execute-paper-order" / "SKILL.md").read_text(encoding="utf-8"),
+            (workspace / ".tradingcodex" / "config.yaml").read_text(encoding="utf-8"),
+            access_policy_text,
+        ]
+    )
+    assert "binance-spot-testnet" not in reusable_agent_surfaces.lower()
+    assert "order.submit.testnet" not in reusable_agent_surfaces
+    assert "broker_validation_only" in reusable_agent_surfaces
+    assert "submit approved non-live orders" in reusable_agent_surfaces
     assert not (workspace / "package.json").exists()
     assert not list(workspace.rglob("__pycache__"))
     assert not list(workspace.rglob("*.pyc"))
@@ -342,6 +371,9 @@ def test_harness_component_registry_contract() -> None:
         "fixed-role-dispatch",
         "research-memory",
         "workflow-quality-gates",
+        "artifact-quality-contract",
+        "context-efficiency-contract",
+        "responsibility-boundary-contract",
         "external-data-source-gate",
         "external-mcp-proxy-gate",
         "secret-wall",
@@ -381,6 +413,11 @@ def test_file_native_agent_skill_registry_contract() -> None:
     assert "use-tradingcodex-server" in EXPECTED_SKILLS
     assert "tradingcodex-operator" in EXPECTED_SKILLS
     assert set(EXPECTED_SKILLS) == set(SKILL_SPECS)
+    for role in AGENT_SPECS:
+        assert ROLE_PURPOSES[role]
+        assert ROLE_HANDOFF_CONTRACTS[role]["receives"]
+        assert ROLE_HANDOFF_CONTRACTS[role]["returns"]
+        assert ROLE_FORBIDDEN_ACTIONS[role]
     project_scope_errors = validate_skill_assignment("fundamental-analyst", "postmortem")
     assert project_scope_errors
     assert "project-scope mainagent skill" in project_scope_errors[0]
@@ -412,8 +449,14 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     assert gate["requires_subagent_dispatch"] is True
     assert gate["workflow_lane"] == "research_only"
     assert gate["required_subagents"] == ["fundamental-analyst", "technical-analyst", "news-analyst"]
-    assert "This selected team is binding for the current lane" in gate["starter_prompt"]
-    assert "For `research_only`, do not add valuation, portfolio, risk, approval, or execution roles." in gate["starter_prompt"]
+    assert gate["context_mode"] == "compact_workflow_gate_v1"
+    assert gate["starter_prompt_path"] == ".tradingcodex/mainagent/latest-user-prompt-gate.json"
+    assert "starter_prompt" not in gate
+    assert "dispatch_or_reuse_selected_subagents_before_substantive_analysis" in gate["dispatch_rules"]
+    persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
+    assert "This selected team is binding for the current lane" in persisted_gate["starter_prompt"]
+    assert "For `research_only`, do not add valuation, portfolio, risk, approval, or execution roles." in persisted_gate["starter_prompt"]
+    assert persisted_gate["compact_additional_context"]["context_mode"] == "compact_workflow_gate_v1"
 
     negated_scope_gate = run_user_prompt_hook(
         workspace,
@@ -422,7 +465,8 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     assert negated_scope_gate
     assert negated_scope_gate["workflow_lane"] == "research_only"
     assert negated_scope_gate["required_subagents"] == ["fundamental-analyst", "technical-analyst", "news-analyst"]
-    negated_spawn_line = next(line for line in negated_scope_gate["starter_prompt"].splitlines() if line.startswith("Spawn these fixed role subagents"))
+    negated_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
+    negated_spawn_line = next(line for line in negated_persisted_gate["starter_prompt"].splitlines() if line.startswith("Spawn these fixed role subagents"))
     assert "valuation-analyst" not in negated_spawn_line
 
     explicit_gate = run_user_prompt_hook(workspace, "$orchestrate-workflow analyze Apple stock")
@@ -442,7 +486,9 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     assert broker_secret_gate["activation_source"] == "secret_warning_only"
     assert broker_secret_gate["workflow_lane"] == "secret_warning"
     assert broker_secret_gate["requires_subagent_dispatch"] is False
-    assert broker_secret_gate["starter_prompt"] == ""
+    assert "starter_prompt" not in broker_secret_gate
+    broker_secret_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
+    assert broker_secret_persisted_gate["starter_prompt"] == ""
     assert is_secret_only_request("Here is my broker API key secret, save it to .env") is True
     assert is_investment_workflow_request("Here is my broker API key secret, save it to .env") is False
     assert is_secret_only_request("Use my broker API key to execute an AAPL order") is False
@@ -494,7 +540,7 @@ def test_repo_skill_templates_keep_instruction_boundary() -> None:
         "create-order-ticket": {"portfolio-manager"},
         "approve-order": {"risk-manager"},
         "execute-paper-order": {"risk-manager"},
-        "use-tradingcodex-server": {"head-manager", "risk-manager", "execution-operator"},
+        "use-tradingcodex-server": {"head-manager"},
     }
     allowed_skill_references = {
         "tradingcodex-operator": {"use-tradingcodex-server"},
@@ -642,7 +688,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert workspace_manifest["workspace_id"].startswith("tcxw_")
     assert workspace_manifest["active_profile"]["label"] == "shared central paper profile"
     assert workspace_manifest["mcp_scope"] == "project-scoped"
-    assert workspace_manifest["execution_mode"] == "paper only"
+    assert workspace_manifest["execution_mode"] == "non-live: paper/stub/broker-validation"
     module_lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
     capability_index = json.loads((workspace / ".tradingcodex" / "generated" / "capability-index.json").read_text(encoding="utf-8"))
     component_index = json.loads((workspace / ".tradingcodex" / "generated" / "component-index.json").read_text(encoding="utf-8"))
@@ -664,6 +710,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert skill_index["skills"]["use-tradingcodex-server"]["user_visible"] is True
     assert skill_index["skills"]["tradingcodex-operator"]["installed"] is True
     assert "external-data-source-gate" in agent_index["agents"]["fundamental-analyst"]["effective_skills"]
+    assert agent_index["agents"]["portfolio-manager"]["purpose"] == ROLE_PURPOSES["portfolio-manager"]
+    assert agent_index["agents"]["portfolio-manager"]["handoff_contract"] == ROLE_HANDOFF_CONTRACTS["portfolio-manager"]
+    assert "No self-approval." in agent_index["agents"]["portfolio-manager"]["forbidden_actions"]
     assert "external-data-source-gate" in (workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8")
     assert ".tradingcodex/subagents/skills/shared/external-data-source-gate/SKILL.md" in (workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8")
     generated_text = "\n".join(
@@ -684,6 +733,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "Covers sequencing only" in orchestrate_guidance
     assert "Covers subagent mechanics" in manage_guidance
     assert "Briefs are assignment envelopes" in manage_guidance
+    assert "CONTEXT BUDGET:" in manage_guidance
+    assert "full artifacts" in manage_guidance
+    assert "context summary" in manage_guidance
     assert "Scenario selection, role team, blocked actions, dispatch mechanics, and final" not in orchestrate_guidance
     assert "RESPONSE LANGUAGE:" in manage_guidance
     assert "research artifact language" not in manage_guidance
@@ -706,6 +758,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert status["skills_installed"] == 24
     inspect = json.loads(run(["./tcx", "subagents", "inspect", "fundamental-analyst"], workspace).stdout)
     assert inspect["effective_skills"] == ["external-data-source-gate", "collect-evidence", "fundamental-analysis"]
+    execution_inspect = json.loads(run(["./tcx", "subagents", "inspect", "execution-operator"], workspace).stdout)
+    assert execution_inspect["effective_skills"] == ["execute-paper-order"]
     diff = json.loads(run(["./tcx", "subagents", "diff", "fundamental-analyst"], workspace).stdout)
     assert diff["missing_from_projected"] == []
     assert diff["extra_projected"] == []
@@ -932,7 +986,7 @@ def test_init_prepares_central_django_runtime(tmp_path: Path) -> None:
     assert "Workspace ID: tcxw_" in result.stdout
     assert "Active Profile: shared central paper profile" in result.stdout
     assert "MCP Scope: project-scoped" in result.stdout
-    assert "Execution Mode: paper only" in result.stdout
+    assert "Execution Mode: non-live: paper/stub/broker-validation" in result.stdout
     assert "./tcx doctor" in result.stdout
     assert db_path.exists()
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
@@ -1070,6 +1124,8 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "execution-operator" not in macro
     assert "Research artifact language: same language as the original user request unless explicitly overridden" in macro
     assert "Use handoff states: accepted, revise, blocked, waiting." in macro
+    assert "Context budget:" in macro
+    assert "context_summary" in macro
     assert "Do not let downstream roles redo missing upstream work" in macro
     assert "write reader-facing research artifacts in the research artifact language" in macro
     korean = build_subagent_starter_prompt("삼성전자 분석해줘. 주문은 하지 마.")
@@ -1107,6 +1163,13 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "instrument-analyst" in crypto
     assert "fundamental-analyst" not in crypto
     assert "execution-operator" not in crypto
+    connector_only_request = "Configure a reviewed test or sandbox broker connector only. No order, no approval, no execution, do not read secrets."
+    assert is_investment_workflow_request(connector_only_request) is False
+    connector_only = build_subagent_starter_prompt(connector_only_request)
+    assert "Workflow lane: head_manager_connector_operations" in connector_only
+    assert "No fixed-role subagent dispatch is required" in connector_only
+    assert "$use-tradingcodex-server" in connector_only
+    assert "execution-operator" not in connector_only
     broad = build_subagent_starter_prompt("Analyze NVDA for me. No order and no trading.")
     assert "Workflow lane: research_only" in broad
     assert "Spawn these fixed role subagents in parallel: fundamental-analyst, technical-analyst, news-analyst" in broad
@@ -1377,6 +1440,11 @@ def test_mcp_stdio_and_http_minimum_surface(tmp_path: Path) -> None:
     assert any(tool["name"] == "create_research_artifact" for tool in tools["result"]["tools"])
     for tool in tools["result"]["tools"]:
         annotations = tool["annotations"]
+        assert isinstance(annotations["title"], str)
+        assert isinstance(annotations["readOnlyHint"], bool)
+        assert isinstance(annotations["destructiveHint"], bool)
+        assert isinstance(annotations["idempotentHint"], bool)
+        assert isinstance(annotations["openWorldHint"], bool)
         assert isinstance(annotations["category"], str)
         assert isinstance(annotations["risk_level"], str)
         assert isinstance(annotations["allowed_roles"], list)
@@ -1387,8 +1455,15 @@ def test_mcp_stdio_and_http_minimum_surface(tmp_path: Path) -> None:
     assert submit_tool["annotations"]["allowed_roles"] == ["execution-operator"]
     assert submit_tool["annotations"]["audit_required"] is True
     assert submit_tool["annotations"]["experimental"] is True
+    assert submit_tool["annotations"]["readOnlyHint"] is False
+    assert submit_tool["annotations"]["destructiveHint"] is True
+    assert submit_tool["annotations"]["openWorldHint"] is True
     status_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "get_tradingcodex_status")
     assert status_tool["annotations"]["audit_required"] is True
+    assert status_tool["annotations"]["readOnlyHint"] is True
+    assert status_tool["annotations"]["destructiveHint"] is False
+    research_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "create_research_artifact")
+    assert "context_summary" in research_tool["inputSchema"]["properties"]
     tool_names = {tool["name"] for tool in tools["result"]["tools"]}
     assert {
         "list_broker_connector_templates",
@@ -1449,6 +1524,8 @@ def test_head_manager_connector_tools_stop_before_execution(tmp_path: Path) -> N
     )
     assert registered["connection"]["broker_id"] == "binance-preview"
     assert registered["connection"]["enabled_trade_scopes"] == []
+    assert registered["connection"]["status"] == "read_only"
+    assert registered["connection"]["metadata"]["credential_validation_status"] == "not_checked"
     assert "raw_order_submit" in registered["capability_profile"]["blocked_surfaces"]
 
     profile = call_mcp_tool(workspace, "get_broker_capability_profile", {"principal_id": "head-manager", "broker_id": "binance-preview"})
@@ -1474,7 +1551,7 @@ def test_head_manager_connector_tools_stop_before_execution(tmp_path: Path) -> N
     )
     assert preview["translation"]["canonical_order_v2"]["quantity_mode"] == "quote_notional"
     assert preview["status"] == "rejected"
-    assert "live_disabled" in "\n".join(preview["reasons"])
+    assert "missing environment credential" in "\n".join(preview["reasons"])
 
     with pytest.raises(PermissionError):
         call_mcp_tool(workspace, "register_broker_connector", {"principal_id": "execution-operator", "template": "alpaca_rest"})
@@ -2662,6 +2739,13 @@ def test_file_native_research_artifacts_via_mcp_api_and_cli(tmp_path: Path) -> N
         "metadata": {"role": "fundamental"},
         "source_as_of": "2026-06-01",
         "readiness_label": "research-grade",
+        "context_summary": "NVDA evidence pack smoke summary for downstream reuse.",
+        "handoff_state": "accepted",
+        "confidence": "medium",
+        "missing_evidence": ["updated filing snapshot"],
+        "next_recipient": "head-manager",
+        "blocked_actions": ["order_drafting"],
+        "source_snapshot_ids": ["unit-test-filing"],
         "created_by": "fundamental-analyst",
     })
     assert stored["db_canonical"] is False
@@ -2673,8 +2757,25 @@ def test_file_native_research_artifacts_via_mcp_api_and_cli(tmp_path: Path) -> N
     assert "Gross margin" in fetched["markdown"]
     assert fetched["source_as_of"] == "2026-06-01"
     assert fetched["role"] == "fundamental"
+    assert fetched["context_summary"] == "NVDA evidence pack smoke summary for downstream reuse."
+    assert fetched["handoff_state"] == "accepted"
+    assert fetched["confidence"] == "medium"
+    assert fetched["missing_evidence"] == ["updated filing snapshot"]
+    assert fetched["next_recipient"] == "head-manager"
+    assert fetched["blocked_actions"] == ["order_drafting"]
+    assert fetched["source_snapshot_ids"] == ["unit-test-filing"]
     assert 'source_as_of: "2026-06-01"' in (workspace / stored["export_path"]).read_text(encoding="utf-8")
     assert 'role: "fundamental"' in (workspace / stored["export_path"]).read_text(encoding="utf-8")
+    strict_quality = json.loads(run(["./tcx", "quality-check", stored["export_path"], "--strict"], workspace).stdout)
+    assert strict_quality["status"] == "pass"
+    assert strict_quality["claim_tags"]["factual"] == 1
+    assert strict_quality["context_efficiency"]["context_summary_present"] is True
+    assert strict_quality["context_efficiency"]["body_estimated_tokens"] > 0
+    weak_path = workspace / "trading" / "research" / "weak.md"
+    weak_path.write_text("# Weak\n\nUntyped claim.\n", encoding="utf-8")
+    weak_quality = json.loads(run(["./tcx", "quality-check", "trading/research/weak.md", "--strict"], workspace, expect_ok=False).stdout)
+    assert weak_quality["status"] == "fail"
+    assert "claim_tags" in weak_quality["required_fields_missing"]
     searched = call_mcp_tool(workspace, "search_research_artifacts", {"query": "gross margin"})
     assert any(item["artifact_id"] == "nvda-evidence-1" for item in searched["artifacts"])
     from apps.mcp.models import McpToolCall, McpToolDefinition

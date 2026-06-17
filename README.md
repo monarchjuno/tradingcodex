@@ -255,7 +255,8 @@ Important boundaries:
 - REST/Admin/CLI/MCP call shared Django service functions.
 - Role MCP allowlists are narrow: `head-manager` cannot submit orders,
   `risk-manager` owns approvals, and `execution-operator` owns execution calls.
-- Paper/stub execution remains experimental.
+- Paper/stub and reviewed test/sandbox validation execution remain
+  experimental and non-live.
 - Live broker adapters are not shipped in the initial core.
 - Raw broker secrets must not be stored in this repository or generated
   workspaces.

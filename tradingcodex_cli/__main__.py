@@ -109,7 +109,7 @@ Usage:
   tcx doctor [--layer <layer>]
   tcx workspace status|list
   tcx profile status|list|create|select
-  tcx subagents list|status|inspect|diff|project|state|plan|skills|prompt
+  tcx subagents list|status|inspect|diff|project|state|context-audit|plan|skills|prompt
   tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal
   tcx skills optional list|inspect|create|update|activate|archive|delete
   tcx strategies list|inspect|create|update|activate|archive|delete

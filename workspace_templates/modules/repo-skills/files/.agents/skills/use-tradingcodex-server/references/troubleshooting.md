@@ -12,6 +12,18 @@
 - Register only a stable `credential_ref` such as `env:ALPACA_PAPER`.
 - Do not inspect `.env` or print raw credential values.
 
+## Signed Credential Rejected
+
+- Read `get_broker_connection_status.health.details` and the connection
+  `metadata.credential_validation_details`.
+- If the code is `binance_auth_rejected`, report that the Spot Testnet signed
+  account check failed because the key, permissions, or IP allowlist does not
+  currently authorize the action.
+- Keep the connector read-only with no trade scopes. Do not proceed to account
+  sync, order approval, or execution until signed health returns `ok`.
+- Do not echo the key, inspect local secret files, call raw exchange APIs, or
+  widen role authority to debug the credential.
+
 ## Profile Drift
 
 - Re-run connector status and profile inspection.

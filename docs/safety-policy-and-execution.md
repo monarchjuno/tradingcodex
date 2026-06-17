@@ -26,7 +26,7 @@ This order matters:
 3. `policy`: check restricted list, limits, role, universe, adapter, and live-execution posture.
 4. `schema`: validate the structured order/action payload.
 5. `approval/idempotency`: prove approval is valid and the order has not already produced an execution result.
-6. `adapter`: call only an enabled paper/stub adapter in the initial core.
+6. `adapter`: call only an enabled non-live adapter in the initial core.
 7. `audit`: record request, decision, result, hashes, and errors.
 
 Policy and approval are revalidated immediately before adapter submission.
@@ -52,6 +52,11 @@ Approved execution is idempotent by order/profile boundary. A repeated
 `submit_approved_order` call for an order that already has an
 `ExecutionResult` in the same `portfolio_id` / `account_id` / `strategy_id`
 must be rejected before any adapter is called.
+Adapter readiness failures, such as missing credentials or signed-health
+errors before a broker order-test or submit attempt, must fail before creating
+an `ExecutionResult` so the operator can retry after fixing credentials,
+permissions, or IP allowlists. Once a broker submission reaches the adapter
+submit boundary and records an execution result, duplicate protection applies.
 
 Order ticket ids are central-DB ids. CLI/API/MCP calls use `ticket_id` or
 `order_ticket_id`; if the same id appears with a different payload, validation
@@ -68,7 +73,19 @@ DRAFT -> PRECHECKED -> READY_FOR_APPROVAL -> APPROVED -> RESERVED
 
 Terminal or review states are `REJECTED`, `CANCELED`, `EXPIRED`, `FAILED`,
 and `NEEDS_REVIEW`. Paper fills create `Fill`, `BrokerOrder`, `OrderEvent`,
-portfolio ledger, and reconciliation records.
+portfolio ledger, and reconciliation records. Broker-native test/sandbox
+validation submissions create broker-order and audit records but no fill when
+the broker endpoint validates without sending an order to a matching engine.
+For validation-only connector modes, `refresh_broker_order_status` preserves
+the local validated state when the broker endpoint intentionally does not
+create an external order. `cancel_approved_order` remains a conservative
+audited `not_supported` result for validation-only modes.
+
+Signed broker credential failures are execution blockers, not execution
+attempts. The connector remains read-only with no enabled trade scopes, exposes
+only secret-free diagnostics such as `credential_validation_details`, and
+`submit_approved_order` stops before reserving or consuming execution
+idempotency.
 
 ## Required Blocks
 
@@ -85,7 +102,7 @@ TradingCodex must block:
 - approval order-payload-hash mismatch after order mutation
 - expired approval receipts or expired approval `valid_until`
 - orders exceeding approval max notional, max price, order type, or time-in-force scope
-- paper/stub orders without a valid order ticket plus matching approval receipt
+- paper/stub/test-sandbox validation orders without a valid order ticket plus matching approval receipt
 - repeated adapter submission for an already executed approved order
 - duplicate order ticket ids with different payloads
 - global MCP exposure for approval, execution, cancellation, policy mutation, secret, or broker tools
@@ -123,16 +140,25 @@ TradingCodex order-ticket, approval, idempotency, adapter, and audit lifecycle.
 ## Broker Safety
 
 Broker connections start disabled or read-only, except the built-in paper
-adapter. Broker records store `credential_ref` only; raw credentials must not
-be stored in repo files, workspace files, API responses, MCP responses, or
-audit payloads.
+adapter. A registered connector profile with an allowed non-live execution
+posture becomes execution-ready only after signed health verifies its
+credential reference. Broker records store `credential_ref` only; raw
+credentials must not be stored in repo files, workspace files, API responses,
+MCP responses, or audit payloads. Validation connectors remain read-only with
+empty trade scopes until signed health succeeds; a failed signed-health check
+records the error and keeps validation execution disabled.
 
 Read-only broker sync can discover accounts, cash, positions, orders, and
 fills through the adapter registry. It materializes central DB state through
 `BrokerSyncRun`, `PortfolioLedgerEvent`, `PortfolioSnapshot`, and
-`ReconciliationRun`. Live broker execution remains locked unless a future
-adapter supports submit, cancel, status, fill reconciliation, approval scope,
-idempotency, and explicit local confirmation.
+`ReconciliationRun`. A reviewed test/sandbox validation connector can run its
+broker-native dry-run or order-test endpoint through the service-layer adapter
+after order ticket, approval, policy, idempotency, and audit checks. This is
+validation-only non-live execution, not live trading. Place-order or live
+execution modes remain off by default and require explicit product, policy,
+adapter, and validation changes. Live broker execution remains locked unless a
+future adapter supports submit, cancel, status, fill reconciliation, approval
+scope, idempotency, and explicit local confirmation.
 
 ## Routing Guardrail
 
@@ -161,8 +187,8 @@ Raw broker API keys, tokens, account credentials, and secrets must not appear in
 - starter prompts
 - generated research artifacts
 
-If a future adapter needs secrets, it must use an external secret mechanism and
-expose only redacted references through TradingCodex.
+Adapters that need secrets must use external environment-backed credential
+references and expose only redacted references through TradingCodex.
 
 ## Policy Inputs
 
@@ -206,13 +232,14 @@ Examples:
 
 Admin is an operations console, not a bypass.
 
-## Paper And Stub Execution
+## Non-Live Execution
 
-Paper/stub execution remains experimental in the current release line. Keep the
-code and guardrails available for local harness validation, but do not present
-it as production trading infrastructure or live broker support.
+Paper, stub, and reviewed test/sandbox validation execution remain
+experimental in the current release line. Keep the code and guardrails
+available for local harness validation, but do not present them as production
+trading infrastructure or live broker support.
 
-Paper/stub execution still requires:
+Non-live execution still requires:
 
 - structured order ticket
 - service-layer validation

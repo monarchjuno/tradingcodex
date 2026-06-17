@@ -208,6 +208,18 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
         }
         write_audit_event(root, {"type": "submit_approved_order.rejected", "payload": rejected}, principal_id=principal_id, source="mcp")
         return rejected
+    adapter_reasons = _adapter_preflight_reasons(root, order)
+    if adapter_reasons:
+        rejected = {
+            "status": "rejected",
+            "order_ticket_id": order.get("id"),
+            "adapter": order.get("broker"),
+            "reasons": adapter_reasons,
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        write_audit_event(root, {"type": "submit_approved_order.adapter_preflight_rejected", "payload": rejected}, principal_id=principal_id, source="mcp")
+        return rejected
     ensure_runtime_database(root)
     from apps.orders.services import finalize_execution_reservation, reserve_execution
 
@@ -435,6 +447,127 @@ def get_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
         "db_canonical": True,
         "workspace_context": workspace_context_payload(workspace_root),
     }
+
+
+def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    ensure_runtime_database(root)
+    from apps.orders.models import BrokerOrder
+    from tradingcodex_service.application.brokers import adapter_for_connection
+
+    principal_id = str(args.get("principal_id") or "execution-operator")
+    ticket = get_order_ticket_model(root, args) if args.get("ticket_id") or args.get("order_ticket_id") else None
+    broker_order_id = str(args.get("broker_order_id") or "")
+    broker_order = None
+    if ticket is not None and broker_order_id:
+        broker_order = ticket.broker_orders.filter(broker_order_id=broker_order_id).first()
+    elif ticket is not None:
+        broker_order = ticket.broker_orders.order_by("-submitted_at", "-id").first()
+    elif broker_order_id:
+        broker_order = BrokerOrder.objects.select_related("ticket__broker_connection", "ticket__broker_account").filter(broker_order_id=broker_order_id).first()
+        ticket = broker_order.ticket if broker_order is not None else None
+    if ticket is None:
+        raise ValueError("ticket_id or known broker_order_id is required")
+    if broker_order is None:
+        result = {
+            "status": "no_broker_order",
+            "ticket_id": ticket.ticket_id,
+            "reasons": ["ticket has no broker order recorded yet"],
+            "ticket": serialize_order_ticket(ticket, include_related=True),
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        write_audit_event(root, {"type": "broker_order_status.not_found", "payload": result}, principal_id, "service")
+        return result
+    if ticket.broker_connection is None:
+        result = {
+            "status": "local-only",
+            "ticket_id": ticket.ticket_id,
+            "broker_order_id": broker_order.broker_order_id,
+            "broker_status": broker_order.broker_status,
+            "reasons": ["ticket has no broker connection"],
+            "ticket": serialize_order_ticket(ticket, include_related=True),
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        write_audit_event(root, {"type": "broker_order_status.local_only", "payload": result}, principal_id, "service")
+        return result
+
+    adapter_status = adapter_for_connection(ticket.broker_connection, root).get_order_status(broker_order.broker_order_id)
+    broker_status = str(adapter_status.get("status") or "unknown").lower()
+    broker_order.broker_status = broker_status
+    broker_order.last_seen_at = datetime.now(timezone.utc)
+    broker_order.raw_status_payload_hash = stable_hash(adapter_status)
+    metadata = dict(broker_order.metadata or {})
+    metadata["last_status_refresh"] = adapter_status
+    broker_order.metadata = metadata
+    broker_order.save(update_fields=["broker_status", "last_seen_at", "raw_status_payload_hash", "metadata"])
+    record_order_event(ticket, "status_refreshed", principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status, "adapter_status": adapter_status})
+    state_target = {
+        "filled": "FILLED",
+        "partially_filled": "PARTIALLY_FILLED",
+        "partial": "PARTIALLY_FILLED",
+        "canceled": "CANCELED",
+        "cancelled": "CANCELED",
+        "rejected": "REJECTED",
+        "expired": "EXPIRED",
+        "failed": "FAILED",
+    }.get(broker_status)
+    if state_target and ticket.current_state != state_target:
+        try:
+            transition_order_ticket(ticket, state_target, principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status})
+        except ValueError:
+            pass
+    ticket.refresh_from_db()
+    result = {
+        "status": "refreshed",
+        "ticket_id": ticket.ticket_id,
+        "broker_order_id": broker_order.broker_order_id,
+        "broker_status": broker_status,
+        "adapter_status": adapter_status,
+        "ticket": serialize_order_ticket(ticket, include_related=True),
+        "db_canonical": True,
+        "workspace_context": workspace_context_payload(root),
+    }
+    write_audit_event(root, {"type": "broker_order_status.refreshed", "payload": result}, principal_id, "service")
+    return result
+
+
+def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    ensure_runtime_database(root)
+    from apps.orders.models import BrokerOrder
+
+    order_id = str(args.get("ticket_id") or args.get("order_ticket_id") or args.get("order_id") or args.get("broker_order_id") or "")
+    if not order_id:
+        raise ValueError("order_id, ticket_id, or broker_order_id is required")
+    try:
+        ticket = get_order_ticket_model(root, {"ticket_id": order_id})
+        return {
+            "status": ticket.current_state,
+            "ticket_id": ticket.ticket_id,
+            "ticket": serialize_order_ticket(ticket, include_related=True),
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+    except ValueError:
+        broker_order = BrokerOrder.objects.select_related("ticket__broker_connection", "ticket__broker_account").filter(broker_order_id=order_id).first()
+        if broker_order is None:
+            return {
+                "status": "unknown",
+                "order_id": order_id,
+                "reasons": ["no local order ticket or broker order matched"],
+                "db_canonical": True,
+                "workspace_context": workspace_context_payload(root),
+            }
+        return {
+            "status": broker_order.broker_status,
+            "ticket_id": broker_order.ticket.ticket_id,
+            "broker_order_id": broker_order.broker_order_id,
+            "ticket": serialize_order_ticket(broker_order.ticket, include_related=True),
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
 
 
 def get_order_ticket_model(workspace_root: Path | str, args: dict[str, Any]) -> Any:
@@ -840,7 +973,38 @@ def submit_with_adapter(root: Path, order: dict[str, Any]) -> dict[str, Any]:
         }
     if broker == "paper-trading":
         return submit_paper_order(root, order)
-    raise ValueError(f"Adapter is not enabled: {broker}")
+    ensure_runtime_database(root)
+    from apps.integrations.models import BrokerConnection
+    from tradingcodex_service.application.brokers import adapter_for_connection
+
+    connection = BrokerConnection.objects.filter(broker_id=broker).first()
+    if connection is None:
+        raise ValueError(f"Adapter is not enabled: {broker}")
+    if connection.status != "trading_enabled":
+        raise ValueError(f"broker connection is not trading_enabled: {broker}")
+    return adapter_for_connection(connection, root).submit_order(order)
+
+
+def _adapter_preflight_reasons(root: Path, order: dict[str, Any]) -> list[str]:
+    broker = order.get("broker")
+    if broker in {"stub-execution", "paper-trading"}:
+        return []
+    ensure_runtime_database(root)
+    from apps.integrations.models import BrokerConnection
+    from tradingcodex_service.application.brokers import adapter_for_connection, _reconcile_validation_execution_status
+
+    connection = BrokerConnection.objects.filter(broker_id=broker).first()
+    if connection is None:
+        return [f"Adapter is not enabled: {broker}"]
+    if connection.status != "trading_enabled":
+        return [f"broker connection is not trading_enabled: {broker}"]
+    health = adapter_for_connection(connection, root).health_check()
+    _reconcile_validation_execution_status(connection, health)
+    if health.status != "ok":
+        message = f": {health.message}" if health.message else ""
+        return [f"broker health is {health.status}{message}"]
+    return []
+
 
 def resolve_order_ticket_payload(root: Path, args: dict[str, Any]) -> dict[str, Any]:
     if isinstance(args.get("order"), dict):

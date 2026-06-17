@@ -1,3 +1,12 @@
+ownership_contract:
+  note: "Role/file access belongs here and in role TOML/MCP allowlists, not in generic skill bodies."
+  future_role_change_requires:
+    - role_boundaries entry
+    - .codex/agents role TOML
+    - ROLE_SKILL_MAP or optional skill projection
+    - MCP allowlist review
+    - doctor and generated-workspace tests
+
 walls:
   research_wall:
     can_write:

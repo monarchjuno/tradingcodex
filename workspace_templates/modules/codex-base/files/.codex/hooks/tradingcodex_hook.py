@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import hashlib
 import json
 import os
 import sys
@@ -23,6 +24,7 @@ os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", "{{PROJECT_DIR}}")
 
 from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS
 from tradingcodex_service.application.harness import (
+    build_compact_dispatch_context,
     build_subagent_starter_prompt,
     classify_starter_request,
     is_investment_workflow_request,
@@ -31,6 +33,8 @@ from tradingcodex_service.application.harness import (
 )
 
 ROOT = Path("{{PROJECT_DIR}}")
+MAX_SESSION_EVENTS = 12
+MAX_COMPLETED_RECORDS = 12
 
 
 def main() -> None:
@@ -90,6 +94,13 @@ def user_prompt_submit(payload: dict) -> None:
     activation_source = "explicit_subagent" if explicit else "auto_routed_investment_request"
     if not investment_request:
         activation_source = "secret_warning_only"
+    compact_context = build_compact_dispatch_context(prompt) if investment_request else {
+        "context_mode": "compact_workflow_gate_v1",
+        "workflow_lane": plan["lane"],
+        "required_subagents": [],
+        "starter_prompt_path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
+        "blocked_actions": ["secret storage", "secret echo", "raw credential handling"],
+    }
     gate = {
         "marker": "tradingcodex-workflow-gate",
         "workflow_run_id": f"workflow-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
@@ -101,13 +112,49 @@ def user_prompt_submit(payload: dict) -> None:
         "workflow_lane": plan["lane"],
         "required_subagents": plan["subagents"],
         "starter_prompt": build_subagent_starter_prompt(prompt) if investment_request else "",
+        "compact_additional_context": compact_context,
         "secret_warning": secret_warning,
     }
     write_json(ROOT / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json", gate)
+    append_jsonl(ROOT / ".tradingcodex" / "mainagent" / "prompt-gate-history.jsonl", {
+        "ts": now(),
+        "workflow_run_id": gate["workflow_run_id"],
+        "workflow_lane": gate["workflow_lane"],
+        "required_subagents": gate["required_subagents"],
+        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
+        "activation_source": gate["activation_source"],
+        "secret_warning": gate["secret_warning"],
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "prompt_bytes": len(prompt.encode("utf-8")),
+        "compact_context": compact_context,
+        "starter_prompt_estimated_chars": len(gate["starter_prompt"]),
+    })
+    append_hook_audit({
+        "event": "user-prompt-submit",
+        "workflow_run_id": gate["workflow_run_id"],
+        "workflow_lane": gate["workflow_lane"],
+        "required_subagents": gate["required_subagents"],
+        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
+        "activation_source": gate["activation_source"],
+        "secret_warning": gate["secret_warning"],
+        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "prompt_bytes": len(prompt.encode("utf-8")),
+    })
+    additional_context = {
+        "marker": gate["marker"],
+        "workflow_run_id": gate["workflow_run_id"],
+        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
+        "auto_dispatch_allowed": gate["auto_dispatch_allowed"],
+        "confirmation_required": gate["confirmation_required"],
+        "explicit_subagent_request": gate["explicit_subagent_request"],
+        "activation_source": gate["activation_source"],
+        "secret_warning": gate["secret_warning"],
+        **compact_context,
+    }
     output = {
         "hookSpecificOutput": {
             "hookEventName": "UserPromptSubmit",
-            "additionalContext": json.dumps(gate, ensure_ascii=False),
+            "additionalContext": json.dumps(additional_context, ensure_ascii=False),
         }
     }
     print(json.dumps(output, ensure_ascii=False))
@@ -115,9 +162,18 @@ def user_prompt_submit(payload: dict) -> None:
 
 def subagent_session_state(event: str, payload: dict) -> None:
     state_path = ROOT / ".tradingcodex" / "mainagent" / "subagent-session-state.json"
-    state = read_json(state_path, {"updated_at": None, "active": {}, "completed": [], "events": []})
+    state = read_json(state_path, {
+        "updated_at": None,
+        "active": {},
+        "completed": [],
+        "events": [],
+        "event_count_total": 0,
+        "completed_count_total": 0,
+    })
     gate = read_json(ROOT / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json", {})
     role = payload.get("agent_type") or payload.get("subagent_type") or payload.get("subagent") or payload.get("agent") or payload.get("task_name", "").split(" ")[0]
+    event_count_total = int(state.get("event_count_total") or len(state.get("events", [])))
+    completed_count_total = int(state.get("completed_count_total") or len(state.get("completed", [])))
     record = {
         "event": event,
         "role": role,
@@ -130,7 +186,16 @@ def subagent_session_state(event: str, payload: dict) -> None:
     else:
         state.setdefault("active", {}).pop(role, None)
         state.setdefault("completed", []).append(record)
+        state["completed"] = state["completed"][-MAX_COMPLETED_RECORDS:]
+        state["completed_count_total"] = completed_count_total + 1
     state.setdefault("events", []).append(record)
+    state["events"] = state["events"][-MAX_SESSION_EVENTS:]
+    state["event_count_total"] = event_count_total + 1
+    state["retention"] = {
+        "events": f"last {MAX_SESSION_EVENTS}",
+        "completed": f"last {MAX_COMPLETED_RECORDS}",
+        "full_event_log": "trading/audit/subagent-session-events.jsonl",
+    }
     state["updated_at"] = now()
     write_json(state_path, state)
     append_jsonl(ROOT / "trading" / "audit" / "subagent-session-events.jsonl", record)

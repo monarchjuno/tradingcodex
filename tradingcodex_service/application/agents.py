@@ -282,6 +282,112 @@ AGENT_SPECS: dict[str, AgentSpec] = {
     ),
 }
 
+ROLE_PURPOSES: dict[str, str] = {
+    "head-manager": "Routes the request, coordinates fixed subagents, waits for artifacts, and synthesizes the workflow state.",
+    "fundamental-analyst": "Reviews business quality, financial statements, official disclosures, and competitive position.",
+    "technical-analyst": "Reviews price action, trend, volatility, liquidity, volume, and market setup.",
+    "news-analyst": "Reviews news, official disclosures, event risk, catalysts, and narrative change.",
+    "macro-analyst": "Reviews rates, FX, commodities, liquidity, policy, and cross-asset transmission.",
+    "instrument-analyst": "Reviews ETF/index, options, derivatives, crypto public markets, credit signals, and instrument mechanics.",
+    "valuation-analyst": "Builds valuation, scenario, multiple, DCF, reverse DCF, and expected-return views.",
+    "portfolio-manager": "Reviews portfolio fit, sizing, cash, concentration, and draft order-ticket readiness.",
+    "risk-manager": "Reviews risk, restricted list, downside, policy readiness, and approval receipt eligibility.",
+    "execution-operator": "Submits approved non-live order tickets through TradingCodex MCP using paper, stub, or reviewed test/sandbox validation adapters only.",
+}
+
+ROLE_DISPLAY_GROUPS: dict[str, str] = {
+    "head-manager": "main",
+    "fundamental-analyst": "research",
+    "technical-analyst": "research",
+    "news-analyst": "research",
+    "macro-analyst": "research",
+    "instrument-analyst": "research",
+    "valuation-analyst": "analysis",
+    "portfolio-manager": "portfolio",
+    "risk-manager": "risk",
+    "execution-operator": "execution",
+}
+
+ROLE_FORBIDDEN_ACTIONS: dict[str, tuple[str, ...]] = {
+    "head-manager": (
+        "Do not replace specialist analysis with direct analysis.",
+        "Do not call broker APIs directly.",
+        "Do not bypass policy, approval, adapter, or audit checks.",
+    ),
+    "fundamental-analyst": ("No order ticket.", "No approval.", "No execution.", "No secret access."),
+    "technical-analyst": ("No order ticket.", "No execution.", "No standalone investment conclusion."),
+    "news-analyst": ("No unverified rumor claims.", "No execution.", "No secret access."),
+    "macro-analyst": ("No order ticket.", "No execution.", "No unsupported implementation claims."),
+    "instrument-analyst": ("No order ticket.", "No execution.", "No unsupported instrument execution claims."),
+    "valuation-analyst": ("No approval.", "No execution.", "No broker API calls."),
+    "portfolio-manager": ("No self-approval.", "No execution.", "No arbitrary policy changes."),
+    "risk-manager": ("No order drafting.", "No execution.", "No arbitrary policy changes."),
+    "execution-operator": ("No raw broker API.", "No secret read.", "No policy change.", "No live broker path in core."),
+}
+
+ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
+    "head-manager": {
+        "receives": "User request, accepted role artifacts, workflow/service state.",
+        "returns": "Lane, selected team, compact briefs, accepted artifacts, conflicts, and next allowed action.",
+        "quality_gate": "Marks handoffs accepted, revise, blocked, or waiting before moving the workflow forward.",
+        "overlap_rule": "Coordinates and synthesizes; does not replace specialist role analysis.",
+    },
+    "fundamental-analyst": {
+        "receives": "Assigned evidence and source references.",
+        "returns": "Fundamental report with source/as-of posture, confidence, and missing evidence.",
+        "quality_gate": "Business, financial, filing, and economics claims stay evidence-backed and role-owned.",
+        "overlap_rule": "Does not create valuation, order-ticket, approval, or execution posture.",
+    },
+    "technical-analyst": {
+        "receives": "Assigned market-data references and user-stated technical constraints.",
+        "returns": "Technical report with setup observations, data posture, confidence, and invalidation gaps.",
+        "quality_gate": "Price, volume, volatility, and liquidity claims show data timing and uncertainty.",
+        "overlap_rule": "Does not turn a setup into a standalone investment conclusion or order ticket.",
+    },
+    "news-analyst": {
+        "receives": "Assigned filings, disclosures, news, and source references.",
+        "returns": "Dated event report with source-quality caveats and unresolved claims.",
+        "quality_gate": "Events separate verified facts, source claims, narrative inference, and rumor risk.",
+        "overlap_rule": "Does not approve execution or assert unverified rumors as facts.",
+    },
+    "macro-analyst": {
+        "receives": "Assigned macro sources and relevant accepted role artifacts.",
+        "returns": "Macro transmission report with source/as-of posture and regime uncertainty.",
+        "quality_gate": "Transmission channels distinguish factual data, assumptions, and inference.",
+        "overlap_rule": "Does not imply futures, FX, commodity, rates, options, or live execution support.",
+    },
+    "instrument-analyst": {
+        "receives": "Assigned instrument sources, contract/methodology references, and support questions.",
+        "returns": "Instrument support report with mechanics, liquidity/support gaps, and blocked execution implications.",
+        "quality_gate": "Instrument facts, market-structure claims, and support gaps are source-backed.",
+        "overlap_rule": "Does not infer execution eligibility from data availability or router coverage.",
+    },
+    "valuation-analyst": {
+        "receives": "Accepted research artifacts and user-stated method constraints.",
+        "returns": "Valuation report with assumptions, sensitivity, confidence, and readiness for portfolio/risk review.",
+        "quality_gate": "Valuation assumptions and current-price implications are explicit and source-aware.",
+        "overlap_rule": "Does not approve, execute, or replace missing research evidence.",
+    },
+    "portfolio-manager": {
+        "receives": "Accepted research/valuation artifacts and portfolio state.",
+        "returns": "Portfolio fit report and, only when allowed, draft order-ticket readiness or draft OrderTicket.",
+        "quality_gate": "Sizing, cash, concentration, liquidity, and opportunity-cost assumptions are visible.",
+        "overlap_rule": "Does not self-approve, execute, or repair missing research/valuation work.",
+    },
+    "risk-manager": {
+        "receives": "Accepted portfolio/order artifacts, policy state, restricted-list state, and audit evidence.",
+        "returns": "Risk/policy report, approval readiness state, approval receipt when allowed, or blocked reasons.",
+        "quality_gate": "Downside, limits, restricted-list, and approval-readiness checks are explicit.",
+        "overlap_rule": "Does not draft orders, submit execution, or loosen policy in the same workflow.",
+    },
+    "execution-operator": {
+        "receives": "Approved order ticket, matching approval receipt, and policy allow state.",
+        "returns": "Execution result, MCP response, audit reference, or rejected/blocked reasons.",
+        "quality_gate": "Execution uses only approved paper/stub MCP paths and records audit evidence.",
+        "overlap_rule": "Does not approve, change policy, read secrets, or call raw broker APIs.",
+    },
+}
+
 
 SKILL_SPECS: dict[str, SkillSpec] = {
     "orchestrate-workflow": SkillSpec("orchestrate-workflow", "Orchestrate Workflow", ("head-manager",), user_visible=True),
@@ -923,6 +1029,11 @@ def build_projection_state(root: Path | str) -> dict[str, Any]:
                 "effective_skills": agent["effective_skills"],
                 "codex_file_hash": agent["codex_file_hash"],
                 "additional_instructions_hash": agent["additional_instructions"]["source_file_hash"],
+                "purpose": agent["purpose"],
+                "handoff_contract": agent["handoff_contract"],
+                "forbidden_actions": agent["forbidden_actions"],
+                "permission_profile": agent["permission_profile"],
+                "mcp_allowlist": agent["mcp_allowlist"],
             }
             for role, agent in agents.items()
         },
@@ -1290,6 +1401,10 @@ def _agent_spec_payload(spec: AgentSpec) -> dict[str, Any]:
         "role": spec.role,
         "label": spec.label,
         "group": spec.group,
+        "display_group": ROLE_DISPLAY_GROUPS.get(spec.role, spec.group),
+        "purpose": ROLE_PURPOSES.get(spec.role, ""),
+        "handoff_contract": ROLE_HANDOFF_CONTRACTS.get(spec.role, {}),
+        "forbidden_actions": list(ROLE_FORBIDDEN_ACTIONS.get(spec.role, ())),
         "permission_profile": spec.permission_profile,
         "builtin_skills": list(spec.builtin_skills),
         "forbidden_skill_tags": list(spec.forbidden_skill_tags),

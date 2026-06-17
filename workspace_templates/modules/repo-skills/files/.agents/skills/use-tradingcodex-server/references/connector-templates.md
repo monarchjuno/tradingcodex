@@ -36,11 +36,30 @@ Example: KIS-style.
 
 ## Crypto Exchanges
 
-Examples: Binance, Upbit.
+Examples: exchange-specific spot templates.
 
 - Assets: spot, margin, futures/perps depending on venue.
 - Strengths: symbol filters, private streams, order-test or order-chance endpoints.
 - Watch: quantity vs quote notional, min notional, lot/price filters, STP/SMP, locked balances, withdrawal/travel-rule APIs.
+- Test/sandbox crypto connectors may expose broker-native validation endpoints.
+  Treat those as validation-only inputs behind TradingCodex MCP; do not expose
+  raw exchange tools or paste API keys into files/prompts.
+
+### Binance Spot Testnet
+
+- Template: `binance_spot`.
+- Environment: `testnet`.
+- Credential reference: use an `env:` reference such as `env:BINANCE_TESTNET`;
+  keep raw API keys in the local process environment only.
+- Posture: `broker_validation_only`. Registration starts read-only with no
+  trade scopes until signed health proves the credential.
+- Validation endpoint: `/api/v3/order/test`. It validates parameters,
+  permissions, timestamp, and signature but does not create an exchange order.
+- Default submit mode: `order_test`; actual testnet order placement requires a
+  separate local environment gate and remains outside connector setup work.
+- If signed health reports `binance_auth_rejected`, stop at blocked status and
+  report credential/permission/IP allowlist remediation. Do not retry by calling
+  raw Binance APIs or reading secrets.
 
 ## FX/CFD And Terminal Bridges
 

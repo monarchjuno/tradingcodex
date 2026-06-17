@@ -35,5 +35,6 @@ allow:
     conditions:
       - approval_receipt.valid == true
       - order.broker in ["stub-execution", "paper-trading"]
+      - order.execution_posture in ["paper_only", "broker_validation_only"]
       - order.estimated_notional_krw <= 100000000
       - order.symbol.restricted == false

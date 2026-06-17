@@ -80,6 +80,29 @@ The control plane can request actions. The service plane decides and records
 durable outcomes. The workspace system plane makes those outcomes readable and
 repeatable for Codex and humans.
 
+Control-plane maintainability depends on clear ownership:
+
+- `.codex/prompts/base_instructions/*` owns durable coordinator identity,
+  routing fail-closed rules, and cross-cutting safety/context-efficiency rules.
+- `.codex/agents/*.toml` owns fixed-role identity, model/tool defaults,
+  permission profile, file walls, and assigned skill projection.
+- `.agents/skills/*` and `.tradingcodex/subagents/skills/*` own reusable
+  procedures and output shape, not durable role eligibility or MCP authority.
+- `.codex/hooks/*` owns prompt classification, hook audit, and guidance context;
+  hooks do not enforce execution-sensitive outcomes.
+- `.tradingcodex/policies/*` owns principal, role, information-barrier, and
+  restricted-list policy projections.
+- `tradingcodex_service/application/*` owns durable service behavior used by
+  CLI, API, MCP, web, Admin, and generated hooks.
+- `tradingcodex_service/application/agents.py` is the service registry for
+  role labels, display groups, handoff contracts, forbidden action summaries,
+  built-in skills, permission profiles, and MCP allowlists.
+
+Adding a future subagent should therefore add or update the role registry,
+role TOML, role-skill projection, information-barrier policy, MCP allowlist,
+docs, and tests together instead of burying role-specific behavior inside
+generic skills.
+
 ## Central DB Ownership
 
 The default runtime DB is the central local SQLite ledger at:
@@ -152,6 +175,7 @@ Order and execution use cases:
 - `submit_approved_order`
 - `cancel_approved_order`
 - `refresh_broker_order_status`
+- `get_order_status`
 - `simulate_policy`
 - `record_execution_result`
 
@@ -177,6 +201,12 @@ Read/write research and audit use cases:
 - `export_research_artifact_md`
 - `record_source_snapshot`
 - `record_audit_event`
+
+Research artifact writes preserve workspace markdown as the source of truth and
+carry handoff metadata for source/as-of posture, claim type discipline,
+confidence, missing evidence, next-recipient routing, blocked actions, and
+source snapshots. `quality-check --strict` validates the markdown handoff
+contract without moving research memory into the central DB.
 
 Read-only/status use cases:
 

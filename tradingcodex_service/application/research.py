@@ -48,6 +48,8 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
     content_hash = hashlib.sha256(markdown_body.encode("utf-8")).hexdigest()
     artifact_id = str(args.get("artifact_id") or source_frontmatter.get("artifact_id") or f"{sanitize_id(artifact_type)}-{sanitize_id(symbol or title)}-{content_hash[:12]}")
     metadata = args.get("metadata") if isinstance(args.get("metadata"), dict) else {}
+    if args.get("role") and not metadata.get("role"):
+        metadata = {**metadata, "role": args.get("role")}
     created_by = str(args.get("created_by") or args.get("principal_id") or source_frontmatter.get("created_by") or "system")
     existing = find_workspace_research_artifact(root, artifact_id)
     if existing and existing.get("content_hash") != content_hash and not args.get("_append_version"):
@@ -67,6 +69,13 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
         "title": title,
         "source_as_of": args.get("source_as_of") or source_frontmatter.get("source_as_of") or "",
         "readiness_label": args.get("readiness_label") or source_frontmatter.get("readiness_label") or "",
+        "context_summary": _frontmatter_value(args, metadata, source_frontmatter, "context_summary", ""),
+        "handoff_state": _frontmatter_value(args, metadata, source_frontmatter, "handoff_state", ""),
+        "confidence": _frontmatter_value(args, metadata, source_frontmatter, "confidence", ""),
+        "missing_evidence": _frontmatter_list(args, metadata, source_frontmatter, "missing_evidence"),
+        "next_recipient": _frontmatter_value(args, metadata, source_frontmatter, "next_recipient", ""),
+        "blocked_actions": _frontmatter_list(args, metadata, source_frontmatter, "blocked_actions"),
+        "source_snapshot_ids": _frontmatter_list(args, metadata, source_frontmatter, "source_snapshot_ids"),
         "version": version,
         "content_hash": content_hash,
         "workspace_native": True,
@@ -125,7 +134,7 @@ def get_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -> d
 def list_research_artifacts(workspace_root: Path | str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     args = args or {}
     artifacts = list_workspace_research_artifacts(Path(workspace_root), include_markdown=args.get("include_markdown") is True)
-    for field in ["artifact_type", "universe", "workflow_type", "symbol", "readiness_label", "created_by"]:
+    for field in ["artifact_type", "universe", "workflow_type", "symbol", "readiness_label", "handoff_state", "created_by"]:
         value = args.get(field)
         if value:
             artifacts = [artifact for artifact in artifacts if str(artifact.get(field) or "").lower() == str(value).lower()]
@@ -275,6 +284,13 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "workspace_context": workspace_context_payload(root),
         "source_as_of": str(frontmatter.get("source_as_of") or ""),
         "readiness_label": str(frontmatter.get("readiness_label") or frontmatter.get("handoff_state") or "workspace-file"),
+        "context_summary": str(frontmatter.get("context_summary") or ""),
+        "handoff_state": str(frontmatter.get("handoff_state") or ""),
+        "confidence": str(frontmatter.get("confidence") or ""),
+        "missing_evidence": _coerce_list(frontmatter.get("missing_evidence")),
+        "next_recipient": str(frontmatter.get("next_recipient") or ""),
+        "blocked_actions": _coerce_list(frontmatter.get("blocked_actions")),
+        "source_snapshot_ids": _coerce_list(frontmatter.get("source_snapshot_ids")),
         "created_by": str(frontmatter.get("created_by") or "workspace"),
         "content_hash": str(frontmatter.get("content_hash") or content_hash),
         "version": _int_value(frontmatter.get("version"), default=1),
@@ -306,6 +322,38 @@ def _read_research_markdown_body(path: Path) -> str:
 def _render_research_markdown(frontmatter: dict[str, Any], markdown: str) -> str:
     header = "---\n" + "\n".join(f"{key}: {json.dumps(value, ensure_ascii=False)}" for key, value in frontmatter.items()) + "\n---\n\n"
     return header + markdown.rstrip() + "\n"
+
+
+def _frontmatter_value(args: dict[str, Any], metadata: dict[str, Any], source_frontmatter: dict[str, Any], field: str, default: Any) -> Any:
+    for container in (args, metadata, source_frontmatter):
+        value = container.get(field)
+        if value not in (None, ""):
+            return value
+    return default
+
+
+def _frontmatter_list(args: dict[str, Any], metadata: dict[str, Any], source_frontmatter: dict[str, Any], field: str) -> list[Any]:
+    return _coerce_list(_frontmatter_value(args, metadata, source_frontmatter, field, []))
+
+
+def _coerce_list(value: Any) -> list[Any]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except Exception:
+            return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+        if isinstance(parsed, list):
+            return parsed
+        if parsed in (None, ""):
+            return []
+        return [parsed]
+    return [value]
 
 
 def _int_value(value: Any, *, default: int) -> int:

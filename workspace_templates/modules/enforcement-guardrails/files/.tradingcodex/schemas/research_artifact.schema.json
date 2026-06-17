@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TradingCodex Research Artifact Frontmatter",
+  "type": "object",
+  "required": [
+    "artifact_id",
+    "artifact_type",
+    "role",
+    "title",
+    "source_as_of",
+    "readiness_label",
+    "context_summary",
+    "handoff_state",
+    "confidence",
+    "missing_evidence",
+    "next_recipient",
+    "blocked_actions",
+    "source_snapshot_ids"
+  ],
+  "properties": {
+    "artifact_id": { "type": "string" },
+    "artifact_type": { "type": "string" },
+    "universe": { "type": "string" },
+    "workflow_type": { "type": "string" },
+    "role": { "type": "string" },
+    "symbol": { "type": "string" },
+    "title": { "type": "string" },
+    "source_as_of": { "type": "string" },
+    "readiness_label": { "type": "string" },
+    "context_summary": { "type": "string", "maxLength": 1200 },
+    "handoff_state": { "type": "string", "enum": ["accepted", "revise", "blocked", "waiting"] },
+    "confidence": { "type": ["string", "number"] },
+    "missing_evidence": { "type": "array" },
+    "next_recipient": { "type": "string" },
+    "blocked_actions": { "type": "array" },
+    "source_snapshot_ids": { "type": "array", "items": { "type": "string" } },
+    "version": { "type": "integer" },
+    "content_hash": { "type": "string" },
+    "workspace_native": { "type": "boolean" },
+    "created_by": { "type": "string" }
+  },
+  "additionalProperties": true
+}

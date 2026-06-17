@@ -91,6 +91,21 @@ def _option_value(args: list[str], name: str) -> str | None:
         return None
 
 
+def _list_option(args: list[str], name: str) -> list[Any] | None:
+    value = _option_value(args, name)
+    if value in (None, ""):
+        return None
+    try:
+        parsed = json.loads(value)
+    except Exception:
+        return [item.strip() for item in value.replace(";", ",").split(",") if item.strip()]
+    if isinstance(parsed, list):
+        return parsed
+    if parsed in (None, ""):
+        return []
+    return [parsed]
+
+
 def _parse_agent_list(args: list[str]) -> list[str]:
     return [item.strip() for arg in args for item in arg.split(",") if item.strip()]
 

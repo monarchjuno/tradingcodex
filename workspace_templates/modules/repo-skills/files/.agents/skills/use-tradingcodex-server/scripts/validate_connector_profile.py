@@ -71,7 +71,7 @@ def validate(profile: Any) -> list[str]:
     else:
         errors.append("enabled_mcp_tools must be a list when present")
     posture = str(profile.get("execution_posture") or "")
-    if posture not in {"read_only", "paper_only", "live_disabled", "service_adapter_required", "unsupported"}:
+    if posture not in {"read_only", "paper_only", "broker_validation_only", "testnet_order_test", "live_disabled", "service_adapter_required", "unsupported"}:
         errors.append("execution_posture is invalid")
     return errors
 

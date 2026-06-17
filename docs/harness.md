@@ -21,6 +21,8 @@ TradingCodex Harness
   -> Components
        -> investment-request-routing
        -> fixed-role-dispatch
+       -> context-efficiency-contract
+       -> responsibility-boundary-contract
        -> approval-gate
        -> execution-boundary
        -> research-memory
@@ -51,6 +53,8 @@ TradingCodex Harness
 | Provenance | Record which workspace and role produced or requested work without making workspaces separate ledgers. |
 | Profiles | Separate paper portfolio/account/strategy state from workspace identity. |
 | Components | Provide the developer-facing maintenance map for implementation surfaces, dependencies, capabilities, tags, and validation. |
+| Context efficiency | Keep subagent briefs compact, pass artifact paths and context summaries before full artifacts, audit long runs with `subagents context-audit` over prompt-gate history, and avoid repeated role manuals or source dumps. |
+| Responsibility boundaries | Keep role identity, MCP allowlists, permission profiles, hooks, policies, skills, schemas, and service behavior in their own authoritative surfaces. |
 
 ## Components As Maintenance Units
 
@@ -67,6 +71,12 @@ The canonical component registry lives in
 Generated workspace modules remain deployment projections. They are not the
 source of conceptual ownership. Generated workspaces receive
 `.tradingcodex/generated/component-index.json` from the Python registry.
+
+When a change crosses surfaces, update the component rather than duplicating
+logic. For example, role identity belongs in role TOML and service registries;
+skill bodies describe procedures; hooks classify and write guidance context;
+information-barrier policy files describe file/tool walls; services enforce
+durable behavior.
 
 ## Guardrails Under Harness
 
@@ -92,6 +102,12 @@ It is a tag and review lens applied to components.
 - Skill proposals let the harness evolve without hidden prompt drift.
 - Postmortems turn rejected orders, failed checks, and thesis changes into process improvements.
 - Validation tests convert recurring mistakes into regression coverage.
+- Context efficiency keeps those quality gates usable by passing summaries and
+  artifact references first, then opening full evidence only when needed.
+- Context-budget audits make long multi-subagent runs inspectable by checking
+  compact hook context, prompt-gate history, starter prompt size, bounded
+  subagent session state, and `context_summary` coverage across research
+  artifacts. Full subagent event history stays in append-only audit JSONL.
 
 Improvement does not authorize execution. A high-quality report still needs the
 guardrail path before any draft, approval, or adapter submission.

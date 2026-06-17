@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from tradingcodex_service.application.artifact_quality import evaluate_artifact_quality
 from tradingcodex_service.application.audit import write_audit_event
 from tradingcodex_service.application.common import sanitize_id, write_json
 from tradingcodex_service.application.orders import request_order_approval, run_order_checks
@@ -46,19 +46,14 @@ def approve(root: Path, argv: list[str]) -> None:
 
 def quality_check(root: Path, argv: list[str]) -> None:
     if not argv or argv[0] in {"--help", "-h", "help"}:
+        print("Usage: tcx quality-check <artifact-path> [--strict]")
         print("Canonical research paths: trading/research/*.evidence.md; trading/reports/<role>/*")
         return
-    path = root / argv[0]
-    text = path.read_text(encoding="utf-8")
-    rel = path.relative_to(root).as_posix()
-    result = {"path": rel, "exists": True, "bytes": len(text.encode()), "non_empty": bool(text), "artifact_type": classify_artifact_path(rel), "json_valid": None, "required_fields_missing": [], "warnings": []}
-    if rel.endswith(".json"):
-        try:
-            data = json.loads(text)
-            result["json_valid"] = True
-        except Exception:
-            result["json_valid"] = False
-    result["status"] = "fail" if not result["non_empty"] or result["json_valid"] is False or result["required_fields_missing"] else "pass"
+    strict = "--strict" in argv
+    path_arg = next((arg for arg in argv if not arg.startswith("--")), "")
+    result = evaluate_artifact_quality(root, path_arg, strict=strict)
+    if "artifact_type" not in result:
+        result["artifact_type"] = classify_artifact_path(path_arg)
     print_json(result)
     if result["status"] != "pass":
         sys.exit(1)

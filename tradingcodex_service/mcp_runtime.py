@@ -59,6 +59,11 @@ class McpToolSpec:
             "description": self.description,
             "inputSchema": self.input_schema,
             "annotations": {
+                "title": self.name.replace("_", " ").title(),
+                "readOnlyHint": self.risk_level == "read",
+                "destructiveHint": self._destructive_hint(),
+                "idempotentHint": self._idempotent_hint(),
+                "openWorldHint": self._open_world_hint(),
                 "category": self.category,
                 "risk_level": self.risk_level,
                 "requires_approval": self.requires_approval,
@@ -67,6 +72,21 @@ class McpToolSpec:
                 "experimental": self.experimental,
             },
         }
+
+    def _destructive_hint(self) -> bool:
+        return self.risk_level == "execution" or self.name.startswith("cancel_")
+
+    def _idempotent_hint(self) -> bool:
+        return self.risk_level == "read" or self.name in {
+            "simulate_policy",
+            "validate_approval_receipt",
+            "run_order_checks",
+            "get_broker_instrument_constraints",
+            "preview_order_translation",
+        }
+
+    def _open_world_hint(self) -> bool:
+        return self.category in {"brokers", "execution", "external_mcp"}
 
 
 def json_object_schema(
@@ -117,6 +137,16 @@ APPROVAL_RECEIPT_SCHEMA = json_object_schema(
     ["id", "order_ticket_id", "approved_by", "valid", "expires_at"],
     additional_properties=False,
 )
+RESEARCH_ARTIFACT_METADATA_FIELDS = {
+    "role": {"type": "string"},
+    "context_summary": {"type": "string"},
+    "handoff_state": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
+    "confidence": {"type": "string"},
+    "missing_evidence": {"type": "array"},
+    "next_recipient": {"type": "string"},
+    "blocked_actions": {"type": "array"},
+    "source_snapshot_ids": {"type": "array", "items": {"type": "string"}},
+}
 ORDER_TICKET_SCHEMA = json_object_schema(
     {
         "ticket_id": {"type": "string", "minLength": 1, "maxLength": 160},
@@ -221,12 +251,12 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="get_order_status",
-        description="Experimental: return local-only order status information for the initial harness.",
+        description="Experimental: return local order and broker-order status information without submitting or canceling orders.",
         category="execution",
         risk_level="read",
         allowed_roles=frozenset(EXECUTION_ROLES | {"head-manager"}),
         handler_name="get_order_status",
-        input_schema=object_schema({"order_id": {"type": "string"}}),
+        input_schema=object_schema({"order_id": {"type": "string"}, "ticket_id": {"type": "string"}, "broker_order_id": {"type": "string"}}, additional_properties=False),
         experimental=True,
     ),
     McpToolSpec(
@@ -554,6 +584,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             "markdown_path": {"type": "string"},
             "source_as_of": {"type": "string"},
             "readiness_label": {"type": "string"},
+            **RESEARCH_ARTIFACT_METADATA_FIELDS,
         }),
         capability_required="research_artifact.write",
     ),
@@ -564,7 +595,14 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="write",
         allowed_roles=frozenset(RESEARCH_ROLES),
         handler_name="append_research_artifact_version",
-        input_schema=object_schema({"artifact_id": {"type": "string"}, "markdown": {"type": "string"}}, ["artifact_id"]),
+        input_schema=object_schema({
+            "artifact_id": {"type": "string"},
+            "markdown": {"type": "string"},
+            "markdown_path": {"type": "string"},
+            "source_as_of": {"type": "string"},
+            "readiness_label": {"type": "string"},
+            **RESEARCH_ARTIFACT_METADATA_FIELDS,
+        }, ["artifact_id"]),
         capability_required="research_artifact.write",
     ),
     McpToolSpec(
@@ -825,7 +863,7 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
     if name == "review_external_mcp_tool":
         return mcp_services.review_external_mcp_tool(workspace_root, {**args, "principal_id": principal_id})
     if name == "refresh_broker_order_status":
-        return orders.get_order_ticket(workspace_root, args)
+        return orders.refresh_broker_order_status(workspace_root, {**args, "principal_id": principal_id})
     if name == "list_workflow_artifacts":
         return research.list_workflow_artifacts(workspace_root)
     if name == "create_research_artifact":
@@ -849,7 +887,7 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         audit.write_audit_event(workspace_root, {"type": "cancel_approved_order", "payload": result}, principal_id, "mcp")
         return result
     if name == "get_order_status":
-        return {"order_id": args.get("order_id"), "status": "local-only", "note": "Initial harness has no live broker order status."}
+        return orders.get_order_status(workspace_root, args)
     raise ValueError(f"Unknown TradingCodex tool: {name}")
 
 

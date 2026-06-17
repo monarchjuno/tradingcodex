@@ -35,6 +35,7 @@ Universal quality floor:
 - State confidence and what would change the conclusion.
 - Preserve material disagreements between subagents.
 - Mark each role handoff as `accepted`, `revise`, `blocked`, or `waiting` before downstream use.
+- For stored research markdown, require context summary, handoff state, confidence, missing-evidence, next-recipient, blocked-action, and source-snapshot metadata.
 - End with one next allowed action and blocked actions.
 - Do not turn unrequested metrics or frameworks into mandatory checks.
 - For investment workflows, include the universe, workflow type, source/as-of posture, hero artifact versus support files, support gaps, and conservative readiness label.
@@ -122,6 +123,9 @@ Artifact review gate:
 - Metrics, costs, factor loadings, validation results, source dates, prices, filings, and artifact contents are not fabricated.
 - Confidence and missing evidence are explicit.
 - Weak data quality, thin samples, narrow regime coverage, high sensitivity, or weak validation setup lowers confidence.
+- Handoff metadata is visible for stored markdown: context summary, handoff
+  state, confidence, missing evidence, next recipient, blocked actions, and
+  source snapshot IDs.
 - The artifact can be used by the next role without hidden context.
 - The handoff state is visible: `accepted`, `revise`, `blocked`, or `waiting`.
 - Missing upstream work returns to the owning role; downstream roles do not fill it by broadening their own scope.

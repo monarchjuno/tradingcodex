@@ -1,14 +1,22 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import os
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 from django.utils import timezone as django_timezone
 
 from tradingcodex_service.application.audit import write_audit_event_if_available
-from tradingcodex_service.application.common import stable_hash
+from tradingcodex_service.application.common import now_iso, stable_hash
 from tradingcodex_service.application.portfolio import (
     DEFAULT_ACCOUNT_ID,
     DEFAULT_PAPER_CASH_KRW,
@@ -24,6 +32,7 @@ from tradingcodex_service.application.runtime import ensure_runtime_database, wo
 class BrokerHealth:
     status: str
     message: str = ""
+    details: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -211,10 +220,10 @@ BROKER_CONNECTOR_TEMPLATES: dict[str, dict[str, Any]] = {
         "account_model": {"multi_account": False, "balances": "free_locked", "positions": False},
         "instrument_model": {"identity": "symbol", "examples": ["BTCUSDT", "ETHBTC"], "filters": ["PRICE_FILTER", "LOT_SIZE", "MIN_NOTIONAL", "NOTIONAL"]},
         "order_model": {"sides": ["buy", "sell"], "order_types": ["market", "limit", "stop_loss", "take_profit"], "time_in_force": ["GTC", "IOC", "FOK"], "quantity_modes": ["quantity", "quote_notional"], "features": ["stp", "iceberg", "oco"]},
-        "validation_model": {"preview": True, "dry_run": True, "endpoint": "/api/v3/order/test"},
+        "validation_model": {"preview": True, "dry_run": True, "endpoint": "/api/v3/order/test", "rest_base_url": "https://testnet.binance.vision"},
         "event_model": {"polling": True, "streaming": True, "user_data_stream": True},
         "rate_limits": [{"scope": "ip_or_account", "policy": "request weight and order count"}],
-        "execution_posture": "live_disabled",
+        "execution_posture": "broker_validation_only",
     },
     "binance_usdm_futures": {
         "display_name": "Binance USD-M Futures",
@@ -363,6 +372,10 @@ class BrokerAdapter:
 
     def get_order_status(self, broker_order_id: str) -> dict[str, Any]:
         return {"status": "local-only", "broker_order_id": broker_order_id}
+
+
+BROKER_VALIDATION_EXECUTION_POSTURES = {"broker_validation_only", "testnet_order_test"}
+NON_LIVE_EXECUTION_POSTURES = {"paper_only", *BROKER_VALIDATION_EXECUTION_POSTURES}
 
 
 class PaperBrokerAdapter(BrokerAdapter):
@@ -522,6 +535,257 @@ class NativeApiBrokerAdapter(BrokerAdapter):
         }
 
 
+class BinanceSpotTestnetAdapter(NativeApiBrokerAdapter):
+    adapter_type = "binance_spot_testnet"
+
+    def health_check(self) -> BrokerHealth:
+        try:
+            self._public_request("GET", "/api/v3/time", {})
+            credentials = self._credentials()
+            if not credentials["available"]:
+                return BrokerHealth("warning", credentials["reason"], _binance_health_details(credentials["reason"]))
+            self._signed_request("GET", "/api/v3/account", {"omitZeroBalances": "true"})
+            return BrokerHealth(
+                "ok",
+                "Binance Spot Testnet REST API reachable; signed account check succeeded",
+                {
+                    "code": "binance_signed_account_ok",
+                    "endpoint": "/api/v3/account",
+                    "testnet": True,
+                    "execution_posture": "broker_validation_only",
+                },
+            )
+        except Exception as exc:
+            message = _safe_error(exc)
+            return BrokerHealth("error", message, _binance_health_details(message))
+
+    def discover_accounts(self) -> list[BrokerAccountDTO]:
+        account = self._signed_request("GET", "/api/v3/account", {"omitZeroBalances": "true"})
+        balances = account.get("balances") if isinstance(account.get("balances"), list) else []
+        nonzero = [
+            item
+            for item in balances
+            if _float(item.get("free")) or _float(item.get("locked"))
+        ]
+        return [
+            BrokerAccountDTO(
+                broker_account_id="spot-testnet",
+                account_label="Binance Spot Testnet",
+                account_type=str(account.get("accountType") or "spot_testnet").lower(),
+                base_currency="USDT",
+                masked_identifier=_mask_ref(self.connection.credential_ref),
+                trading_enabled=self.connection.status == "trading_enabled",
+                metadata={
+                    "permissions": account.get("permissions") or [],
+                    "balances_returned": len(balances),
+                    "nonzero_balances": len(nonzero),
+                    "can_trade": bool(account.get("canTrade", False)),
+                    "source": "binance_spot_testnet",
+                },
+            )
+        ]
+
+    def get_cash(self, account_id: str) -> list[CashDTO]:
+        account = self._signed_request("GET", "/api/v3/account", {"omitZeroBalances": "true"})
+        balances = account.get("balances") if isinstance(account.get("balances"), list) else []
+        cash = []
+        for item in balances:
+            asset = str(item.get("asset") or "").upper()
+            free = _float(item.get("free")) or 0
+            locked = _float(item.get("locked")) or 0
+            amount = free + locked
+            if asset and amount:
+                cash.append(CashDTO(currency=asset, amount=amount))
+        return cash
+
+    def get_positions(self, account_id: str) -> list[PositionDTO]:
+        return []
+
+    def get_instrument_constraints(self, symbol: str, args: dict[str, Any] | None = None) -> BrokerInstrumentConstraints:
+        normalized = _binance_symbol(symbol)
+        exchange_info = self._public_request("GET", "/api/v3/exchangeInfo", {"symbol": normalized})
+        symbols = exchange_info.get("symbols") if isinstance(exchange_info.get("symbols"), list) else []
+        data = symbols[0] if symbols else {}
+        filters = {item.get("filterType"): item for item in data.get("filters", []) if isinstance(item, dict)}
+        lot = filters.get("LOT_SIZE") or {}
+        price = filters.get("PRICE_FILTER") or {}
+        min_notional = filters.get("MIN_NOTIONAL") or filters.get("NOTIONAL") or {}
+        return BrokerInstrumentConstraints(
+            symbol=normalized,
+            asset_class="crypto",
+            product_type="spot",
+            quantity_modes=("quantity", "quote_notional"),
+            order_types=tuple(data.get("orderTypes") or ("LIMIT", "MARKET")),
+            time_in_force=tuple(data.get("timeInForce") or ("GTC", "IOC", "FOK")),
+            price_increment=str(price.get("tickSize") or ""),
+            quantity_increment=str(lot.get("stepSize") or ""),
+            min_quantity=str(lot.get("minQty") or ""),
+            min_notional=str(min_notional.get("minNotional") or min_notional.get("notional") or ""),
+            currency=str(data.get("quoteAsset") or "USDT"),
+            notes=("Binance Spot Testnet /api endpoints only", "SIGNED order validation uses /api/v3/order/test"),
+        )
+
+    def validate_order_translation(self, order: dict[str, Any]) -> OrderValidationResult:
+        reasons = _translation_reasons(self.describe_capabilities(), order)
+        payload = self._broker_order_payload(order)
+        if not reasons:
+            try:
+                self._signed_request("POST", "/api/v3/order/test", payload)
+            except Exception as exc:
+                reasons.append(f"binance order-test rejected: {_safe_error(exc)}")
+        return OrderValidationResult(
+            not reasons,
+            reasons,
+            {
+                "adapter": self.adapter_type,
+                "broker_id": self.connection.broker_id,
+                "testnet": True,
+                "order_test_endpoint": "/api/v3/order/test",
+                "canonical_order_v2": canonical_order_v2_from_order(order, self.describe_capabilities()),
+                "broker_payload_preview": _redact_binance_payload(payload),
+                "execution_posture": self.describe_capabilities().get("execution_posture") or "broker_validation_only",
+            },
+        )
+
+    def preview_order(self, order: dict[str, Any]) -> dict[str, Any]:
+        validation = self.validate_order_translation(order)
+        return {
+            "status": "validated_on_testnet" if validation.valid else "rejected",
+            "valid": validation.valid,
+            "reasons": validation.reasons,
+            "translation": validation.payload or {},
+        }
+
+    def submit_order(self, order: dict[str, Any]) -> dict[str, Any]:
+        payload = self._broker_order_payload(order)
+        mode = os.environ.get("TRADINGCODEX_BINANCE_TESTNET_SUBMIT_MODE", "order_test").strip().lower()
+        if mode not in {"order_test", "place_order"}:
+            raise ValueError("TRADINGCODEX_BINANCE_TESTNET_SUBMIT_MODE must be order_test or place_order")
+        if mode == "place_order" and os.environ.get("TRADINGCODEX_ENABLE_BINANCE_TESTNET_PLACE_ORDER", "").lower() not in {"1", "true", "yes", "on"}:
+            raise ValueError("Binance testnet place_order requires TRADINGCODEX_ENABLE_BINANCE_TESTNET_PLACE_ORDER=1")
+        if mode == "place_order":
+            response = self._signed_request("POST", "/api/v3/order", payload)
+            broker_order_id = str(response.get("orderId") or payload.get("newClientOrderId"))
+            self._remember_order_submit(payload, "place_order")
+            return {
+                "adapter": self.adapter_type,
+                "broker_order_id": broker_order_id,
+                "client_order_id": payload.get("newClientOrderId"),
+                "status": str(response.get("status") or "submitted").lower(),
+                "submitted_at": now_iso(),
+                "testnet": True,
+                "mode": "place_order",
+                "raw_status": _redact_binance_response(response),
+            }
+        self._signed_request("POST", "/api/v3/order/test", payload)
+        self._remember_order_submit(payload, "order_test")
+        return {
+            "adapter": self.adapter_type,
+            "broker_order_id": str(payload.get("newClientOrderId")),
+            "client_order_id": payload.get("newClientOrderId"),
+            "status": "validated",
+            "submitted_at": now_iso(),
+            "testnet": True,
+            "mode": "order_test",
+            "raw_status": {"endpoint": "/api/v3/order/test", "response": "empty_success"},
+        }
+
+    def get_order_status(self, broker_order_id: str) -> dict[str, Any]:
+        if not broker_order_id:
+            return {"status": "unknown", "reason": "broker_order_id required"}
+        metadata = self.connection.metadata if isinstance(self.connection.metadata, dict) else {}
+        order_test_ids = metadata.get("order_test_client_order_ids") if isinstance(metadata.get("order_test_client_order_ids"), list) else []
+        if broker_order_id in order_test_ids:
+            return {
+                "status": "validated",
+                "reason": "Binance /api/v3/order/test validates parameters and signature but does not create an exchange order.",
+                "testnet": True,
+                "mode": "order_test",
+            }
+        symbols = metadata.get("client_order_symbols") if isinstance(metadata.get("client_order_symbols"), dict) else {}
+        symbol = str(symbols.get(broker_order_id) or metadata.get("last_order_symbol") or "")
+        if not symbol:
+            return {"status": "unknown", "reason": "symbol is required for Binance order status"}
+        response = self._signed_request("GET", "/api/v3/order", {"symbol": symbol, "origClientOrderId": broker_order_id})
+        return {"status": str(response.get("status") or "unknown").lower(), "raw_status": _redact_binance_response(response)}
+
+    def _broker_order_payload(self, order: dict[str, Any]) -> dict[str, Any]:
+        symbol = _binance_symbol(str(order.get("venue_symbol") or order.get("market") or order.get("symbol") or ""))
+        if not symbol:
+            raise ValueError("Binance order requires symbol")
+        order_type = _binance_order_type(str(order.get("order_type") or "limit"))
+        side = str(order.get("side") or "").upper()
+        if side not in {"BUY", "SELL"}:
+            raise ValueError("Binance order side must be buy or sell")
+        payload: dict[str, Any] = {
+            "symbol": symbol,
+            "side": side,
+            "type": order_type,
+            "newClientOrderId": _binance_client_order_id(order),
+        }
+        quote_notional = order.get("quote_notional")
+        if quote_notional not in (None, "") and str(order.get("quantity_mode") or "") == "quote_notional":
+            payload["quoteOrderQty"] = _decimal_string(quote_notional)
+        else:
+            payload["quantity"] = _decimal_string(order.get("quantity"))
+        if order_type in {"LIMIT", "STOP_LOSS_LIMIT", "TAKE_PROFIT_LIMIT", "LIMIT_MAKER"}:
+            price = order.get("limit_price")
+            if price in (None, ""):
+                raise ValueError("Binance limit order requires limit_price")
+            payload["price"] = _decimal_string(price)
+            if order_type != "LIMIT_MAKER":
+                payload["timeInForce"] = _binance_time_in_force(str(order.get("time_in_force") or "GTC"))
+        if order_type in {"STOP_LOSS", "STOP_LOSS_LIMIT", "TAKE_PROFIT", "TAKE_PROFIT_LIMIT"} and order.get("stop_price") not in (None, ""):
+            payload["stopPrice"] = _decimal_string(order.get("stop_price"))
+        return payload
+
+    def _credentials(self) -> dict[str, Any]:
+        return _resolve_hmac_credentials(self.connection.credential_ref)
+
+    def _signed_request(self, method: str, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        credentials = self._credentials()
+        if not credentials["available"]:
+            raise ValueError(credentials["reason"])
+        payload = {key: value for key, value in params.items() if value not in (None, "")}
+        payload.setdefault("recvWindow", "5000")
+        payload["timestamp"] = int(time.time() * 1000)
+        query = urlencode(payload)
+        signature = hmac.new(str(credentials["secret_key"]).encode("utf-8"), query.encode("utf-8"), hashlib.sha256).hexdigest()
+        return self._http_request(method, path, f"{query}&signature={signature}", {"X-MBX-APIKEY": str(credentials["api_key"])})
+
+    def _public_request(self, method: str, path: str, params: dict[str, Any]) -> dict[str, Any]:
+        query = urlencode({key: value for key, value in params.items() if value not in (None, "")})
+        return self._http_request(method, path, query, {})
+
+    def _http_request(self, method: str, path: str, query: str, headers: dict[str, str]) -> dict[str, Any]:
+        base_url = str(self.describe_capabilities().get("validation_model", {}).get("rest_base_url") or "https://testnet.binance.vision")
+        return _binance_http_request(method, base_url, path, query, headers)
+
+    def _remember_order_submit(self, payload: dict[str, Any], mode: str) -> None:
+        client_order_id = str(payload.get("newClientOrderId") or "")
+        symbol = str(payload.get("symbol") or "")
+        if not client_order_id:
+            return
+        metadata = dict(self.connection.metadata or {})
+        symbols = dict(metadata.get("client_order_symbols") or {})
+        if symbol:
+            symbols[client_order_id] = symbol
+            metadata["client_order_symbols"] = symbols
+            metadata["last_order_symbol"] = symbol
+        metadata["last_client_order_id"] = client_order_id
+        metadata["last_submit_mode"] = mode
+        if mode == "order_test":
+            order_test_ids = list(metadata.get("order_test_client_order_ids") or [])
+            order_test_ids = [item for item in order_test_ids if item != client_order_id]
+            order_test_ids.append(client_order_id)
+            metadata["order_test_client_order_ids"] = order_test_ids[-50:]
+        self.connection.metadata = metadata
+        try:
+            self.connection.save(update_fields=["metadata", "updated_at"])
+        except Exception:
+            self.connection.save(update_fields=["metadata"])
+
+
 class ManualBrokerAdapter(BrokerAdapter):
     adapter_type = "manual"
 
@@ -543,6 +807,10 @@ def adapter_for_connection(connection: Any, workspace_root: Path | str | None = 
         return PaperBrokerAdapter(workspace_root)
     if connection.transport == "mcp":
         return ExternalMcpBrokerAdapter(connection)
+    metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
+    profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
+    if connection.transport == "api" and profile.get("template_id") == "binance_spot" and profile.get("environment") == "testnet":
+        return BinanceSpotTestnetAdapter(connection)
     if connection.transport == "api" or connection.adapter_type == "native_api":
         return NativeApiBrokerAdapter(connection)
     if connection.transport == "manual" or connection.adapter_type == "manual":
@@ -590,11 +858,16 @@ def register_broker_connector(workspace_root: Path | str | None, args: dict[str,
     status = "read_only" if not read_blockers else "disabled"
     if profile.get("execution_posture") in {"live_disabled", "service_adapter_required"} and status == "read_only":
         status = "trading_locked"
+    if profile.get("execution_posture") in BROKER_VALIDATION_EXECUTION_POSTURES and status == "read_only":
+        profile["enabled_mcp_tools"] = ["preview_order_translation", "run_order_checks", "submit_approved_order"]
+    enabled_trade_scopes = sorted(set(_trade_scopes_from_profile(profile))) if status == "trading_enabled" else []
     metadata = {
         "connector_template": template_id,
         "capability_profile": profile,
         "blockers": blockers,
         "execution_enabled": False,
+        "validation_execution_enabled": bool(enabled_trade_scopes) and status == "trading_enabled",
+        "credential_validation_status": "not_checked" if profile.get("execution_posture") in BROKER_VALIDATION_EXECUTION_POSTURES else "not_required",
     }
     connection, created = BrokerConnection.objects.update_or_create(
         broker_id=broker_id,
@@ -606,7 +879,7 @@ def register_broker_connector(workspace_root: Path | str | None, args: dict[str,
             "credential_ref": credential_ref,
             "capabilities": sorted(set(_capabilities_from_profile(profile))),
             "enabled_read_scopes": sorted(set(_read_scopes_from_profile(profile))),
-            "enabled_trade_scopes": [],
+            "enabled_trade_scopes": enabled_trade_scopes,
             "trust_level": "template",
             "last_health_status": "not_checked",
             "drift_status": "review_required" if blockers else "none",
@@ -779,8 +1052,7 @@ def get_broker_connection_status(workspace_root: Path | str | None, args: dict[s
     connection = _get_connection(workspace_root, args.get("broker_id") or args.get("broker_connection_id") or "paper-trading")
     adapter = adapter_for_connection(connection, workspace_root)
     health = adapter.health_check()
-    connection.last_health_status = health.status
-    connection.save(update_fields=["last_health_status", "updated_at"])
+    _reconcile_validation_execution_status(connection, health)
     return {
         "connection": _serialize_connection(connection),
         "health": asdict(health),
@@ -801,13 +1073,13 @@ def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] 
 
     started_at = django_timezone.now()
     sync_run = BrokerSyncRun.objects.create(broker_connection=connection, status="started", started_at=started_at)
-    accounts = adapter.discover_accounts()
     requested_account = str(args.get("broker_account_id") or args.get("account_id") or "")
     synced_accounts: list[dict[str, Any]] = []
     warnings: list[str] = []
     cash_count = 0
     positions_count = 0
     try:
+        accounts = adapter.discover_accounts()
         for account_dto in accounts:
             if requested_account and account_dto.broker_account_id != requested_account:
                 continue
@@ -854,14 +1126,16 @@ def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] 
         sync_run.payload_hash = stable_hash({"accounts": synced_accounts, "warnings": warnings})
         sync_run.finished_at = django_timezone.now()
         sync_run.save()
+        _reconcile_validation_execution_status(connection, adapter.health_check())
         connection.last_sync_at = sync_run.finished_at
-        connection.last_health_status = adapter.health_check().status
-        connection.save(update_fields=["last_sync_at", "last_health_status", "updated_at"])
+        connection.save(update_fields=["last_sync_at", "updated_at"])
     except Exception as exc:
         sync_run.status = "error"
         sync_run.error = str(exc)
         sync_run.finished_at = django_timezone.now()
         sync_run.save(update_fields=["status", "error", "finished_at"])
+        error_message = _safe_error(exc)
+        _reconcile_validation_execution_status(connection, BrokerHealth("error", error_message, _health_details_for_connection(connection, error_message)))
         _audit("broker_sync.failed", {"broker_id": connection.broker_id, "error": str(exc)}, str(args.get("principal_id") or "service"), workspace_root)
         raise
     result = {
@@ -1135,11 +1409,19 @@ def _capabilities_from_profile(profile: dict[str, Any]) -> list[str]:
         capabilities.append("order.status.read")
     if profile.get("validation_model", {}).get("preview"):
         capabilities.append("order.preview")
+    if profile.get("execution_posture") in BROKER_VALIDATION_EXECUTION_POSTURES:
+        capabilities.append("order.submit.validation")
     return capabilities
 
 
 def _read_scopes_from_profile(profile: dict[str, Any]) -> list[str]:
     return [capability for capability in _capabilities_from_profile(profile) if capability.endswith(".read") or capability == "order.preview"]
+
+
+def _trade_scopes_from_profile(profile: dict[str, Any]) -> list[str]:
+    if profile.get("execution_posture") in BROKER_VALIDATION_EXECUTION_POSTURES:
+        return ["order.submit.validation"]
+    return []
 
 
 def _constraints_from_profile(profile: dict[str, Any], symbol: str, args: dict[str, Any]) -> BrokerInstrumentConstraints:
@@ -1150,7 +1432,7 @@ def _constraints_from_profile(profile: dict[str, Any], symbol: str, args: dict[s
     notes = []
     if instrument_model.get("filters"):
         notes.append("broker/exchange filters required: " + ", ".join(instrument_model["filters"]))
-    if profile.get("execution_posture") != "paper_only":
+    if profile.get("execution_posture") not in NON_LIVE_EXECUTION_POSTURES:
         notes.append("live execution disabled until adapter review")
     return BrokerInstrumentConstraints(
         symbol=symbol,
@@ -1183,7 +1465,7 @@ def _translation_reasons(profile: dict[str, Any], order: dict[str, Any]) -> list
         reasons.append(f"time_in_force not supported by connector: {tif}")
     if supported_quantity_modes and quantity_mode not in supported_quantity_modes:
         reasons.append(f"quantity_mode not supported by connector: {quantity_mode}")
-    if profile.get("execution_posture") not in {"paper_only"}:
+    if profile.get("execution_posture") not in NON_LIVE_EXECUTION_POSTURES:
         reasons.append(f"execution posture blocks live adapter calls: {profile.get('execution_posture') or 'unknown'}")
     return reasons
 
@@ -1277,6 +1559,48 @@ def _get_connection(workspace_root: Path | str | None, broker_id: str) -> Any:
     return connection
 
 
+def _reconcile_validation_execution_status(connection: Any, health: BrokerHealth) -> None:
+    metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
+    profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
+    posture = profile.get("execution_posture")
+    update_fields = {"last_health_status", "updated_at"}
+    connection.last_health_status = health.status
+    if posture in BROKER_VALIDATION_EXECUTION_POSTURES:
+        metadata = dict(metadata)
+        profile = dict(profile)
+        metadata["capability_profile"] = profile
+        metadata["credential_validation_status"] = health.status
+        if health.message:
+            metadata["credential_validation_message"] = health.message[:500]
+        if health.details:
+            metadata["credential_validation_details"] = health.details
+        if health.status == "ok":
+            connection.status = "trading_enabled"
+            connection.enabled_trade_scopes = sorted(set(_trade_scopes_from_profile(profile)))
+            metadata["validation_execution_enabled"] = bool(connection.enabled_trade_scopes)
+        else:
+            if connection.status == "trading_enabled":
+                connection.status = "read_only"
+            connection.enabled_trade_scopes = []
+            metadata["validation_execution_enabled"] = False
+        connection.metadata = metadata
+        update_fields.update({"status", "enabled_trade_scopes", "metadata"})
+    connection.save(update_fields=sorted(update_fields))
+
+
+def _health_details_for_connection(connection: Any, message: str) -> dict[str, Any]:
+    metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
+    profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
+    if profile.get("template_id") == "binance_spot" and profile.get("environment") == "testnet":
+        return _binance_health_details(message)
+    return {
+        "code": "broker_health_error",
+        "category": "credential_or_connectivity",
+        "execution_posture": profile.get("execution_posture") or "unknown",
+        "retry_after_external_fix": True,
+    }
+
+
 def _serialize_connection(connection: Any) -> dict[str, Any]:
     metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
     profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
@@ -1353,6 +1677,191 @@ def _float(value: Any) -> float | None:
         return float(value)
     except Exception:
         return None
+
+
+def _resolve_hmac_credentials(credential_ref: str) -> dict[str, Any]:
+    ref = str(credential_ref or "").strip()
+    if not ref:
+        return {"available": False, "reason": "credential_ref is required"}
+    if not ref.startswith("env:"):
+        return {"available": False, "reason": "only env: credential_ref is supported for Binance testnet"}
+    name = ref.split(":", 1)[1].strip()
+    if not name:
+        return {"available": False, "reason": "env credential_ref name is empty"}
+    if "," in name:
+        key_name, secret_name = [part.strip() for part in name.split(",", 1)]
+    elif ":" in name:
+        key_name, secret_name = [part.strip() for part in name.split(":", 1)]
+    else:
+        key_name = f"{name}_API_KEY"
+        secret_name = f"{name}_SECRET_KEY"
+    api_key = os.environ.get(key_name, "")
+    secret_key = os.environ.get(secret_name, "")
+    missing = [label for label, value in ((key_name, api_key), (secret_name, secret_key)) if not value]
+    if missing:
+        return {"available": False, "reason": "missing environment credential(s): " + ", ".join(missing)}
+    return {"available": True, "api_key": api_key, "secret_key": secret_key, "key_ref": key_name, "secret_ref": secret_name}
+
+
+def _binance_http_request(method: str, base_url: str, path: str, query: str, headers: dict[str, str]) -> dict[str, Any]:
+    url = base_url.rstrip("/") + path
+    if method.upper() == "GET" and query:
+        url = f"{url}?{query}"
+        body = None
+    elif method.upper() in {"POST", "DELETE"}:
+        body = query.encode("utf-8")
+    else:
+        body = None
+    request_headers = {"User-Agent": "TradingCodex/0.2", **headers}
+    if body is not None:
+        request_headers["Content-Type"] = "application/x-www-form-urlencoded"
+    request = Request(url, data=body, method=method.upper(), headers=request_headers)
+    try:
+        with urlopen(request, timeout=10) as response:
+            text = response.read().decode("utf-8")
+    except HTTPError as exc:
+        detail = exc.read().decode("utf-8", errors="replace")
+        raise ValueError(_safe_binance_error(detail) or f"Binance HTTP {exc.code}") from exc
+    except URLError as exc:
+        raise ValueError(f"Binance request failed: {_safe_error(exc)}") from exc
+    if not text.strip():
+        return {}
+    try:
+        parsed = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Binance returned non-JSON response") from exc
+    if not isinstance(parsed, dict):
+        return {"data": parsed}
+    return parsed
+
+
+def _safe_binance_error(detail: str) -> str:
+    try:
+        data = json.loads(detail)
+    except Exception:
+        return detail[:300]
+    if not isinstance(data, dict):
+        return str(data)[:300]
+    code = data.get("code", "")
+    message = str(data.get("msg") or data.get("message") or "")
+    return f"Binance error {code}: {message}".strip()
+
+
+def _binance_health_details(message: str) -> dict[str, Any]:
+    text = str(message or "")
+    if "-2015" in text or "Invalid API-key, IP, or permissions" in text:
+        return {
+            "code": "binance_auth_rejected",
+            "category": "credential_or_permission",
+            "testnet": True,
+            "signed_endpoint": "/api/v3/account",
+            "execution_posture": "broker_validation_only",
+            "retry_after_external_fix": True,
+            "remediation": [
+                "Use a Spot Testnet API key from testnet.binance.vision, not a live Binance key.",
+                "Enable signed account/trading permissions required for USER_DATA and order-test endpoints.",
+                "If the key has IP restrictions, allow the current machine or remove the restriction for this test key.",
+                "Rotate the key if it was pasted into any non-local channel.",
+            ],
+        }
+    if "missing environment credential" in text:
+        return {
+            "code": "credential_env_missing",
+            "category": "configuration",
+            "testnet": True,
+            "execution_posture": "broker_validation_only",
+            "retry_after_external_fix": True,
+            "remediation": [
+                "Set BINANCE_TESTNET_API_KEY and BINANCE_TESTNET_SECRET_KEY in the process environment.",
+                "Keep credentials out of files and pass them only through the local shell environment.",
+            ],
+        }
+    if "credential_ref" in text:
+        return {
+            "code": "credential_ref_invalid",
+            "category": "configuration",
+            "testnet": True,
+            "execution_posture": "broker_validation_only",
+            "retry_after_external_fix": True,
+            "remediation": ["Use an env: credential_ref such as env:BINANCE_TESTNET."],
+        }
+    return {
+        "code": "binance_health_error",
+        "category": "transport_or_broker",
+        "testnet": True,
+        "execution_posture": "broker_validation_only",
+        "retry_after_external_fix": True,
+    }
+
+
+def _safe_error(exc: Exception) -> str:
+    text = str(exc)
+    for marker in ("signature=", "X-MBX-APIKEY"):
+        if marker in text:
+            text = text.split(marker, 1)[0] + marker + "[redacted]"
+    return text[:300]
+
+
+def _binance_symbol(symbol: str) -> str:
+    return str(symbol or "").upper().replace("/", "").replace("-", "").replace("_", "")
+
+
+def _binance_order_type(order_type: str) -> str:
+    normalized = str(order_type or "limit").strip().lower()
+    mapping = {
+        "limit": "LIMIT",
+        "market": "MARKET",
+        "stop_loss": "STOP_LOSS",
+        "stop": "STOP_LOSS_LIMIT",
+        "stop_limit": "STOP_LOSS_LIMIT",
+        "take_profit": "TAKE_PROFIT",
+        "take_profit_limit": "TAKE_PROFIT_LIMIT",
+        "limit_maker": "LIMIT_MAKER",
+    }
+    return mapping.get(normalized, normalized.upper())
+
+
+def _binance_time_in_force(value: str) -> str:
+    normalized = str(value or "GTC").strip().upper()
+    if normalized == "DAY":
+        return "GTC"
+    return normalized
+
+
+def _binance_client_order_id(order: dict[str, Any]) -> str:
+    existing = str(order.get("client_order_id") or "")
+    if existing:
+        return existing[:36]
+    source = str(order.get("order_ticket_id") or order.get("id") or stable_hash(order))
+    return ("tcx" + stable_hash({"source": source})[:29])[:36]
+
+
+def _decimal_string(value: Any) -> str:
+    text = str(value)
+    if text in {"", "None"}:
+        raise ValueError("decimal value is required")
+    return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _redact_binance_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in payload.items() if key not in {"signature"}}
+
+
+def _redact_binance_response(response: dict[str, Any]) -> dict[str, Any]:
+    redacted = dict(response)
+    for key in ("apiKey", "signature"):
+        if key in redacted:
+            redacted[key] = "[redacted]"
+    return redacted
+
+
+def _mask_ref(value: str) -> str:
+    text = str(value or "")
+    if not text:
+        return ""
+    if len(text) <= 8:
+        return text[:2] + "***"
+    return text[:6] + "***" + text[-2:]
 
 
 def _audit(action: str, payload: dict[str, Any], actor: str, workspace_root: Path | str | None) -> None:

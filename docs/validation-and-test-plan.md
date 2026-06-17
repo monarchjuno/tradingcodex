@@ -145,6 +145,76 @@ Verify at least:
   MCP Gate lifecycle operations
 - schema drift disables reviewed tools until re-reviewed
 
+## Broker Validation Connector Smoke
+
+Run after connector, broker adapter, order-ticket, approval, execution, or
+policy changes. Use a disposable workspace and a disposable runtime DB; keep
+credentials in process environment only. Binance Spot Testnet is one concrete
+smoke vector for the generic `broker_validation_only` posture; do not treat it
+as the only supported broker or asset design:
+
+```bash
+rm -rf /tmp/tradingcodex-binance-smoke /tmp/tradingcodex-binance-home
+TRADINGCODEX_HOME=/tmp/tradingcodex-binance-home python -m tradingcodex_cli attach /tmp/tradingcodex-binance-smoke
+cd /tmp/tradingcodex-binance-smoke
+export TRADINGCODEX_HOME=/tmp/tradingcodex-binance-home
+export BINANCE_TESTNET_API_KEY=<testnet-api-key>
+export BINANCE_TESTNET_SECRET_KEY=<testnet-secret-key>
+export TRADINGCODEX_BINANCE_TESTNET_SUBMIT_MODE=order_test
+./tcx doctor
+./tcx mcp call register_broker_connector --principal head-manager --template binance_spot --broker-id binance-spot-testnet --credential-ref env:BINANCE_TESTNET --environment testnet
+./tcx mcp call get_broker_connection_status --principal head-manager --broker-id binance-spot-testnet
+./tcx mcp call sync_broker_account --principal portfolio-manager --broker-id binance-spot-testnet
+./tcx mcp call get_broker_instrument_constraints --principal head-manager --broker-id binance-spot-testnet --symbol BTCUSDT
+./tcx mcp call preview_order_translation --principal head-manager '{"broker_id":"binance-spot-testnet","symbol":"BTCUSDT","side":"buy","quantity":0.0001,"order_type":"limit","limit_price":50000,"time_in_force":"GTC","currency":"USDT"}'
+./tcx mcp call create_order_ticket --principal portfolio-manager --ticket-id binance-smoke-order --broker-id binance-spot-testnet --broker-account-id spot-testnet --symbol BTCUSDT --side buy --quantity 0.0001 --order-type limit --limit-price 50000 --time-in-force GTC --currency USDT
+./tcx mcp call run_order_checks --principal portfolio-manager --ticket-id binance-smoke-order
+./tcx mcp call request_order_approval --principal risk-manager --ticket-id binance-smoke-order
+./tcx mcp call submit_approved_order --principal execution-operator --ticket-id binance-smoke-order
+./tcx mcp call refresh_broker_order_status --principal execution-operator --ticket-id binance-smoke-order
+./tcx mcp call get_order_status --principal head-manager --ticket-id binance-smoke-order
+```
+
+For this Binance smoke vector, the default `order_test` mode should submit to
+`/api/v3/order/test`, record a local broker order with status `validated`, and
+return no fill. Actual testnet order placement is not part of the default smoke
+and requires an explicit local environment gate.
+
+`register_broker_connector` should not by itself make a signed validation
+connector execution-ready. A broker-validation connector starts locked/read-only
+with `credential_validation_status: not_checked`; `get_broker_connection_status`
+or a successful account sync must prove signed health before
+`enabled_trade_scopes` contains `order.submit.validation`. If signed health
+fails, the connection must remain/read back as locked with no enabled trade
+scopes, and order checks or submit preflight must stop before consuming
+execution idempotency. Authentication or permission failures must expose a
+secret-free diagnostic in `health.details` and
+`metadata.credential_validation_details`; for Binance Spot Testnet `-2015`, the
+diagnostic code is `binance_auth_rejected` and should point to Spot Testnet key,
+permission, or IP allowlist remediation.
+
+Also verify the generated agent contract for broker-validation workflows:
+
+```bash
+./tcx doctor --layer codex-native
+./tcx doctor --layer improvement
+./tcx subagents status
+./tcx subagents inspect execution-operator
+./tcx subagents inspect risk-manager
+./tcx skills list --all
+printf '{"prompt":"Configure a reviewed test/sandbox broker connector, validate an approved order path, do not read secrets, and do not call broker APIs directly."}\n' \
+  | python .codex/hooks/tradingcodex_hook.py user-prompt-submit
+printf '{"prompt":"Configure a reviewed test or sandbox broker connector only. No order, no approval, no execution, do not read secrets."}\n' \
+  | python .codex/hooks/tradingcodex_hook.py user-prompt-submit
+./tcx subagents prompt "Configure a reviewed test or sandbox broker connector only. No order, no approval, no execution, do not read secrets."
+```
+
+Treat the smoke as failed if generated agent instructions hard-code one broker
+as the only supported path, if `head-manager` can submit orders, if
+`execution-operator` lacks `submit_approved_order`, if raw broker APIs appear in
+Codex MCP config, if connector-only work dispatches fixed-role execution
+subagents, or if the hook routes a secret-only prompt into execution.
+
 ## Harness And Routing Tests
 
 Run targeted scenario tests after harness or workflow routing changes. Inspect
@@ -166,9 +236,31 @@ Scenarios should include:
 - unavailable or unverified subagent routing fails closed
 - completed role artifacts are reused when quality gates pass
 - downstream roles return `revise`, `blocked`, or `waiting` instead of filling missing upstream role work
+- hook `additionalContext` stays compact and points to the persisted prompt gate
+  instead of injecting the full starter prompt into every routed turn
 - starter prompts and generated guidance expose the no-overlap handoff contract
 - starter prompts and generated guidance tell subagents to write reader-facing
   research artifacts in the user's language unless explicitly overridden
+- `tcx quality-check <artifact> --strict` fails research markdown that lacks
+  source/as-of posture, `context_summary`, material claim tags, handoff state,
+  confidence, missing-evidence fields, next-recipient routing, blocked actions,
+  or source snapshot metadata
+- generated starter prompts and subagent-management skills include a context
+  budget so agents pass artifact paths, context summaries, source snapshot IDs,
+  and short deltas instead of full artifacts or repeated role manuals
+- multi-round subagent smokes run `tcx subagents context-audit --strict` after
+  several prompt gates, subagent start/stop events, and large research
+  artifacts across research-only, thesis, portfolio/risk, order-draft,
+  approval/execution, crypto, ETF/index, and options/instrument lanes; the
+  audit must show compact hook context, bounded starter prompts, compact prompt
+  gate history, compact session state with total counters plus retained recent
+  events, no pasted markdown artifacts in
+  gate/history/state, and no research artifacts missing `context_summary`
+- repo skill boundary tests fail when role identifiers leak into generic skills
+  outside necessary command principal examples or policy/artifact contracts
+- MCP `tools/list` exposes both TradingCodex custom annotations and standard
+  MCP hints such as `readOnlyHint`, `destructiveHint`, `idempotentHint`, and
+  `openWorldHint`
 - Django web additional-agent-instruction edits are saved as-is, projected
   after generated defaults, and removable without leaving stale marker blocks
 - `tcx doctor --layer task-harness` is rejected; `improvement` is the canonical

@@ -197,12 +197,20 @@ class ResearchArtifactRequest(Schema):
     artifact_type: str = "research_memo"
     universe: str = "public_equity"
     workflow_type: str = ""
+    role: str | None = None
     symbol: str = ""
     title: str
     markdown: str
     metadata: dict[str, Any] | None = None
     source_as_of: str = ""
     readiness_label: str = ""
+    context_summary: str = ""
+    handoff_state: str = ""
+    confidence: str = ""
+    missing_evidence: list[Any] | None = None
+    next_recipient: str = ""
+    blocked_actions: list[Any] | None = None
+    source_snapshot_ids: list[str] | None = None
     created_by: str = "head-manager"
     export_path: str | None = None
 

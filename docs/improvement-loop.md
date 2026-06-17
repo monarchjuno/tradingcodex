@@ -103,6 +103,9 @@ Validation feedback turns lessons into regression coverage:
 - unit tests for policy and execution preconditions
 - API tests for Admin/Ninja/MCP boundaries
 - generated workspace smoke checks
+- strict research artifact quality checks for source/as-of posture, claim tags,
+  handoff state, confidence, missing evidence, next recipient, blocked actions,
+  and source snapshots
 - research-memory smoke checks
 - routing scenario tests
 - UI checks for review-only product web behavior

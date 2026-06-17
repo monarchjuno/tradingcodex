@@ -13,6 +13,9 @@ execution:
   enabled_adapters:
     - stub-execution
     - paper-trading
+  enabled_execution_postures:
+    - paper_only
+    - broker_validation_only
 
 guardrails:
   guidance_enabled: true

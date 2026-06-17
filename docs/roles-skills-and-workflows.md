@@ -63,6 +63,9 @@ handoff is accepted only when it contains:
   for market-sensitive evidence
 - confidence, uncertainty drivers, and missing evidence
 - readiness label or support gap, using conservative labels
+- frontmatter or structured metadata for `context_summary`, `handoff_state`,
+  `confidence`, `missing_evidence`, `next_recipient`, `blocked_actions`, and
+  `source_snapshot_ids` when the artifact is stored as workspace markdown
 - role-boundary conflicts, if the task asks the role to cross its boundary
 - next eligible recipient and actions that remain blocked
 
@@ -94,7 +97,7 @@ but they are not required before `head-manager` routes the work.
 
 | Trigger | Handling |
 | --- | --- |
-| General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` injects auto-dispatch context with lane, selected team, starter prompt, and blocked actions; `head-manager` dispatches or reuses selected subagents before analysis. |
+| General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` injects compact auto-dispatch context with lane, selected team, blocked actions, and the persisted prompt-gate path; `head-manager` dispatches or reuses selected subagents before analysis. |
 | Explicit `$orchestrate-workflow` request | The representative workflow skill becomes the primary manual-control orchestrator and dispatches selected subagents. |
 | Explicit subagent/parallel/delegated request | `UserPromptSubmit` records the explicit activation source; the skill checks existing subagent state before creating/reusing sessions. |
 | Strategy authoring request, such as "Create a quality income strategy" | Do not auto-dispatch investment subagents. Route through `strategy-creator`, CLI, API, or service-layer flows so the strategy skill is created and projected as a root/head-manager strategy entry. Django web previews strategies read-only. |
@@ -103,12 +106,12 @@ but they are not required before `head-manager` routes the work.
 | Same role artifact has passed quality gates | Reuse the artifact instead of duplicating work. |
 | Codex `spawn_agent` schema cannot select exact fixed role | Treat role routing as `routing-unverified`; provide `waiting_for_subagent_dispatch` and task briefs only. |
 
-The selected role team from hook context or the starter prompt is binding for
-the current lane. `head-manager` must not add roles outside that team merely
-because they might be useful. For `research_only`, do not add valuation,
-portfolio, risk, approval, or execution roles unless the user later asks for
-valuation, decision support, portfolio fit, sizing, order drafting, approval,
-or execution.
+The selected role team from compact hook context or the persisted starter
+prompt is binding for the current lane. `head-manager` must not add roles
+outside that team merely because they might be useful. For `research_only`, do
+not add valuation, portfolio, risk, approval, or execution roles unless the
+user later asks for valuation, decision support, portfolio fit, sizing, order
+drafting, approval, or execution.
 
 Negated scope terms are binding. Phrases such as "no valuation", "no order", or
 "no trading" remove those actions or roles from routing instead of triggering
@@ -159,14 +162,17 @@ Instruction/skill separation:
 | Head-manager skills | repeatable workflow procedures, universe maps, scenario gates, subagent briefing/reuse mechanics, synthesis, strategy creation, postmortem workflow | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
 | Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
 | Role-owned skills | capability procedure, artifact expectations, quality checks, and local output rules | role eligibility, work for other roles, self-approval, execution outside MCP |
-| Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, material context, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, or repeated guardrail prose |
+| Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
 
 Repo skill bodies are dependency-light capability references. They should not
 declare role ownership, encode role-specific eligibility, or maintain direct
 inter-skill call chains. Role-to-skill assignment belongs to `ROLE_SKILL_MAP`,
 subagent TOML `skills.config`, CLI/Admin assignment state, and durable
-instructions. A skill may mention a concrete principal only when that principal
-is part of a policy or artifact contract, such as `created_by` or `approved_by`
+instructions. Role labels, display groups, handoff contracts, forbidden action
+summaries, permission profiles, and MCP allowlists are registry-owned service
+metadata projected into generated indexes. A skill may mention a concrete
+principal only when that principal is part of a policy or artifact contract,
+such as `created_by` or `approved_by`.
 validation.
 
 Every repo `SKILL.md` should keep document metadata such as `name` and
@@ -297,7 +303,14 @@ posture, or core skill behavior.
 - Subagent context is intentionally minimized.
 - `head-manager` keeps full product and harness context.
 - Fixed subagent TOML files supply the standing role-local card: affiliation, coordinator, assigned role, role purpose, own artifact paths, handoff target, and forbidden actions.
-- Per-task subagent briefs are assignment envelopes, not role manuals. They should add only the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, expected artifact path, material context, request-specific stage boundaries, and concise return contract.
+- Per-task subagent briefs are assignment envelopes, not role manuals. They should add only the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, expected artifact path, compact `context_summary`, request-specific stage boundaries, and concise return contract.
+- Full artifacts, source dumps, strategy libraries, and repeated role manuals
+  stay out of the brief unless a short excerpt is load-bearing.
+- `.tradingcodex/mainagent/subagent-session-state.json` is a compact working
+  summary with total counters and a recent-event window. Full subagent event
+  history belongs in `trading/audit/subagent-session-events.jsonl`.
+- Downstream roles start from artifact path plus `context_summary`; they open
+  full markdown only for disputed, stale, missing, or load-bearing evidence.
 - The head-manager should tell subagents to write reader-facing research artifacts in the user's language from the original request unless the user explicitly requests another artifact language. File paths, frontmatter keys, symbols, tickers, source names, and quoted source text stay in their natural/original form.
 - When selecting an exact fixed role with Codex `spawn_agent`, do not combine `agent_type` with full-history forking. Use a compact assignment envelope on the first attempt and no model/reasoning overrides.
 - Workflow consent stays separate from explicit user constraints. Consent to orchestrate or use subagents allows dispatch, but it is not itself an analytical constraint.

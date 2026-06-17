@@ -231,6 +231,7 @@ Minimum MCP tools:
 - `submit_approved_order`
 - `cancel_approved_order`
 - `refresh_broker_order_status`
+- `get_order_status`
 - `get_positions`
 - `get_portfolio_snapshot`
 - `simulate_policy`
@@ -250,8 +251,11 @@ Minimum MCP tools:
 - `record_audit_event`
 
 Every MCP tool definition includes stable name, description, input schema,
-category, risk level, role allowlist, approval requirement, and audit
-requirement. `tools/list` returns this metadata as tool annotations.
+category, risk level, role allowlist, approval requirement, audit requirement,
+and standard MCP hints for read-only, destructive, idempotent, and open-world
+behavior. `tools/list` returns this metadata as tool annotations.
+Research artifact write tools accept the handoff metadata validated by
+`tcx quality-check --strict`.
 `tools/call` records `McpToolCall` rows with principal, status, request/result
 hashes, errors, and duration, except research tools and
 `list_workflow_artifacts`, which are excluded so research payloads remain only

@@ -9,7 +9,7 @@ from typing import Any
 from tradingcodex_service.application.runtime import ensure_runtime_database, tradingcodex_db_path
 from tradingcodex_service.mcp_runtime import call_mcp_tool
 from tradingcodex_service.mcp_runtime import SAFE_HOME_TOOL_NAMES
-from tradingcodex_cli.commands.utils import _option_value, print_json
+from tradingcodex_cli.commands.utils import _list_option, _option_value, print_json
 
 def mcp(root: Path, argv: list[str]) -> None:
     if not argv or argv[0] in {"--help", "-h", "help"}:
@@ -82,11 +82,19 @@ def mcp(root: Path, argv: list[str]) -> None:
         "universe": _option_value(args, "--universe"),
         "workflow_type": _option_value(args, "--workflow-type"),
         "symbol": _option_value(args, "--symbol"),
+        "role": _option_value(args, "--role"),
         "title": _option_value(args, "--title"),
         "markdown": _option_value(args, "--markdown"),
         "markdown_path": _option_value(args, "--markdown-file") or _option_value(args, "--file"),
         "source_as_of": _option_value(args, "--source-as-of"),
         "readiness_label": _option_value(args, "--readiness"),
+        "context_summary": _option_value(args, "--context-summary"),
+        "handoff_state": _option_value(args, "--handoff-state"),
+        "confidence": _option_value(args, "--confidence"),
+        "missing_evidence": _list_option(args, "--missing-evidence"),
+        "next_recipient": _option_value(args, "--next-recipient"),
+        "blocked_actions": _list_option(args, "--blocked-actions"),
+        "source_snapshot_ids": _list_option(args, "--source-snapshot-ids"),
         "query": _option_value(args, "--query") or _option_value(args, "--q"),
         "limit": _int_option(args, "--limit"),
         "provider": _option_value(args, "--provider"),
@@ -296,11 +304,11 @@ Usage:
 Examples:
   ./tcx mcp call create_research_artifact --principal fundamental-analyst --artifact-id note-1 --title "Note" --markdown "# Note" --symbol MSFT
   ./tcx mcp call list_broker_connector_templates --principal head-manager --asset-class crypto
-  ./tcx mcp call register_broker_connector --principal head-manager --template binance_spot --broker-id binance --credential-ref env:BINANCE_READONLY
-  ./tcx mcp call preview_order_translation --principal head-manager --broker-id binance --symbol BTCUSDT --side buy --order-type market --quote-notional 25
+  ./tcx mcp call register_broker_connector --principal head-manager --template <template_id> --broker-id <broker-id> --credential-ref env:<BROKER_REF>
+  ./tcx mcp call preview_order_translation --principal head-manager --broker-id <broker-id> --symbol <symbol> --side buy --order-type market --quote-notional 25
   ./tcx mcp call create_order_ticket --principal portfolio-manager --natural-language "buy 5 AAPL limit 180"
   ./tcx mcp call run_order_checks --principal portfolio-manager --ticket-id ticket-id
-  ./tcx mcp call submit_approved_order --ticket-id approved-ticket-id
+  ./tcx mcp call submit_approved_order --principal execution-operator --ticket-id approved-ticket-id
   ./tcx mcp external register --name broker-mcp --transport stdio --command "uvx broker-mcp" --enabled
   ./tcx mcp external discover --name broker-mcp
   ./tcx mcp external review-tool --tool-id 1 --proxy-mode summary_only --allowed-roles head-manager --enabled

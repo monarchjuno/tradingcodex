@@ -1,6 +1,6 @@
 ---
 name: external-data-source-gate
-description: "Review and constrain external financial data sources such as Binance public data, official regulator or exchange disclosure sources, and other read-only market-data tools before using them in workspace investment workflows."
+description: "Review and constrain external financial data sources such as exchange public market data, official regulator or exchange disclosure sources, and other read-only market-data tools before using them in workspace investment workflows."
 ---
 
 # External Data Source Gate
@@ -30,7 +30,7 @@ Allowed source classes:
 
 | Source | Allowed use | Required constraints |
 | --- | --- | --- |
-| Binance public data | Crypto spot/futures/options market data | public read-only only; no account, withdrawal, transfer, or trading tools |
+| Exchange public market data | Crypto, FX, derivatives, equity, or other market data where the source is public/read-only | public read-only only; no account, withdrawal, transfer, or trading tools |
 | Official regulator or exchange disclosure sources | Public-company filings, company facts, financial statements, issuer announcements, and regulatory records | cite filing/disclosure date, accession/source id, issuer identifier, exchange or regulator, and retrieval timestamp when available |
 | Web/news sources | Current events and company context | cite publication date and source; separate claims from facts |
 | Macro, rates, FX, commodities, credit, options, and index sources | Research or risk evidence when available | read-only only; record provider, as-of date, instrument coverage, and unsupported execution boundaries |

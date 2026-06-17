@@ -1,6 +1,6 @@
 interface:
-  display_name: "Execute Paper Order"
-  short_description: "Submit approved paper tickets through MCP"
-  default_prompt: "Use $execute-paper-order to submit an approved paper OrderTicket through the workspace MCP execution boundary."
+  display_name: "Execute Approved Non-Live Order"
+  short_description: "Submit approved non-live tickets through MCP"
+  default_prompt: "Use $execute-paper-order to submit an approved non-live OrderTicket through the workspace MCP execution boundary."
 policy:
   allow_implicit_invocation: false

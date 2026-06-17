@@ -31,7 +31,8 @@ must move through the configured investment workflow.
    blocked actions, and quality gates.
 4. Use subagent management for dispatch or reuse when the selected lane requires
    role outputs.
-5. Review returned artifacts against the gate outputs and keep conflicts visible.
+5. Review returned artifacts against the gate outputs and keep conflicts visible;
+   prefer artifact paths and context summaries before reopening full artifacts.
 6. Stop with a waiting state when required artifacts are missing or dispatch is
    unavailable.
 7. Use synthesis only after the required artifacts or waiting state exists.

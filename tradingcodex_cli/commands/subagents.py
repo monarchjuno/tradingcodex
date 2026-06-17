@@ -10,6 +10,7 @@ from tradingcodex_service.application.agents import (
     project_agent_configuration,
     EXPECTED_SUBAGENTS,
 )
+from tradingcodex_service.application.context_budget import audit_context_budget
 from tradingcodex_service.application.harness import build_subagent_starter_prompt
 from tradingcodex_cli.commands.utils import (
     _option_value,
@@ -48,6 +49,12 @@ def subagents(root: Path, argv: list[str]) -> None:
         return
     if sub == "state":
         print_json(read_subagent_state(root, _option_value(args, "--run")))
+        return
+    if sub == "context-audit":
+        result = audit_context_budget(root, strict="--strict" in args)
+        print_json(result)
+        if result["status"] != "pass":
+            sys.exit(1)
         return
     if sub == "inspect":
         role = args[0] if args else ""

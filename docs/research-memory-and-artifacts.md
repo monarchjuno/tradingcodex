@@ -44,13 +44,25 @@ Research markdown frontmatter should preserve:
 - `title`
 - `source_as_of`
 - `readiness_label`
+- `context_summary`: concise downstream context before opening full markdown
+- `handoff_state`: `accepted`, `revise`, `blocked`, or `waiting`
+- `confidence`: a conservative confidence label or score
+- `missing_evidence`: explicit missing, stale, or weak evidence as a list
+- `next_recipient`: the next eligible role or reviewer, or a terminal state such
+  as `none`
+- `blocked_actions`: actions still blocked by evidence, role boundary, policy,
+  approval, execution, or user scope
+- `source_snapshot_ids`: source snapshot files that support the artifact, when
+  available
 - `version`
 - `content_hash`
 - `workspace_native`
 - `created_by`
 
 The markdown body should preserve source-aware claims, evidence, assumptions,
-handoff conclusions, and any role-owned limitations.
+handoff conclusions, and any role-owned limitations. Material narrative claims
+should use `[factual]`, `[inference]`, or `[assumption]` tags when the
+distinction affects downstream use.
 
 ## Source Snapshot Discipline
 
@@ -80,6 +92,13 @@ Codex and subagents should use service-layer tools when available:
 - `append_research_artifact_version`
 - `export_research_artifact_md`
 - `record_source_snapshot`
+
+`tcx quality-check <artifact-path>` gives a friendly diagnostic pass/fail for
+empty files and invalid JSON while surfacing warnings for weak research
+metadata and context size. `tcx quality-check <artifact-path> --strict` is the
+handoff gate for research markdown: it fails when source/as-of posture,
+`context_summary`, claim tags, handoff state, confidence, missing-evidence
+fields, next-recipient routing, or source snapshot metadata are absent.
 
 These tools read and write workspace markdown files for research artifacts.
 They still use the Django service boundary for validation, provenance, audit,
@@ -164,6 +183,10 @@ Research file writes should be deterministic enough for review:
 - preserve artifact ID and version
 - include source/as-of metadata
 - include readiness label
+- include concise `context_summary` so downstream roles can start from bounded
+  context
+- include handoff state, confidence, missing-evidence, next-recipient, blocked
+  actions, and source snapshot IDs
 - include content hash
 - avoid raw secrets
 - use stable paths for role-owned reports

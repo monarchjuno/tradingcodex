@@ -103,7 +103,20 @@ Generated workspaces contain:
 - negated scope routing: phrases such as "no valuation", "no order", and "no trading" remove those actions or roles from dispatch selection
 - no full-history fixed-role spawn: fixed `agent_type` subagents receive compact assignment envelopes without full-history forking on the first attempt
 - subagent hook isolation: `UserPromptSubmit` auto-routing is ignored for fixed subagent contexts so subagent briefs cannot overwrite main-agent routing state or create recursive dispatch pressure
-- main-to-subagent briefs are assignment envelopes, not role manuals: they carry the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, artifact target, material context, request-specific out-of-scope items, and return contract without repeating long method/source/guardrail checklists
+- main-to-subagent briefs are assignment envelopes, not role manuals: they carry the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, artifact target, compact context summary, request-specific out-of-scope items, and return contract without repeating long method/source/guardrail checklists or pasting full artifacts
+- context-efficient research handoffs: stored markdown frontmatter includes
+  `context_summary` so downstream roles can consume artifact paths and summaries
+  before opening full markdown
+- context-budget audit: `./tcx subagents context-audit --strict` inspects the
+  latest prompt gate, prompt-gate history, compact hook context, subagent
+  session state, and research artifacts after long multi-subagent runs; it
+  fails strict mode when handoff artifacts lack `context_summary`, compact gate
+  history grows beyond budget, or gate/state/history payloads look like pasted
+  markdown artifacts
+- compact subagent session state: `.tradingcodex/mainagent/subagent-session-state.json`
+  keeps total counters plus recent active/completed/event records for Codex
+  context; the full event stream remains in
+  `trading/audit/subagent-session-events.jsonl`
 - fixed subagents configured for `model = "gpt-5.5"` and `model_reasoning_effort = "high"`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents
@@ -251,6 +264,11 @@ enforcement.
 - natural-language investment workflow auto-routing context
 - direct-answer prevention context
 - duplicate marker management
+- prompt-gate audit metadata with prompt hash and workflow lane, without raw
+  prompt text in the audit ledger
+- compact hook `additionalContext`; the full generated starter prompt remains
+  in `.tradingcodex/mainagent/latest-user-prompt-gate.json` and is loaded only
+  when the compact gate is insufficient
 - execution negation routing such as "no order" and "no trading"
 - strategy authoring prompts remain in `strategy-creator`/strategy CRUD scope
   instead of auto-dispatching fixed investment subagents

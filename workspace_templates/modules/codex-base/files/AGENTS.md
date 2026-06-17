@@ -16,6 +16,11 @@ Repository expectations:
   `PATH`.
 - Keep prompts lean. Put repeatable procedures in repo skills, standing role
   behavior in role TOML, and generated indexes under `.tradingcodex/generated/`.
+- Keep handoffs context-efficient: pass artifact paths, `context_summary`,
+  source/as-of metadata, and source snapshot IDs before pasting full artifacts.
+- Treat hook `additionalContext` as compact dispatch guidance. Read
+  `.tradingcodex/mainagent/latest-user-prompt-gate.json` only when the full
+  starter prompt is needed.
 - Keep skill document metadata in `SKILL.md` frontmatter and keep markdown
   bodies focused on the skill's own procedure.
 - Keep user-owned standalone strategy skills under `.agents/skills/strategy-*`.
