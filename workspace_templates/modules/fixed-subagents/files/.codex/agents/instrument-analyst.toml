@@ -1,4 +1,5 @@
 name = "instrument-analyst"
+nickname_candidates = ["instrument-analyst"]
 description = "Analyze instrument mechanics, market structure, contract terms, and support boundaries."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

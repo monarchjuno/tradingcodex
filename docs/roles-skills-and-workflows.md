@@ -160,7 +160,7 @@ Instruction/skill separation:
 | --- | --- | --- |
 | `head-manager` base instructions | durable identity, safety invariants, dispatch fail-closed rule, role boundaries, MCP execution boundary, skill routing | workflow templates, scenario tables, long checklists, subagent message bodies |
 | Head-manager skills | repeatable workflow procedures, universe maps, scenario gates, subagent briefing/reuse mechanics, synthesis, strategy creation, postmortem workflow | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
-| Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
+| Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, single-item display nickname candidates, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
 | Role-owned skills | capability procedure, artifact expectations, quality checks, and local output rules | role eligibility, work for other roles, self-approval, execution outside MCP |
 | Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
 
@@ -198,7 +198,10 @@ main-agent user surface should show only direct user entrypoints by default:
 Internal head-manager harness skills such as `investment-workflow-map`,
 `scenario-quality-gates`, `manage-subagents`, `manage-optional-skills`, and
 `synthesize-decision` remain enabled for `head-manager`; they are hidden from
-the default user-facing list, not disabled.
+the default user-facing list and must not allow implicit invocation from user
+prompts. Compatibility skills such as `tradingcodex-operator` may remain
+installed for explicit older `$skill` prompts, but should not be part of the
+default user-facing or implicit skill surface.
 
 ## Additional Agent Instructions
 
@@ -316,7 +319,7 @@ posture, or core skill behavior.
 - Workflow consent stays separate from explicit user constraints. Consent to orchestrate or use subagents allows dispatch, but it is not itself an analytical constraint.
 - Execution roles may additionally receive the workspace MCP boundary because they need it to submit approved actions.
 - MCP/tool isolation is configured per role in `.codex/agents/*.toml`.
-- Generated fixed-role subagent TOML files pin `model = "gpt-5.5"` and `model_reasoning_effort = "high"`.
+- Generated fixed-role subagent TOML files pin `model = "gpt-5.5"` and `model_reasoning_effort = "high"`, and set `nickname_candidates` to the exact role `name` as a single-item list.
 - Spawn by fixed role label so the role file supplies runtime defaults.
 - If the active Codex schema cannot select the exact fixed role, role routing is `routing-unverified`.
 

@@ -378,7 +378,15 @@ def _render_agents(request: HttpRequest, selected_role: str | None = None) -> Ht
     agent = state["agents"].get(role)
     if not agent:
         return HttpResponse("Unknown agent role.", status=404)
-    required_skills = [_skill_preview_item(root, state, skill_id, "required") for skill_id in agent.get("builtin_skills", [])]
+    include_internal_skills = request.GET.get("include_internal") == "true"
+    required_skill_ids = list(agent.get("builtin_skills", []))
+    if role == "head-manager" and not include_internal_skills:
+        required_skill_ids = [
+            skill_id
+            for skill_id in required_skill_ids
+            if state.get("skills", {}).get(skill_id, {}).get("user_visible")
+        ]
+    required_skills = [_skill_preview_item(root, state, skill_id, "required") for skill_id in required_skill_ids]
     optional_skills = [
         _skill_preview_item(root, state, str(record.get("name") or ""), "optional", record=record)
         for record in agent.get("optional_skills", [])
@@ -403,6 +411,7 @@ def _render_agents(request: HttpRequest, selected_role: str | None = None) -> Ht
         "selected_agent": agent,
         "required_skills": required_skills,
         "optional_skills": optional_skills,
+        "include_internal_skills": include_internal_skills,
         "selected_skill_id": skill_id,
         "skill_preview": skill_preview,
         "agent": agent,

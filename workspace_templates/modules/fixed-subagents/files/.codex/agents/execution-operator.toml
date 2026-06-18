@@ -1,4 +1,5 @@
 name = "execution-operator"
+nickname_candidates = ["execution-operator"]
 description = "Request approved execution through the workspace MCP execution boundary only."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

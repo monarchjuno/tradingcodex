@@ -345,10 +345,9 @@ Generated workspace wrapper commands:
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
 direct user entrypoints: `orchestrate-workflow`,
-`strategy-creator`, `postmortem`, and active
-`strategy-*` skills. Full inspection is available
-through `./tcx skills list --all` and role-specific
-`./tcx subagents skills <role>`.
+`use-tradingcodex-server`, `strategy-creator`, `postmortem`, and active
+`strategy-*` skills. Full inspection is available through
+`./tcx skills list --all` and role-specific `./tcx subagents skills <role>`.
 
 Optional-skill and strategy CRUD CLI commands call the same shared application
 service used by Django web/API and mainagent guidance.

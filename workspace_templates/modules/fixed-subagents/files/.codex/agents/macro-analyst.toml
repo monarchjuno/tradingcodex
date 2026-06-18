@@ -1,4 +1,5 @@
 name = "macro-analyst"
+nickname_candidates = ["macro-analyst"]
 description = "Analyze macro, rates, FX, commodities, policy, liquidity, and cross-asset transmission."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

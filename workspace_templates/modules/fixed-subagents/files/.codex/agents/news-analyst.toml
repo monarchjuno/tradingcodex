@@ -1,4 +1,5 @@
 name = "news-analyst"
+nickname_candidates = ["news-analyst"]
 description = "Analyze news, filings, events, narrative changes, and source quality."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

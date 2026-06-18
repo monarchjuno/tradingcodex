@@ -1,4 +1,5 @@
 name = "risk-manager"
+nickname_candidates = ["risk-manager"]
 description = "Review downside, sizing limits, policy constraints, approval readiness, and failure modes."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

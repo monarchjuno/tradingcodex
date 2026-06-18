@@ -576,6 +576,17 @@ def test_repo_skill_templates_keep_instruction_boundary() -> None:
         assert 25 <= len(short_description) <= 64, metadata
         assert f"${skill_name}" in default_prompt, metadata
         assert isinstance(policy.get("allow_implicit_invocation"), bool), metadata
+        if metadata.is_relative_to(skill_root):
+            internal_non_implicit = {
+                "investment-workflow-map",
+                "scenario-quality-gates",
+                "manage-subagents",
+                "manage-optional-skills",
+                "synthesize-decision",
+                "tradingcodex-operator",
+            }
+            if skill_name in internal_non_implicit:
+                assert policy["allow_implicit_invocation"] is False, metadata
 
     use_server = skill_root / "use-tradingcodex-server"
     assert (use_server / "SKILL.md").exists()
@@ -843,9 +854,11 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert root_config["permissions"]["tradingcodex"]["extends"] == ":workspace"
     assert root_config["permissions"]["tradingcodex"]["network"]["enabled"] is False
     root_config_text = (workspace / ".codex" / "config.toml").read_text(encoding="utf-8")
+    assert "orchestrate-workflow/SKILL.md" in root_config_text
     assert "strategy-creator/SKILL.md" in root_config_text
     assert "use-tradingcodex-server/SKILL.md" in root_config_text
-    assert "tradingcodex-operator/SKILL.md" in root_config_text
+    assert "postmortem/SKILL.md" in root_config_text
+    assert "tradingcodex-operator/SKILL.md" not in root_config_text
     assert ".tradingcodex/subagents/skills/shared/collect-evidence/SKILL.md" not in root_config_text
     for profile_name in [
         "tradingcodex-fundamental",
@@ -889,6 +902,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         agent_config = agent_file.read_text(encoding="utf-8")
         agent_toml = tomllib.loads(agent_config)
         assert agent_toml["name"] == agent_file.stem
+        assert agent_toml["nickname_candidates"] == [agent_file.stem]
         assert agent_toml["description"]
         assert agent_toml["developer_instructions"]
         assert "request revision from the owning role" in agent_toml["developer_instructions"]
@@ -2103,13 +2117,24 @@ def test_product_web_agents_first_routes_render_skill_preview() -> None:
     assert "Head Manager" in body
     assert "Required skills" in body
     assert "Optional skills" in body
-    assert "Additional instructions" in body
-    assert "TradingCodex saves this text as-is and does not block it" in body
+    assert "Additional instructions" in body or "Project-local instructions" in body
+    assert "Additional instructions" in body or "Role notes" in body
     assert "Markdown preview" in body
     assert "head-manager" in body
     assert "fundamental-analyst" in body
     assert "execution-operator" in body
     assert "orchestrate-workflow" in body
+    assert "use-tradingcodex-server" in body
+    assert "strategy-creator" in body
+    assert "postmortem" in body
+    assert "investment-workflow-map" not in body
+    assert "synthesize-decision" not in body
+    assert "tradingcodex-operator" not in body
+    internal_agents = client.get("/harness/agents/?include_internal=true")
+    assert internal_agents.status_code == 200
+    internal_body = internal_agents.content.decode()
+    assert "investment-workflow-map" in internal_body
+    assert "synthesize-decision" in internal_body
     assert 'href="/policy/"' not in body
     assert 'href="/activity/"' not in body
     assert 'href="/portfolio/"' not in body
@@ -2127,7 +2152,7 @@ def test_product_web_agents_first_routes_render_skill_preview() -> None:
     assert '<span class="tc-section-title">Boundary</span>' not in body
     assert "tc-sidebar-resizer" in body
     assert "static/tradingcodex_web/app.css" in body
-    assert "tcx-shadcn-11" in body
+    assert "?v=tcx-" in body
     assert "static/vendor/htmx/htmx.min.js" in body
     assert "static/vendor/alpine/alpine.min.js" in body
     assert "TRADINGCODEX_API_KEY" not in body
@@ -2200,7 +2225,7 @@ def test_product_web_agent_skill_and_strategy_mutation(tmp_path: Path, monkeypat
     assert "Head Manager" in index_body
     assert "Required skills" in index_body
     assert "Optional skills" in index_body
-    assert "Additional instructions" in index_body
+    assert "Additional instructions" in index_body or "Project-local instructions" in index_body
     assert "Diagnostics" not in index_body
     assert "Projection hash" not in index_body
     assert "Workspace file" not in index_body

@@ -1,4 +1,5 @@
 name = "technical-analyst"
+nickname_candidates = ["technical-analyst"]
 description = "Analyze price action, trend, volatility, liquidity, and technical setup."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

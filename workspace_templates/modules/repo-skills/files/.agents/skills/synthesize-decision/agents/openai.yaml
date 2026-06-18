@@ -3,4 +3,4 @@ interface:
   short_description: "Summarize artifacts into decision state"
   default_prompt: "Use $synthesize-decision to summarize collected workspace artifacts into a decision state and next allowed action."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

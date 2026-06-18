@@ -1,4 +1,5 @@
 name = "portfolio-manager"
+nickname_candidates = ["portfolio-manager"]
 description = "Review portfolio fit, sizing context, concentration, and opportunity cost."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

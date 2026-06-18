@@ -118,6 +118,7 @@ Generated workspaces contain:
   context; the full event stream remains in
   `trading/audit/subagent-session-events.jsonl`
 - fixed subagents configured for `model = "gpt-5.5"` and `model_reasoning_effort = "high"`
+- fixed subagent `nickname_candidates` set to a single item matching the exact role `name`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents
 - twenty-four core repo skills across project-scope mainagent skills and subagent skill directories, each with `SKILL.md` frontmatter for document metadata and `agents/openai.yaml` UI metadata

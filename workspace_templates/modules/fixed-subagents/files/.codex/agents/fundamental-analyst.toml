@@ -1,4 +1,5 @@
 name = "fundamental-analyst"
+nickname_candidates = ["fundamental-analyst"]
 description = "Analyze business quality, financial statements, economics, and fundamental evidence."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

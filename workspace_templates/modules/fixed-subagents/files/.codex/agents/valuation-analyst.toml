@@ -1,4 +1,5 @@
 name = "valuation-analyst"
+nickname_candidates = ["valuation-analyst"]
 description = "Translate investment story and evidence into valuation ranges and expectation tests."
 model = "gpt-5.5"
 model_reasoning_effort = "high"

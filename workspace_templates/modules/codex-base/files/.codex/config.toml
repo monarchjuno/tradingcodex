@@ -10,7 +10,7 @@ max_threads = {{SUBAGENT_COUNT}}
 max_depth = 1
 
 [[skills.config]]
-path = "{{PROJECT_DIR}}/.agents/skills/strategy-creator/SKILL.md"
+path = "{{PROJECT_DIR}}/.agents/skills/orchestrate-workflow/SKILL.md"
 enabled = true
 
 [[skills.config]]
@@ -18,7 +18,11 @@ path = "{{PROJECT_DIR}}/.agents/skills/use-tradingcodex-server/SKILL.md"
 enabled = true
 
 [[skills.config]]
-path = "{{PROJECT_DIR}}/.agents/skills/tradingcodex-operator/SKILL.md"
+path = "{{PROJECT_DIR}}/.agents/skills/strategy-creator/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = "{{PROJECT_DIR}}/.agents/skills/postmortem/SKILL.md"
 enabled = true
 
 # BEGIN TradingCodex strategy skills
