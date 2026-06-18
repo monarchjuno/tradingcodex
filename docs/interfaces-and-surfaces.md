@@ -325,6 +325,7 @@ Top-level commands:
 - `tcx mcp install-global --safe`
 - `tcx mcp stdio`
 - `tcx service runserver`
+- `tcx service ensure`
 
 Generated workspace wrapper commands:
 

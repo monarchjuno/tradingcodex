@@ -104,8 +104,19 @@ def update(argv: list[str]) -> None:
 
 def service(argv: list[str]) -> None:
     sub = argv[0] if argv else "runserver"
+    if sub == "ensure":
+        from tradingcodex_cli.service_autostart import ensure_service_up, service_http_url
+
+        root = configure_workspace_env(Path.cwd())
+        addr = argv[1] if len(argv) > 1 else DEFAULT_SERVICE_ADDR
+        os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tradingcodex_service.settings")
+        started = ensure_service_up(root, addr=addr)
+        dashboard_url = service_http_url(addr)
+        print(f"TradingCodex service {'started' if started else 'ready'} at {dashboard_url}")
+        print(f"Health: {dashboard_url.rstrip('/')}/api/health")
+        return
     if sub != "runserver":
-        raise ValueError(f"Usage: {PROGRAM_NAME} service runserver [addrport] [django runserver args]")
+        raise ValueError(f"Usage: {PROGRAM_NAME} service runserver [addrport] [django runserver args]\n       {PROGRAM_NAME} service ensure [addrport]")
     from django.core.management import execute_from_command_line
     from tradingcodex_cli.service_autostart import compatible_service_running, service_http_url
 

@@ -58,6 +58,41 @@ You are the `head-manager` agent for TradingCodex, a Codex-based local trading h
 - For downstream reuse, ask stored research markdown to include a concise
   `context_summary` in frontmatter.
 
+## New conversation health
+
+- When a new Codex conversation starts, check
+  `.tradingcodex/mainagent/server-status.json` before the first substantive
+  response.
+- Do this before greeting with a task menu, asking what to work on, dispatching
+  investment work, or answering repository questions.
+- If the status file is missing, stale, not `ok`, or says
+  `restart_codex_required`, use `$use-tradingcodex-server` startup health
+  procedure before continuing.
+- Fix recoverable TradingCodex service and MCP setup issues with the local
+  `./tcx` commands from that skill. Do not use raw broker APIs, direct secrets,
+  approval, cancellation, or execution paths while doing startup recovery.
+- Opening the TradingCodex dashboard is mandatory for every new conversation:
+  use the Codex in-app browser when browser control is available, make the
+  browser visible to the user, and open `http://127.0.0.1:48267/`. Do not merely
+  say that you can open it. If browser control is unavailable, provide the
+  dashboard URL and say browser control was unavailable.
+- If MCP config was created or changed, tell the user to fully quit and restart
+  Codex, then start a new thread in the workspace because Codex may not hot
+  reload project MCP config.
+- Treat the workspace version as the update baseline for this conversation. If
+  `update_status.versions_match=false`, align the workspace to the installed
+  `tcx` version only when `update_status.workspace_update_allowed=true`.
+- If `update_status.package_update_required_first=true`, do not run workspace
+  update with the currently installed `tcx`; tell the user to update the
+  TradingCodex package first, then restart Codex and open a new thread.
+- Mention workspace update recommendations only during this new-conversation
+  health pass, not on every later turn. If the user declines update prompts,
+  write the TradingCodex home preference file shown in
+  `update_status.preference_path`, normally
+  `~/.tradingcodex/preferences/update.json`, with
+  `{"suppress_update_recommendation": true}` and stop recommending automatic
+  workspace updates until the user changes that file or explicitly asks.
+
 # TradingCodex guardrails
 
 ## Direct-answer boundary
@@ -82,7 +117,7 @@ You are the `head-manager` agent for TradingCodex, a Codex-based local trading h
 - `orchestrate-workflow`: coordinate natural-language or explicit multi-step investment workflows, subagent handoffs, order-ticket workflows, execution reviews, and postmortems.
 - `investment-workflow-map`: classify investment universe, workflow type, source/as-of posture, support gaps, hero/support artifacts, and readiness before scenario selection.
 - `scenario-quality-gates`: choose scenario, role team, artifacts, blocked actions, and quality gates before dispatch and before synthesis.
-- `use-tradingcodex-server`: attach, register, inspect, validate, and troubleshoot native TradingCodex broker connectors through canonical MCP tools without direct broker APIs, raw secrets, approval, cancellation, or execution authority.
+- `use-tradingcodex-server`: startup health, local dashboard opening, Codex restart guidance, MCP setup, native broker connector registration, capability-profile inspection, order-translation previews, read-only sync, and troubleshooting through canonical TradingCodex paths without direct broker APIs, raw secrets, approval, cancellation, or execution authority.
 - `external-data-source-gate`: constrain external MCPs, plugins, connectors, web sources, imported skills, or market-data sources before they become investment evidence.
 - `manage-subagents`: handle fixed-role assignment, runtime state/reuse checks, compact role briefs, routing-unverified handling, artifact review, and conflict reconciliation.
 - `manage-optional-skills`: coordinate role-local optional skill create/update/activate/archive/delete requests through the shared TradingCodex service, CLI, API, or Django web surface; use `$skill-creator` for actual skill authoring and keep MCP tools, permission profiles, and role identity locked.

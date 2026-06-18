@@ -98,6 +98,38 @@ def test_service_autostart_reuses_compatible_singleton(monkeypatch, tmp_path: Pa
     assert checked == [("127.0.0.1", 48267)]
 
 
+def test_service_autostart_rejects_incompatible_port_owner(monkeypatch, tmp_path: Path) -> None:
+    from tradingcodex_cli import service_autostart
+
+    monkeypatch.setattr(service_autostart, "_tcp_open", lambda host, port: True)
+    monkeypatch.setattr(service_autostart, "_service_health", lambda host, port: {})
+    monkeypatch.setattr(service_autostart, "_start_service", lambda *args: (_ for _ in ()).throw(AssertionError("started over occupied port")))
+
+    with pytest.raises(RuntimeError, match="non-TradingCodex service"):
+        service_autostart.ensure_service_up(tmp_path, timeout=0.01)
+
+
+def test_service_autostart_rejects_version_and_db_mismatch(monkeypatch) -> None:
+    from tradingcodex_cli import service_autostart
+
+    monkeypatch.setattr(
+        service_autostart,
+        "_service_health",
+        lambda host, port: {"service": "tradingcodex", "version": "999.0.0", "db_path": str(Path("/tmp/current.sqlite3"))},
+    )
+    with pytest.raises(RuntimeError, match="version mismatch"):
+        service_autostart._assert_compatible_service("127.0.0.1", 48267)
+
+    monkeypatch.setattr(service_autostart, "tradingcodex_db_path", lambda: Path("/tmp/current.sqlite3"))
+    monkeypatch.setattr(
+        service_autostart,
+        "_service_health",
+        lambda host, port: {"service": "tradingcodex", "version": TRADINGCODEX_VERSION, "db_path": str(Path("/tmp/other.sqlite3"))},
+    )
+    with pytest.raises(RuntimeError, match="DB mismatch"):
+        service_autostart._assert_compatible_service("127.0.0.1", 48267)
+
+
 def test_service_runserver_uses_fixed_port_and_skips_duplicate(monkeypatch, tmp_path: Path, capsys) -> None:
     from django.core import management
     from tradingcodex_cli import __main__ as cli_main
@@ -120,6 +152,23 @@ def test_service_runserver_uses_fixed_port_and_skips_duplicate(monkeypatch, tmp_
 
     assert calls == []
     assert "TradingCodex service already running at http://127.0.0.1:48267/" in capsys.readouterr().out
+
+
+def test_service_ensure_uses_autostart_helper(monkeypatch, tmp_path: Path, capsys) -> None:
+    from tradingcodex_cli import __main__ as cli_main
+    from tradingcodex_cli import service_autostart
+
+    calls: list[tuple[Path, str]] = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TRADINGCODEX_WORKSPACE_ROOT", raising=False)
+    monkeypatch.setattr(service_autostart, "ensure_service_up", lambda root, addr: calls.append((root, addr)) or True)
+
+    cli_main.service(["ensure"])
+
+    assert calls == [(tmp_path.resolve(), "127.0.0.1:48267")]
+    output = capsys.readouterr().out
+    assert "TradingCodex service started at http://127.0.0.1:48267/" in output
+    assert "Health: http://127.0.0.1:48267/api/health" in output
 
 
 def test_manage_runserver_uses_fixed_port_and_skips_duplicate(monkeypatch, capsys) -> None:
@@ -501,6 +550,65 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     )
     assert subagent_brief_gate is None
 
+
+def test_session_start_update_recommendation_respects_home_preference(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    home = tmp_path / "tc-home"
+    module_lock_path = workspace / ".tradingcodex" / "generated" / "module-lock.json"
+    module_lock = json.loads(module_lock_path.read_text(encoding="utf-8"))
+    module_lock["tradingcodex_version"] = "0.0.1"
+    module_lock_path.write_text(json.dumps(module_lock, indent=2) + "\n", encoding="utf-8")
+
+    run(
+        [sys.executable, str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "session-start"],
+        workspace,
+        input_text=json.dumps({}),
+        env_extra={"TRADINGCODEX_HOME": str(home), "TRADINGCODEX_LATEST_RELEASE_VERSION": TRADINGCODEX_VERSION},
+    )
+    server_status = json.loads((workspace / ".tradingcodex" / "mainagent" / "server-status.json").read_text(encoding="utf-8"))
+    update_status = server_status["update_status"]
+    assert update_status["workspace_version"] == "0.0.1"
+    assert update_status["installed_version"] == TRADINGCODEX_VERSION
+    assert update_status["package_version"] == TRADINGCODEX_VERSION
+    assert update_status["latest_release_version"] == TRADINGCODEX_VERSION
+    assert update_status["latest_release_status"] == "ok"
+    assert update_status["versions_match"] is False
+    assert update_status["workspace_update_available"] is True
+    assert update_status["workspace_update_allowed"] is True
+    assert update_status["workspace_update_recommended"] is True
+    assert update_status["package_update_required_first"] is False
+    preference_path = home / "preferences" / "update.json"
+    assert update_status["preference_path"] == str(preference_path)
+
+    run(
+        [sys.executable, str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "session-start"],
+        workspace,
+        input_text=json.dumps({}),
+        env_extra={"TRADINGCODEX_HOME": str(home), "TRADINGCODEX_LATEST_RELEASE_VERSION": "999.0.0"},
+    )
+    blocked_status = json.loads((workspace / ".tradingcodex" / "mainagent" / "server-status.json").read_text(encoding="utf-8"))
+    blocked_update = blocked_status["update_status"]
+    assert blocked_update["workspace_update_available"] is True
+    assert blocked_update["workspace_update_allowed"] is False
+    assert blocked_update["workspace_update_recommended"] is False
+    assert blocked_update["package_update_required_first"] is True
+    assert "older than the latest release" in blocked_update["blocked_reason"]
+
+    preference_path.parent.mkdir(parents=True)
+    preference_path.write_text(json.dumps({"suppress_update_recommendation": True}) + "\n", encoding="utf-8")
+    run(
+        [sys.executable, str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "session-start"],
+        workspace,
+        input_text=json.dumps({}),
+        env_extra={"TRADINGCODEX_HOME": str(home), "TRADINGCODEX_LATEST_RELEASE_VERSION": TRADINGCODEX_VERSION},
+    )
+    suppressed_status = json.loads((workspace / ".tradingcodex" / "mainagent" / "server-status.json").read_text(encoding="utf-8"))
+    suppressed_update = suppressed_status["update_status"]
+    assert suppressed_update["workspace_update_available"] is True
+    assert suppressed_update["workspace_update_allowed"] is True
+    assert suppressed_update["workspace_update_recommended"] is False
+    assert suppressed_update["update_recommendation_suppressed"] is True
+
     assert run_user_prompt_hook(workspace, "Update the docs table") is None
     assert run_user_prompt_hook(workspace, "Create a quality income strategy for dividend stocks") is None
 
@@ -603,6 +711,16 @@ def test_repo_skill_templates_keep_instruction_boundary() -> None:
     assert (use_server / "scripts" / "summarize_connector_status.py").exists()
     skill_text = (use_server / "SKILL.md").read_text(encoding="utf-8")
     assert "name: use-tradingcodex-server" in skill_text
+    assert "## Startup Health And Dashboard" in skill_text
+    assert "./tcx service ensure" in skill_text
+    assert "http://127.0.0.1:48267/api/health" in skill_text
+    assert "required startup action for a new conversation" in skill_text
+    assert "make the browser visible" in skill_text
+    assert "workspace_update_allowed" in skill_text
+    assert "package_update_required_first" in skill_text
+    assert "~/.tradingcodex/preferences/update.json" in skill_text
+    assert "suppress_update_recommendation" in skill_text
+    assert "fully quit and restart Codex" in skill_text
     assert "BrokerCapabilityProfile" not in skill_text
     use_server_metadata = yaml.safe_load((use_server / "agents" / "openai.yaml").read_text(encoding="utf-8"))
     assert "$use-tradingcodex-server" in use_server_metadata["interface"]["default_prompt"]
@@ -759,6 +877,23 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "task_name" not in orchestration_guidance
     hook_text = (workspace / ".codex" / "hooks" / "tradingcodex_hook.py").read_text(encoding="utf-8")
     assert 'payload.get("agent_type")' in hook_text
+    assert "server-status.json" in hook_text
+    session_start = run(
+        [sys.executable, str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "session-start"],
+        workspace,
+        input_text=json.dumps({}),
+    )
+    assert session_start.stdout == ""
+    server_status = json.loads((workspace / ".tradingcodex" / "mainagent" / "server-status.json").read_text(encoding="utf-8"))
+    assert server_status["service_addr"] == "127.0.0.1:48267"
+    assert server_status["dashboard_url"] == "http://127.0.0.1:48267/"
+    assert server_status["health_url"] == "http://127.0.0.1:48267/api/health"
+    assert server_status["mcp_config_present"] is True
+    assert server_status["restart_codex_required"] is False
+    assert server_status["update_status"]["versions_match"] is True
+    assert server_status["update_status"]["workspace_update_available"] is False
+    assert server_status["update_status"]["workspace_update_recommended"] is False
+    assert server_status["recommended_action"]
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
     assert not (workspace / ".tradingcodex" / "state" / "paper-portfolio.json").exists()
     db_path = run(["./tcx", "db", "path"], workspace).stdout.strip()
@@ -819,6 +954,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert hooks["SubagentStart"][0]["matcher"]
     service_usage = run(["./tcx", "service", "nope"], workspace, expect_ok=False)
     assert "Usage: tcx service runserver [addrport] [django runserver args]" in service_usage.stderr
+    assert "tcx service ensure [addrport]" in service_usage.stderr
     agent_files = sorted((workspace / ".codex" / "agents").glob("*.toml"))
     assert len(agent_files) == 9
     actual_mcp_tools = {tool["name"] for tool in static_mcp_tools()}
@@ -831,6 +967,18 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "You are the `head-manager` agent" in head_manager_instructions
     assert "Codex-based local trading harness" in head_manager_instructions
     assert "asset-management workflow team" in head_manager_instructions
+    assert "## New conversation health" in head_manager_instructions
+    assert "When a new Codex conversation starts" in head_manager_instructions
+    assert "before greeting with a task menu" in head_manager_instructions
+    assert ".tradingcodex/mainagent/server-status.json" in head_manager_instructions
+    assert "Opening the TradingCodex dashboard is mandatory" in head_manager_instructions
+    assert "Do not merely" in head_manager_instructions
+    assert "workspace_update_allowed" in head_manager_instructions
+    assert "package_update_required_first" in head_manager_instructions
+    assert "~/.tradingcodex/preferences/update.json" in head_manager_instructions
+    assert "suppress_update_recommendation" in head_manager_instructions
+    assert "fully quit and restart" in head_manager_instructions
+    assert "Codex may not hot" in head_manager_instructions
     assert "not an autonomous trading bot" not in head_manager_instructions
     assert "# How you work" in head_manager_instructions
     assert "# TradingCodex guardrails" in head_manager_instructions

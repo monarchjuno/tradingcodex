@@ -253,6 +253,32 @@ The autostart path must be:
 - silent on MCP stdout except for MCP protocol messages
 - not required for direct `./tcx mcp stdio` smoke checks
 
+Generated workspaces also support startup health for Codex sessions. The
+`SessionStart` hook writes a compact diagnostic cache at
+`.tradingcodex/mainagent/server-status.json`; it does not start services,
+update workspaces, or open browsers. `head-manager` then uses
+`$use-tradingcodex-server` to run service/MCP doctor checks, call
+`./tcx service ensure` when recovery is possible, and open the local dashboard
+in the Codex in-app browser when available before it offers a task menu or
+starts other work. If project MCP config was created or changed, the user must
+fully quit and restart Codex and start a new thread because Codex may not hot
+reload project MCP config.
+
+Startup health may also compare the generated workspace version in
+`.tradingcodex/generated/module-lock.json` with the currently installed/running
+`tcx` package version. The workspace version is the local baseline: if it
+differs from the installed `tcx` version, `head-manager` may recommend aligning
+the workspace to the installed version. If the installed `tcx` is known to be
+older than the latest TradingCodex release, workspace update is blocked until
+the package is updated first, so an old package does not refresh the workspace
+with stale templates. Update recommendations are scoped to the
+new-conversation health pass, not every user turn. If the user declines update
+prompts, `head-manager` records the TradingCodex home preference file, normally
+`~/.tradingcodex/preferences/update.json`, with
+`suppress_update_recommendation=true`; future new conversations should not
+recommend automatic workspace updates unless the user removes or changes that
+flag, or explicitly asks for an update.
+
 ## Hooks
 
 Generated hooks are Python scripts. Hook behavior is guidance, not final
@@ -277,6 +303,10 @@ enforcement.
   storage/read/rotation prompts create warning context without activating
   investment subagent dispatch unless a separate investment or execution
   request remains
+- startup server diagnostics: `SessionStart` records compact service and MCP
+  config status for `head-manager` to repair through `$use-tradingcodex-server`
+- update recommendation diagnostics: `SessionStart` records generated workspace
+  version drift and respects the TradingCodex home update preference file
 
 Hooks load only in trusted projects and may be disabled when
 `features.hooks=false`.

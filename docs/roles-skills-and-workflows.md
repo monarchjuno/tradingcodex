@@ -225,7 +225,7 @@ Head-manager skill responsibilities:
 | `orchestrate-workflow` | stage sequencing, lane escalation, and movement across research, thesis, portfolio, risk, order, approval, execution, and postmortem |
 | `investment-workflow-map` | universe/workflow classification, source/as-of posture, support gaps, hero/support artifacts, and readiness labels |
 | `scenario-quality-gates` | scenario selection, minimum useful role-team shape, artifact expectations, blocked actions, and quality gates |
-| `use-tradingcodex-server` | TradingCodex MCP setup plus native broker connector template registration, capability-profile inspection, order-translation previews, read-only sync, and troubleshooting without granting execution authority |
+| `use-tradingcodex-server` | Startup health, local dashboard opening, Codex restart guidance, TradingCodex MCP setup, native broker connector template registration, capability-profile inspection, order-translation previews, read-only sync, and troubleshooting without granting execution authority |
 | `tradingcodex-operator` | Compatibility entrypoint for one release cycle; redirects users to `$use-tradingcodex-server` and must not add separate broker, approval, or execution authority |
 | `external-data-source-gate` | read-only external evidence-source constraints and External MCP Gate honesty |
 | `manage-subagents` | fixed-role dispatch mechanics, runtime state/reuse checks, compact briefs, artifact review, and conflict handling |
@@ -333,6 +333,7 @@ experimental submit/cancel execution tools.
 ## Hooks Are Guidance
 
 - `UserPromptSubmit` handles prompt classification, secret warnings, direct-answer prevention context, and duplicate marker management.
+- `SessionStart` writes compact TradingCodex server/MCP diagnostics for `head-manager`; startup recovery and browser opening stay in `$use-tradingcodex-server`.
 - Official `UserPromptSubmit` matchers are ignored, so classification happens inside the hook script.
 - Hooks use command type only and do not rely on ordering or concurrency between hooks.
 - Project-local hooks load only in trusted projects and may be disabled when `features.hooks=false`.

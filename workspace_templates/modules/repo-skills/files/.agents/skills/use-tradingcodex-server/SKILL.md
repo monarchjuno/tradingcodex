@@ -7,7 +7,7 @@ description: Operate TradingCodex Server broker connectors and MCP setup. Use wh
 
 ## Overview
 
-Use this skill to manage TradingCodex itself: project MCP setup, native broker connector registration, capability profile review, read-only account sync, order translation preview, and doctor recovery. This skill does not authorize analysis, approval, execution, cancellation, secret access, or direct broker API calls.
+Use this skill to manage TradingCodex itself: startup health, local dashboard access, project MCP setup, native broker connector registration, capability profile review, read-only account sync, order translation preview, and doctor recovery. This skill does not authorize analysis, approval, execution, cancellation, secret access, or direct broker API calls.
 
 ## Load References
 
@@ -18,6 +18,44 @@ Use this skill to manage TradingCodex itself: project MCP setup, native broker c
 - For failed checks, stale profile, credential, rate-limit, or preview issues, read `references/troubleshooting.md`.
 
 Load only the reference needed for the current task.
+
+## Startup Health And Dashboard
+
+Use this procedure at the start of a new Codex thread and whenever the user asks
+to check, fix, show, or open TradingCodex Server.
+
+1. Read `.tradingcodex/mainagent/server-status.json` if it exists.
+2. Run `./tcx doctor --layer service`.
+3. Run `./tcx doctor --layer mcp` if MCP config, tool availability, autostart,
+   or Codex restart state is relevant.
+4. If the service is not reachable, run `./tcx service ensure` to start or
+   reuse the compatible local service.
+5. Verify `http://127.0.0.1:48267/api/health` reports
+   `service=tradingcodex`, the current package version, and the current central
+   DB path.
+6. Open `http://127.0.0.1:48267/` in the Codex in-app browser when browser
+   control is available, and make the browser visible to the user. This is a
+   required startup action for a new conversation; do not merely say that you
+   can open it. If browser control is unavailable, give the dashboard URL and
+   state that browser control was unavailable.
+7. If MCP config was created, refreshed, missing, or changed, tell the user to
+   fully quit and restart Codex, then start a new thread in this workspace
+   because Codex may not hot reload project MCP config.
+8. If `server-status.json` has `update_status.versions_match=false`, use the
+   workspace version as the baseline and align the workspace to the installed
+   `tcx` version only when `update_status.workspace_update_allowed=true`.
+9. If `update_status.package_update_required_first=true`, do not run workspace
+   update with the currently installed `tcx`; tell the user to update the
+   TradingCodex package first, then restart Codex and open a new thread.
+10. Mention update recommendations only in this new-conversation startup check.
+    If the user declines update prompts, write the TradingCodex home preference
+    file shown in `update_status.preference_path`, normally
+    `~/.tradingcodex/preferences/update.json`, with
+    `{"suppress_update_recommendation": true}` and do not recommend automatic
+    workspace updates again unless the user changes that flag or explicitly asks.
+
+Do not work around port ownership, version mismatch, or central DB mismatch.
+Report those as blocked service compatibility problems.
 
 ## Safe Workflow
 
@@ -36,6 +74,9 @@ Load only the reference needed for the current task.
 
 ```bash
 ./tcx doctor
+./tcx doctor --layer service
+./tcx doctor --layer mcp
+./tcx service ensure
 ./tcx mcp call list_broker_connector_templates --principal head-manager
 ./tcx mcp call register_broker_connector --principal head-manager --template <template_id> --broker-id <broker-id> --credential-ref env:<BROKER_REF> --environment <paper|sandbox|testnet>
 ./tcx mcp call get_broker_capability_profile --principal head-manager --broker-id <broker-id>
