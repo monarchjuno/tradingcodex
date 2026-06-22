@@ -140,7 +140,7 @@ python3.11 -m venv /tmp/tcx-testpypi
 /tmp/tcx-testpypi/bin/pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  tradingcodex==0.2.1
+  tradingcodex==0.2.2
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
@@ -169,7 +169,7 @@ After the PyPI workflow completes:
 
 ```bash
 python3.11 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.1
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.2
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -222,7 +222,8 @@ Use PEP 440 versions:
 - `0.2.0` for the OrderTicket rewrite contract after install, docs, DB
   migration, generated workspace smoke checks, and release e2e checks are stable
 - `0.2.1` for Python `>=3.11,<3.15` support and clone-free setup guidance
-- later patch releases for compatible fixes after `0.2.1`
+- `0.2.2` for dashboard startup behavior fixes after `0.2.1`
+- later patch releases for compatible fixes after `0.2.2`
 - pre-releases such as `0.3.0a1`, `0.3.0b1`, or `0.3.0rc1` when preparing
   the next minor contract
 
