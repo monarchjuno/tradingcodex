@@ -44,7 +44,7 @@ raw broker execution primitive directly.
 | Broker sync | `BrokerSyncRun`, `PortfolioLedgerEvent`, `ReconciliationRun` | service layer | Read-only adapter path only; raw credentials are references. |
 | Draft order | `OrderTicket` | `portfolio-manager` | No execution before schema, policy, cash/position, broker validation, and risk checks. |
 | Risk review | risk/policy report | `risk-manager` | Check restricted list, downside, limits, and approval readiness. |
-| Approval | `ApprovalReceipt` | `risk-manager` or approved flow | Bind approval to exact order payload hash, broker/account, max notional/price, order type, time-in-force, and expiry. |
+| Approval | `ApprovalReceipt` | `risk-manager` | Bind approval to exact order payload hash, broker/account, max notional/price, order type, time-in-force, and expiry. |
 | Execution | `submit_approved_order` through TradingCodex MCP | `execution-operator` | Revalidate the order ticket payload and approval receipt in MCP. |
 | Audit/postmortem | audit event, execution result, postmortem | MCP/head-manager | Record rejects, approvals, executions, and policy decisions. |
 
@@ -97,7 +97,7 @@ TradingCodex must block:
 - raw broker API variants such as `broker.raw_api`, `broker_api.*`, and generic live execution actions
 - generic execution-like actions such as `execute_order` unless they enter the approved TradingCodex MCP lifecycle
 - self-issued approvals
-- approval creation by roles other than the approved risk/approval flow
+- approval creation by roles other than `risk-manager`
 - restricted symbol orders
 - approval order-payload-hash mismatch after order mutation
 - expired approval receipts or expired approval `valid_until`
@@ -136,6 +136,11 @@ lifecycle status. Default posture is fail-closed:
 External MCP permission is not execution authorization. Even if an external
 broker order tool is present and reviewed, order submission must still pass the
 TradingCodex order-ticket, approval, idempotency, adapter, and audit lifecycle.
+
+Codex network access may be enabled for public web, filing, disclosure, news,
+and market-data evidence gathering. That access is read-only research support:
+it does not authorize direct broker APIs, raw external broker MCP exposure,
+secret reads, approval bypass, or execution.
 
 ## Broker Safety
 

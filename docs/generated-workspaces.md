@@ -223,6 +223,10 @@ The package spec is recorded during bootstrap so PyPI and GitHub-source
 installs keep the same MCP source without stale source-cache reuse.
 
 Codex project config should register only the `tradingcodex` MCP server.
+Generated permission profiles allow network access for public evidence
+gathering, such as filings, disclosures, news, web sources, and market-data
+references. They still deny workspace secret paths and do not authorize direct
+broker APIs, broker-specific Codex MCP servers, approval bypass, or execution.
 Broker APIs are attached through native TradingCodex connector profiles using
 canonical MCP tools such as `list_broker_connector_templates`,
 `register_broker_connector`, `get_broker_capability_profile`,

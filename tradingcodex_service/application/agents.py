@@ -186,6 +186,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
+            "get_broker_instrument_constraints",
             "record_audit_event",
         ),
         forbidden_skill_tags=("approval", "execution", "order", "secret"),

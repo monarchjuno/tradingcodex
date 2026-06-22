@@ -31,13 +31,18 @@ def sync_builtin_principals_and_capabilities(tool_specs: Iterable[Any] | None = 
         from tradingcodex_service.mcp_runtime import TOOL_SPECS
 
         tool_specs = TOOL_SPECS
+    tool_specs = tuple(tool_specs)
 
     for role in sorted(BUILTIN_ROLE_IDS):
         Principal.objects.get_or_create(principal_id=role, defaults={"role": role, "active": True})
 
+    expected_builtin_allows: set[tuple[str, str]] = set()
+    builtin_actions: set[str] = set()
     for tool in tool_specs:
         action = tool_capability_action(tool.name, tool.capability_required)
+        builtin_actions.add(action)
         for role in tool.allowed_roles:
+            expected_builtin_allows.add((role, action))
             principal, _ = Principal.objects.get_or_create(principal_id=role, defaults={"role": role, "active": True})
             if principal.role != role:
                 principal.role = role
@@ -48,6 +53,15 @@ def sync_builtin_principals_and_capabilities(tool_specs: Iterable[Any] | None = 
                 resource_pattern="*",
                 defaults={"effect": "allow"},
             )
+
+    stale_builtin_allows = Capability.objects.filter(
+        principal__principal_id__in=BUILTIN_ROLE_IDS,
+        action__in=builtin_actions,
+        effect="allow",
+    )
+    for capability in stale_builtin_allows.select_related("principal"):
+        if (capability.principal.principal_id, capability.action) not in expected_builtin_allows:
+            capability.delete()
 
 
 def role_for_principal_id(principal_id: str) -> str:

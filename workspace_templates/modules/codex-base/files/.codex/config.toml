@@ -39,7 +39,7 @@ extends = ":workspace"
 "**/*broker*credential*" = "deny"
 
 [permissions.tradingcodex.network]
-enabled = false
+enabled = true
 
 [permissions.tradingcodex-fundamental]
 description = "TradingCodex fundamental analyst profile."

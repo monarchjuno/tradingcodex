@@ -28,6 +28,7 @@ from tradingcodex_service.application.portfolio import (
 from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_context_payload
 
 APPROVAL_FILE_ROOTS = (Path("trading/approvals"),)
+ORDER_TICKET_CREATOR_ROLE = "portfolio-manager"
 ORDER_TICKET_STATES = {
     "DRAFT",
     "PRECHECKED",
@@ -273,7 +274,12 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
     from apps.orders.models import OrderTicket
     from tradingcodex_service.application.brokers import ensure_paper_broker_connection
 
+    principal_id = str(args.get("principal_id") or args.get("created_by") or ORDER_TICKET_CREATOR_ROLE)
+    if principal_id != ORDER_TICKET_CREATOR_ROLE:
+        raise PermissionError(f"only {ORDER_TICKET_CREATOR_ROLE} can create order tickets")
+
     fields = normalize_order_ticket_fields(root, args)
+    fields["created_by"] = principal_id
     connection = _resolve_ticket_broker_connection(root, fields)
     broker_account = _resolve_ticket_broker_account(connection, fields)
     portfolio_id, account_id, strategy_id = portfolio_keys(
@@ -329,7 +335,7 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
             "current_state": existing.current_state if existing else "DRAFT",
             "payload_hash": payload_hash,
             "user_visible_summary": fields.get("user_visible_summary") or _ticket_summary(order_payload),
-            "created_by": fields.get("created_by") or args.get("principal_id") or "portfolio-manager",
+            "created_by": principal_id,
             "natural_language_source": fields.get("natural_language") or "",
             "workspace_context": workspace_context_payload(root),
             "payload": {

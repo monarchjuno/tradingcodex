@@ -329,6 +329,16 @@ includes External MCP Gate lifecycle tools for registration, check, discovery,
 and read-only review.
 `risk-manager` owns approval receipt creation; `execution-operator` owns
 experimental submit/cancel execution tools.
+`portfolio-manager` is the only role that creates draft order tickets.
+`instrument-analyst` may read broker instrument constraints for instrument
+support analysis, but this read-only access does not grant order drafting,
+approval, or execution authority.
+
+Generated Codex permission profiles allow public web, filing, disclosure, news,
+and market-data network access for evidence gathering. Direct broker APIs,
+broker-specific Codex MCP servers, raw secrets, approval bypasses, and execution
+remain blocked by role instructions, file walls, TradingCodex MCP allowlists,
+and service-layer policy.
 
 ## Hooks Are Guidance
 

@@ -13,7 +13,7 @@ from tradingcodex_service.application.brokers import (
     record_broker_mapping_review,
     sync_broker_account,
 )
-from tradingcodex_service.application.orders import order_payload_from_ticket, validate_approval_receipt
+from tradingcodex_service.application.orders import create_order_ticket, order_payload_from_ticket, validate_approval_receipt
 from tradingcodex_service.application.runtime import ensure_runtime_database
 from tradingcodex_service.mcp_runtime import call_mcp_tool, handle_mcp_rpc
 
@@ -50,6 +50,49 @@ def test_paper_broker_sync_creates_ledger_snapshot_and_reconciliation(tmp_path: 
 
 def test_order_ticket_checks_approval_scope_submit_fill_and_duplicate_block(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
+    ensure_runtime_database(workspace)
+
+    from apps.policy.models import Capability, Principal
+
+    risk_principal, _ = Principal.objects.get_or_create(principal_id="risk-manager", defaults={"role": "risk-manager", "active": True})
+    Capability.objects.get_or_create(principal=risk_principal, action="order_ticket.create", resource_pattern="*", defaults={"effect": "allow"})
+
+    try:
+        call_mcp_tool(
+            workspace,
+            "create_order_ticket",
+            {
+                "principal_id": "risk-manager",
+                "ticket_id": "risk-created-ticket",
+                "symbol": "MSFT",
+                "side": "buy",
+                "quantity": 1,
+                "order_type": "limit",
+                "limit_price": 1000,
+            },
+        )
+    except PermissionError as exc:
+        assert "not allowed" in str(exc) or "only portfolio-manager" in str(exc)
+    else:
+        raise AssertionError("risk-manager must not create order tickets")
+    assert not Capability.objects.filter(principal=risk_principal, action="order_ticket.create", effect="allow").exists()
+    try:
+        create_order_ticket(
+            workspace,
+            {
+                "principal_id": "risk-manager",
+                "ticket_id": "risk-created-service-ticket",
+                "symbol": "MSFT",
+                "side": "buy",
+                "quantity": 1,
+                "order_type": "limit",
+                "limit_price": 1000,
+            },
+        )
+    except PermissionError as exc:
+        assert "only portfolio-manager" in str(exc)
+    else:
+        raise AssertionError("risk-manager must not create order tickets through service calls")
 
     created = call_mcp_tool(
         workspace,
@@ -92,6 +135,27 @@ def test_order_ticket_checks_approval_scope_submit_fill_and_duplicate_block(tmp_
     duplicate = call_mcp_tool(workspace, "submit_approved_order", {"principal_id": "execution-operator", "ticket_id": "prd-ticket-1"})
     assert duplicate["status"] == "rejected"
     assert "already has an execution result" in "\n".join(duplicate["reasons"])
+
+
+def test_instrument_analyst_can_read_constraints_but_not_order_approve_or_submit(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    constraints = call_mcp_tool(workspace, "get_broker_instrument_constraints", {"principal_id": "instrument-analyst", "broker_id": "paper-trading", "symbol": "MSFT"})
+    assert constraints["broker_id"] == "paper-trading"
+    assert constraints["constraints"]["quantity_modes"]
+
+    blocked_tools = [
+        ("create_order_ticket", {"ticket_id": "instrument-ticket", "symbol": "MSFT", "side": "buy", "quantity": 1, "order_type": "limit", "limit_price": 1000}),
+        ("request_order_approval", {"ticket_id": "missing"}),
+        ("submit_approved_order", {"ticket_id": "missing"}),
+    ]
+    for tool_name, payload in blocked_tools:
+        try:
+            call_mcp_tool(workspace, tool_name, {"principal_id": "instrument-analyst", **payload})
+        except PermissionError as exc:
+            assert "not allowed" in str(exc) or "lacks capability" in str(exc)
+        else:
+            raise AssertionError(f"instrument-analyst must not call {tool_name}")
 
 
 def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Path) -> None:
@@ -244,6 +308,9 @@ def test_binance_spot_testnet_connector_lifecycle_through_execution_boundary(tmp
     constraints = call_mcp_tool(workspace, "get_broker_instrument_constraints", {"principal_id": "head-manager", "broker_id": "binance-spot-testnet", "symbol": "BTCUSDT"})
     assert constraints["constraints"]["min_notional"] == "5.00000000"
     assert constraints["constraints"]["quantity_increment"] == "0.00001000"
+
+    instrument_constraints = call_mcp_tool(workspace, "get_broker_instrument_constraints", {"principal_id": "instrument-analyst", "broker_id": "binance-spot-testnet", "symbol": "BTCUSDT"})
+    assert instrument_constraints["constraints"]["min_notional"] == "5.00000000"
 
     preview = call_mcp_tool(
         workspace,

@@ -31,6 +31,8 @@ Repository expectations:
 - Keep trading artifacts under `trading/`.
 - Keep TradingCodex policy, schemas, generated indexes, and workspace metadata
   under `.tradingcodex/`.
+- Public web, filing, disclosure, and market-data access is allowed for
+  evidence gathering when source/as-of posture is recorded.
 - Do not store broker API keys, tokens, passwords, or secrets in this workspace.
 - Do not call broker APIs directly from shell commands, hooks, skills, or ad hoc
   scripts.

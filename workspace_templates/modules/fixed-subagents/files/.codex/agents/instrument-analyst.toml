@@ -53,7 +53,7 @@ command = "uvx"
 args = ["--refresh", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
 enabled = true
 env = { TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1", TRADINGCODEX_SERVICE_ADDR = "127.0.0.1:48267", TRADINGCODEX_WORKSPACE_ROOT = "{{PROJECT_DIR}}" }
-enabled_tools = ["list_workflow_artifacts", "create_research_artifact", "get_research_artifact", "list_research_artifacts", "search_research_artifacts", "append_research_artifact_version", "export_research_artifact_md", "record_source_snapshot", "record_audit_event"]
+enabled_tools = ["list_workflow_artifacts", "create_research_artifact", "get_research_artifact", "list_research_artifacts", "search_research_artifacts", "append_research_artifact_version", "export_research_artifact_md", "record_source_snapshot", "get_broker_instrument_constraints", "record_audit_event"]
 disabled_tools = ["run_order_checks", "validate_approval_receipt", "request_order_approval", "submit_approved_order", "cancel_approved_order", "get_order_status", "get_positions", "get_portfolio_snapshot"]
 
 [[skills.config]]

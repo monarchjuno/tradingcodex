@@ -1000,7 +1000,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "Follow every applicable `AGENTS.md`" in workspace_agents
     assert "Keep prompts lean" in workspace_agents
     assert root_config["permissions"]["tradingcodex"]["extends"] == ":workspace"
-    assert root_config["permissions"]["tradingcodex"]["network"]["enabled"] is False
+    assert root_config["permissions"]["tradingcodex"]["network"]["enabled"] is True
     root_config_text = (workspace / ".codex" / "config.toml").read_text(encoding="utf-8")
     assert "orchestrate-workflow/SKILL.md" in root_config_text
     assert "strategy-creator/SKILL.md" in root_config_text
@@ -1067,6 +1067,10 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         if agent_file.stem == "risk-manager":
             assert "request_order_approval" in agent_mcp["enabled_tools"]
             assert "submit_approved_order" in agent_mcp["disabled_tools"]
+            assert "create_order_ticket" not in agent_mcp["enabled_tools"]
+        if agent_file.stem == "instrument-analyst":
+            assert "get_broker_instrument_constraints" in agent_mcp["enabled_tools"]
+            assert "create_order_ticket" not in agent_mcp["enabled_tools"]
         if agent_file.stem == "execution-operator":
             assert "submit_approved_order" in agent_mcp["enabled_tools"]
             assert "request_order_approval" not in agent_mcp["enabled_tools"]
@@ -1626,6 +1630,10 @@ def test_mcp_stdio_and_http_minimum_surface(tmp_path: Path) -> None:
     assert status_tool["annotations"]["destructiveHint"] is False
     research_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "create_research_artifact")
     assert "context_summary" in research_tool["inputSchema"]["properties"]
+    create_ticket_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "create_order_ticket")
+    assert create_ticket_tool["annotations"]["allowed_roles"] == ["portfolio-manager"]
+    constraints_tool = next(tool for tool in tools["result"]["tools"] if tool["name"] == "get_broker_instrument_constraints")
+    assert "instrument-analyst" in constraints_tool["annotations"]["allowed_roles"]
     tool_names = {tool["name"] for tool in tools["result"]["tools"]}
     assert {
         "list_broker_connector_templates",

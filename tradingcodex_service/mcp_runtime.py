@@ -348,7 +348,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return normalized instrument/order constraints for a broker, asset class, product, and symbol.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager", "portfolio-manager", "risk-manager"}),
+        allowed_roles=frozenset({"head-manager", "instrument-analyst", "portfolio-manager", "risk-manager"}),
         handler_name="get_broker_instrument_constraints",
         input_schema=object_schema(
             {
@@ -405,7 +405,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Create a draft-only canonical order ticket from explicit fields or natural language without broker submission.",
         category="orders",
         risk_level="write",
-        allowed_roles=frozenset({"portfolio-manager", "risk-manager"}),
+        allowed_roles=frozenset({"portfolio-manager"}),
         handler_name="create_order_ticket",
         input_schema=object_schema(ORDER_TICKET_SCHEMA["properties"], additional_properties=True),
         capability_required="order_ticket.create",
