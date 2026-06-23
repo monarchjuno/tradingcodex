@@ -9,5 +9,5 @@ recursive-include docs *
 recursive-include workspace_templates *
 recursive-include workspace_templates .*
 recursive-include tradingcodex_service/templates *
-recursive-include static *
+recursive-include tradingcodex_service/static *
 global-exclude *.py[cod]

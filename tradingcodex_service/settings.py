@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+SERVICE_DIR = Path(__file__).resolve().parent
+BASE_DIR = SERVICE_DIR.parent
 
 
 def default_db_name() -> str:
@@ -67,7 +68,7 @@ TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]
+STATICFILES_DIRS = [SERVICE_DIR / "static"]
 
 TEMPLATES = [
     {

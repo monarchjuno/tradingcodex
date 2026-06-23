@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_cli.service_autostart import DEFAULT_SERVICE_ADDR, service_http_url
+from tradingcodex_cli.service_autostart import DEFAULT_SERVICE_ADDR, service_http_url, service_status as inspect_service_status
 from tradingcodex_service.application.runtime import tradingcodex_db_path, tradingcodex_home
 from tradingcodex_service.application.runtime_mode import get_runtime_mode_status
 from tradingcodex_service.version import TRADINGCODEX_VERSION
@@ -28,25 +28,26 @@ def build_server_status(workspace_root: Path | str, addr: str | None = None) -> 
     permission_status = detect_codex_permission_status(root)
     mode_status = get_runtime_mode_status(root, full_access_detected=permission_status["full_access_detected"])
     update_status = build_update_status(root, permission_status=permission_status, mode_status=mode_status)
-    health = _read_health(health_url)
-    service_status = "not_running_or_unreachable"
-    if health:
-        service_status = "ok" if _is_compatible_health(health) else "incompatible"
+    service_detail = inspect_service_status(service_addr)
+    health = _read_health(health_url) if service_detail.get("reachable") else {}
+    service_state = _service_state_from_detail(service_detail)
     mcp_config_present = _is_project_mcp_config_present(root)
     restart_codex_required = not mcp_config_present
     if restart_codex_required:
         recommended_action = "Run ./tcx update or ./tcx attach ., then fully quit and restart Codex and start a new thread."
-    elif service_status == "ok":
+    elif service_state == "ok":
         recommended_action = f"Open TradingCodex dashboard at {dashboard_url}"
-    elif service_status == "incompatible":
-        recommended_action = "Resolve the TradingCodex service version or central DB mismatch before using the dashboard."
+    elif service_state == "incompatible":
+        recommended_action = service_detail.get("next_action") or "Resolve the TradingCodex service mismatch before using the dashboard."
     else:
-        recommended_action = "./tcx service ensure"
+        recommended_action = service_detail.get("next_action") or "./tcx service ensure"
+    startup_notice = build_startup_notice(service_detail=service_detail, service_status=service_state)
     allowed_next_actions = build_allowed_next_actions(
         mode_status=mode_status,
         permission_status=permission_status,
         update_status=update_status,
-        service_status=service_status,
+        service_status=service_state,
+        service_detail=service_detail,
     )
     return {
         "marker": "tradingcodex-session-context",
@@ -54,8 +55,10 @@ def build_server_status(workspace_root: Path | str, addr: str | None = None) -> 
         "service_addr": service_addr,
         "dashboard_url": dashboard_url,
         "health_url": health_url,
-        "service_status": service_status,
+        "service_status": service_state,
+        "service_detail": service_detail,
         "service_health": health,
+        "startup_notice": startup_notice,
         "mcp_config_present": mcp_config_present,
         "restart_codex_required": restart_codex_required,
         "permission_status": permission_status,
@@ -79,7 +82,16 @@ def fallback_server_status(workspace_root: Path | str, exc: Exception, addr: str
         "dashboard_url": dashboard_url,
         "health_url": f"{dashboard_url.rstrip('/')}/api/health",
         "service_status": "unknown",
+        "service_detail": {
+            "addr": service_addr,
+            "url": dashboard_url,
+            "reachable": False,
+            "compatible": False,
+            "issue": "unknown",
+            "next_action": "./tcx doctor --layer service",
+        },
         "service_health": {},
+        "startup_notice": f"TradingCodex startup status check failed: {exc}",
         "mcp_config_present": _is_project_mcp_config_present(root),
         "restart_codex_required": False,
         "permission_status": permission_status,
@@ -256,10 +268,13 @@ def build_allowed_next_actions(
     permission_status: dict[str, Any],
     update_status: dict[str, Any],
     service_status: str,
+    service_detail: dict[str, Any] | None = None,
 ) -> list[str]:
     actions: list[str] = []
     if service_status != "ok":
-        actions.append("./tcx service ensure")
+        service_detail = service_detail or {}
+        next_action = str(service_detail.get("next_action") or "").strip()
+        actions.append(next_action or "./tcx service ensure")
     if update_status.get("update_available"):
         if update_status.get("can_self_update"):
             actions.append(f"On explicit user request, run {update_status['command']} and then stop for Codex restart")
@@ -273,6 +288,35 @@ def build_allowed_next_actions(
     if mode_status.get("build_enabled"):
         actions.append("Build mode: TradingCodex updates and connector scaffolds are allowed; live execution remains blocked")
     return actions
+
+
+def _service_state_from_detail(service_detail: dict[str, Any]) -> str:
+    if service_detail.get("compatible"):
+        return "ok"
+    if service_detail.get("reachable"):
+        return "incompatible"
+    return "not_running_or_unreachable"
+
+
+def build_startup_notice(*, service_detail: dict[str, Any], service_status: str) -> str:
+    issue = str(service_detail.get("issue") or "").strip()
+    if service_status == "ok" or not issue:
+        return ""
+    next_action = str(service_detail.get("next_action") or "").strip()
+    if issue == "version_mismatch":
+        service_version = service_detail.get("version") or "unknown"
+        package_version = service_detail.get("package_version") or TRADINGCODEX_VERSION
+        return f"TradingCodex service version mismatch: service={service_version} package={package_version}. {next_action}"
+    if issue == "db_mismatch":
+        service_db = service_detail.get("db_path") or "unknown"
+        expected_db = service_detail.get("expected_db_path") or str(tradingcodex_db_path())
+        return f"TradingCodex service DB mismatch: service={service_db} package={expected_db}. {next_action}"
+    if issue == "port_occupied":
+        addr = service_detail.get("addr") or DEFAULT_SERVICE_ADDR
+        return f"TradingCodex service port is occupied by a non-TradingCodex process at {addr}. {next_action}"
+    if issue == "not_running":
+        return ""
+    return next_action
 
 
 def latest_release_info() -> dict[str, str]:

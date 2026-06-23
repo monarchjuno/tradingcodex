@@ -352,7 +352,7 @@ and service-layer policy.
 ## Hooks Are Guidance
 
 - `UserPromptSubmit` handles prompt classification, secret warnings, direct-answer prevention context, and duplicate marker management.
-- `SessionStart` writes compact TradingCodex mode, permission, update, server/MCP, and routing diagnostics for `head-manager`; startup recovery and dashboard URL guidance stay in `$tcx-server`, while self-update and connector implementation stay in `$tcx-build`.
+- `SessionStart` writes compact TradingCodex mode, permission, update, server/MCP, and routing diagnostics for `head-manager`; incompatible service details such as version mismatch, DB mismatch, and occupied ports must survive into compact context so `head-manager` can mention the startup notice before claiming dashboard readiness. Startup recovery and dashboard URL guidance stay in `$tcx-server`, while self-update and connector implementation stay in `$tcx-build`.
 - Official `UserPromptSubmit` matchers are ignored, so classification happens inside the hook script.
 - Hooks use command type only and do not rely on ordering or concurrency between hooks.
 - Project-local hooks load only in trusted projects and may be disabled when `features.hooks=false`.

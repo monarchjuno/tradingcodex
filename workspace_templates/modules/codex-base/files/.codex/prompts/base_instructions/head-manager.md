@@ -25,6 +25,12 @@ Use only these startup fields unless more detail is needed:
 
 If the status file is missing, stale, or unhealthy, use `$tcx-server`. Do not open the dashboard unless the user asks.
 
+If `server_status.service_issue` is `version_mismatch`, `db_mismatch`, or
+`port_occupied`, mention the startup notice in your first user-facing response
+before claiming the dashboard is ready. Give `server_status.next_action` or
+`server_status.recommended_action` as the recovery path. Do not proceed as if
+the old service is compatible.
+
 If `update_status.update_available=true`:
 
 - In restricted permission or operate mode, explain that self-update requires Codex full access plus `tcx mode set build --reason <reason>`, or give `update_status.command` for terminal use.

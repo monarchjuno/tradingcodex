@@ -308,6 +308,13 @@ when explicitly asked. If project MCP config was created or changed, the user
 must fully quit and restart Codex and start a new thread because Codex may not
 hot reload project MCP config.
 
+Startup context preserves incompatible service detail from `./tcx service
+status`, including `service_issue`, service/package versions, DB paths, and the
+recorded next action. If the issue is `version_mismatch`, `db_mismatch`, or
+`port_occupied`, `head-manager` must mention the startup notice in its first
+user-facing response and avoid presenting the dashboard as ready until the
+recovery path is handled.
+
 Startup health may compare the generated workspace version in
 `.tradingcodex/generated/module-lock.json` with the installed/running `tcx`
 package version and the latest known TradingCodex release. If update is needed

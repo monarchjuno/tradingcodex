@@ -4,10 +4,12 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
 import tomllib
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -28,6 +30,7 @@ from tradingcodex_service.application.components import (
     list_components_by_tag,
     list_harness_components,
 )
+from tradingcodex_service.application.artifact_quality import estimate_tokens
 from tradingcodex_service.application.harness import (
     build_compact_dispatch_context,
     build_subagent_starter_prompt,
@@ -244,6 +247,44 @@ def test_service_status_cli_supports_plain_and_json(monkeypatch, tmp_path: Path,
     payload = json.loads(capsys.readouterr().out)
     assert payload["compatible"] is False
     assert payload["issue"] == "version_mismatch"
+
+
+def test_startup_status_preserves_service_mismatch_details(monkeypatch, tmp_path: Path) -> None:
+    from tradingcodex_cli import startup_status
+
+    workspace = make_workspace(tmp_path)
+    old_db = tmp_path / "old.sqlite3"
+    current_db = tmp_path / "current.sqlite3"
+    service_detail = {
+        "addr": "127.0.0.1:48267",
+        "url": "http://127.0.0.1:48267/",
+        "reachable": True,
+        "compatible": False,
+        "service": "tradingcodex",
+        "version": "0.2.1",
+        "package_version": TRADINGCODEX_VERSION,
+        "db_path": str(old_db),
+        "expected_db_path": str(current_db),
+        "issue": "version_mismatch",
+        "next_action": "Stop the older TradingCodex service or choose a free service address, then restart Codex if MCP uses the default address.",
+    }
+    monkeypatch.setattr(startup_status, "inspect_service_status", lambda addr: service_detail)
+    monkeypatch.setattr(
+        startup_status,
+        "_read_health",
+        lambda url: {"service": "tradingcodex", "version": "0.2.1", "db_path": str(old_db)},
+    )
+
+    status = startup_status.build_server_status(workspace)
+
+    assert status["service_status"] == "incompatible"
+    assert status["service_detail"]["issue"] == "version_mismatch"
+    assert status["service_detail"]["version"] == "0.2.1"
+    assert status["service_detail"]["package_version"] == TRADINGCODEX_VERSION
+    assert "service=0.2.1" in status["startup_notice"]
+    assert f"package={TRADINGCODEX_VERSION}" in status["startup_notice"]
+    assert status["recommended_action"] == service_detail["next_action"]
+    assert status["allowed_next_actions"][0] == service_detail["next_action"]
 
 
 def test_manage_runserver_uses_fixed_port_and_skips_duplicate(monkeypatch, capsys) -> None:
@@ -478,6 +519,30 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
     assert not list(workspace.rglob("__pycache__"))
     assert not list(workspace.rglob("*.pyc"))
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
+
+
+def test_package_wheel_includes_web_static_assets(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    wheel_dir = tmp_path / "wheel"
+    shutil.copytree(
+        ROOT,
+        source,
+        ignore=shutil.ignore_patterns(".git", ".pytest_cache", "__pycache__", "*.pyc", "dist", "build", "*.egg-info"),
+    )
+    wheel_dir.mkdir()
+
+    run([sys.executable, "-m", "pip", "wheel", ".", "--no-deps", "--wheel-dir", str(wheel_dir)], source)
+
+    wheels = list(wheel_dir.glob("tradingcodex-*.whl"))
+    assert len(wheels) == 1
+    with zipfile.ZipFile(wheels[0]) as wheel:
+        names = set(wheel.namelist())
+    assert "tradingcodex_service/static/tradingcodex_web/app.css" in names
+    assert "tradingcodex_service/static/tradingcodex_web/workbench.css" in names
+    assert "tradingcodex_service/static/tradingcodex_web/app.js" in names
+    assert "tradingcodex_service/static/vendor/htmx/htmx.min.js" in names
+    assert "tradingcodex_service/static/vendor/alpine/alpine.min.js" in names
+    assert "tradingcodex_service/static/tradingcodex_admin/favicon.svg" in names
 
 
 def test_investment_request_detection_avoids_repository_work() -> None:
@@ -799,6 +864,7 @@ def test_repo_skill_templates_keep_instruction_boundary() -> None:
     server_skill = (skill_root / "tcx-server" / "SKILL.md").read_text(encoding="utf-8")
     assert "tcx service status" in server_skill
     assert "tcx update status --json" in server_skill
+    assert "service_issue=version_mismatch" in server_skill
     assert "Do not run `tcx update`" in server_skill
     build_skill = (skill_root / "tcx-build" / "SKILL.md").read_text(encoding="utf-8")
     assert "Build mode never enables `live_order`" in build_skill
@@ -920,6 +986,11 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert session_start_payload["mode_status"]["mode"] == "operate"
     assert session_start_payload["permission_status"]["codex_permission"] == "restricted"
     assert session_start_payload["update_status"]["can_self_update"] is False
+    assert "service_issue" in session_start_payload["server_status"]
+    assert "startup_notice" in session_start_payload["server_status"]
+    assert "next_action" in session_start_payload["server_status"]
+    assert "service_detail" not in session_start_payload["server_status"]
+    assert estimate_tokens(json.dumps(session_start_payload, ensure_ascii=False)) <= 800
     assert not (workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").exists()
     assert not (workspace / ".tradingcodex" / "state" / "paper-portfolio.json").exists()
     db_path = run(["./tcx", "db", "path"], workspace).stdout.strip()
@@ -1001,6 +1072,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "tradingcodex-session-context" in head_manager_instructions
     assert ".tradingcodex/mainagent/server-status.json" in head_manager_instructions
     assert "Do not open the dashboard unless the user asks" in head_manager_instructions
+    assert "server_status.service_issue" in head_manager_instructions
     assert "update_status.can_self_update=true" in head_manager_instructions
     assert "fully quit and restart Codex" in head_manager_instructions
     assert "not an autonomous trading bot" not in head_manager_instructions

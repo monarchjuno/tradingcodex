@@ -85,7 +85,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="runtime-mode-and-build-plane",
         label="Runtime Mode And Build Plane",
-        summary="Separates operate, build, and execution planes; gates self-update and connector implementation behind full access plus explicit build mode.",
+        summary="Separates operate, build, and execution planes; preserves startup service/update mismatch guidance; gates self-update and connector implementation behind full access plus explicit build mode.",
         status="core",
         tags=("guardrail.guidance", "guardrail.enforcement", "improvement.workflow_quality"),
         surfaces={
@@ -99,7 +99,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         },
         depends_on=("responsibility-boundary-contract", "broker-center", "execution-boundary"),
         owned_capabilities=("runtime.mode", "build.self_update", "build.connector_scaffold"),
-        validation=("pytest", "generated workspace contract", "Codex smoke checks"),
+        validation=("pytest", "startup service mismatch diagnostics", "generated workspace contract", "Codex smoke checks"),
     ),
     HarnessComponent(
         id="artifact-quality-contract",

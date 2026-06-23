@@ -66,6 +66,7 @@ def session_start(payload: dict) -> None:
         server_status = fallback_server_status(ROOT, exc)
         append_hook_audit({"event": "session-start", "warning": "server status check failed", "error": str(exc)})
     update_status = server_status["update_status"]
+    service_detail = server_status.get("service_detail") or {}
     readiness = {
         "marker": "tradingcodex-session-context",
         "mode_status": server_status["mode_status"],
@@ -83,6 +84,13 @@ def session_start(payload: dict) -> None:
             "status_path": ".tradingcodex/mainagent/server-status.json",
             "dashboard_url": server_status["dashboard_url"],
             "service_status": server_status["service_status"],
+            "service_issue": service_detail.get("issue", ""),
+            "service_version": service_detail.get("version", ""),
+            "package_version": service_detail.get("package_version", ""),
+            "service_db_path": service_detail.get("db_path", ""),
+            "expected_db_path": service_detail.get("expected_db_path", ""),
+            "next_action": service_detail.get("next_action", ""),
+            "startup_notice": server_status.get("startup_notice", ""),
             "restart_codex_required": server_status["restart_codex_required"],
             "recommended_action": server_status["recommended_action"],
         },
