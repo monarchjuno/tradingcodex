@@ -335,8 +335,8 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
             "natural_language_source": fields.get("natural_language") or "",
             "workspace_context": workspace_context_payload(root),
             "payload": {
-                "canonical_order": order_payload,
-                "canonical_order_v2": order_payload.get("canonical_order_v2", {}),
+                "order": order_payload,
+                "canonical_order": order_payload.get("canonical_order", {}),
                 "raw": args,
             },
         },
@@ -726,11 +726,14 @@ def record_order_event(ticket: Any, event_type: str, actor: str, payload: dict[s
 
 
 def order_payload_from_ticket(ticket: Any) -> dict[str, Any]:
-    payload = dict((ticket.payload or {}).get("canonical_order") or {})
-    canonical_v2 = (ticket.payload or {}).get("canonical_order_v2") if isinstance(ticket.payload, dict) else None
+    stored_payload = ticket.payload if isinstance(ticket.payload, dict) else {}
+    payload = dict(stored_payload.get("order") or {})
+    if not payload:
+        payload = dict(stored_payload.get("canonical_order") or {})
+    canonical_order = stored_payload.get("canonical_order")
     if payload:
-        if canonical_v2:
-            payload["canonical_order_v2"] = canonical_v2
+        if canonical_order:
+            payload["canonical_order"] = canonical_order
         payload.update(
             {
                 "id": ticket.ticket_id,
@@ -818,7 +821,7 @@ def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[s
         "created_by": ticket.created_by,
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
-        "canonical_order_v2": (ticket.payload or {}).get("canonical_order_v2", {}) if isinstance(ticket.payload, dict) else {},
+        "canonical_order": (ticket.payload or {}).get("canonical_order", {}) if isinstance(ticket.payload, dict) else {},
         "checks": [
             {"check_type": check.check_type, "decision": check.decision, "reasons": check.reasons, "created_at": check.created_at.isoformat()}
             for check in ticket.check_runs.all()
@@ -920,11 +923,11 @@ def canonical_order_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
         "time_in_force": str(fields.get("time_in_force") or "day"),
     }
     try:
-        from tradingcodex_service.application.brokers import canonical_order_v2_from_order
+        from tradingcodex_service.application.brokers import canonical_order_from_order
 
-        order["canonical_order_v2"] = canonical_order_v2_from_order({**fields, **order})
+        order["canonical_order"] = canonical_order_from_order({**fields, **order})
     except Exception:
-        order["canonical_order_v2"] = {}
+        order["canonical_order"] = {}
     return order
 
 

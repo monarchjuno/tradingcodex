@@ -13,7 +13,7 @@ from typing import Any
 from tradingcodex_service.version import TRADINGCODEX_VERSION
 from tradingcodex_service.application.agents import project_agent_configuration
 from tradingcodex_service.application.components import list_harness_components
-from tradingcodex_service.application.runtime import ensure_workspace_manifest, read_workspace_manifest
+from tradingcodex_service.application.runtime import ensure_workspace_manifest, read_workspace_manifest, tradingcodex_home
 from tradingcodex_cli.startup_status import write_server_status_snapshot
 
 DEFAULT_MODULE_IDS = [
@@ -63,6 +63,7 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
         "GENERATED_AT": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "TRADINGCODEX_VERSION": TRADINGCODEX_VERSION,
         "TRADINGCODEX_MCP_PACKAGE_SPEC": os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex"),
+        "TRADINGCODEX_HOME": str(tradingcodex_home()),
         "SUBAGENT_COUNT": str(len(subagents)),
     }
     result = {
@@ -170,6 +171,8 @@ def write_generated_indexes(target: Path, modules: list[Module], context: dict[s
     lock = {
         "generated_at": context["GENERATED_AT"],
         "tradingcodex_version": context["TRADINGCODEX_VERSION"],
+        "tradingcodex_package_spec": context["TRADINGCODEX_MCP_PACKAGE_SPEC"],
+        "tradingcodex_home": context["TRADINGCODEX_HOME"],
         "modules": [
             {
                 "id": module.id,

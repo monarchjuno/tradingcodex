@@ -43,15 +43,10 @@ RESEARCH_ROLES = (
 )
 
 HEAD_MANAGER_SKILLS = (
-    "orchestrate-workflow",
-    "investment-workflow-map",
-    "scenario-quality-gates",
-    "use-tradingcodex-server",
-    "tradingcodex-operator",
-    "manage-subagents",
-    "manage-optional-skills",
+    "tcx-workflow",
+    "tcx-server",
+    "tcx-build",
     "strategy-creator",
-    "synthesize-decision",
     "postmortem",
 )
 
@@ -64,6 +59,8 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         permission_profile="tradingcodex",
         mcp_allowlist=(
             "get_tradingcodex_status",
+            "get_runtime_mode",
+            "get_update_status",
             "simulate_policy",
             "get_order_status",
             "list_broker_connections",
@@ -84,6 +81,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "get_broker_capability_profile",
             "get_broker_instrument_constraints",
             "preview_order_translation",
+            "get_connector_build_status",
             "list_workflow_artifacts",
             "create_research_artifact",
             "get_research_artifact",
@@ -391,16 +389,11 @@ ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
 
 
 SKILL_SPECS: dict[str, SkillSpec] = {
-    "orchestrate-workflow": SkillSpec("orchestrate-workflow", "Orchestrate Workflow", ("head-manager",), user_visible=True),
-    "investment-workflow-map": SkillSpec("investment-workflow-map", "Investment Workflow Map", ("head-manager",)),
-    "scenario-quality-gates": SkillSpec("scenario-quality-gates", "Scenario Quality Gates", ("head-manager",)),
-    "use-tradingcodex-server": SkillSpec("use-tradingcodex-server", "Use TradingCodex Server", ("head-manager",), user_visible=True),
-    "tradingcodex-operator": SkillSpec("tradingcodex-operator", "TradingCodex Operator", ("head-manager",)),
+    "tcx-workflow": SkillSpec("tcx-workflow", "TCX Workflow", ("head-manager",), user_visible=True),
+    "tcx-server": SkillSpec("tcx-server", "TCX Server", ("head-manager",), user_visible=True),
+    "tcx-build": SkillSpec("tcx-build", "TCX Build", ("head-manager",), user_visible=True),
     "external-data-source-gate": SkillSpec("external-data-source-gate", "External Data Source Gate", RESEARCH_ROLES, scope="subagent_shared"),
-    "manage-subagents": SkillSpec("manage-subagents", "Manage Subagents", ("head-manager",)),
-    "manage-optional-skills": SkillSpec("manage-optional-skills", "Manage Optional Skills", ("head-manager",)),
     "strategy-creator": SkillSpec("strategy-creator", "Strategy Creator", ("head-manager",), user_visible=True),
-    "synthesize-decision": SkillSpec("synthesize-decision", "Synthesize Decision", ("head-manager",)),
     "postmortem": SkillSpec("postmortem", "Postmortem", ("head-manager",), user_visible=True),
     "collect-evidence": SkillSpec("collect-evidence", "Collect Evidence", RESEARCH_ROLES, scope="subagent_shared"),
     "fundamental-analysis": SkillSpec("fundamental-analysis", "Fundamental Analysis", ("fundamental-analyst",), scope="subagent_role"),

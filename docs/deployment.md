@@ -140,7 +140,7 @@ python3.11 -m venv /tmp/tcx-testpypi
 /tmp/tcx-testpypi/bin/pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  tradingcodex==0.2.3
+  tradingcodex==0.2.4
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
@@ -169,7 +169,7 @@ After the PyPI workflow completes:
 
 ```bash
 python3.11 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.3
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.2.4
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -204,6 +204,30 @@ TradingCodex has two update layers:
   generated files, generated indexes, project MCP config, hook scripts, and
   central DB schema
 
+Generated workspace `./tcx update` normally refreshes through `uvx` first so
+stale recorded Python paths do not rewrite templates. In restricted Codex
+permissions, `head-manager` should not run the update itself because it rewrites
+protected `.codex` prompt/config/hook surfaces. When the package is already
+installed and Codex startup health reports `workspace_update_allowed=true`,
+`head-manager` should tell the user to switch to full access plus TradingCodex
+build mode, or run the workspace-only path from a terminal:
+
+```bash
+./tcx update --skip-refresh
+```
+
+`head-manager` may run the update directly only when
+`update_status.can_self_update=true`, which requires Codex full access,
+unexpired TradingCodex build mode, and an explicit user request. After a
+self-update it must stop and tell the user to fully restart Codex. The terminal
+path avoids package-cache or user-tool writes and keeps self-modifying `.codex`
+prompt/config/hook updates outside a restricted active Codex agent sandbox.
+Generated Codex config declares the bounded `~/.tradingcodex` writable root so
+central DB migrations, lock files, and update preferences can still work
+without disabling the sandbox when the active Codex surface honors
+project-scoped sandbox roots. If a package update is required first, the user
+should run the package-refresh command from a terminal instead.
+
 `tcx update` must preserve `.tradingcodex/workspace.json` identity fields,
 including `workspace_id` and active profile. It may overwrite generated paths
 owned by `workspace_templates/modules/*/files`, and it must not overwrite
@@ -225,7 +249,9 @@ Use PEP 440 versions:
 - `0.2.2` for dashboard startup behavior fixes after `0.2.1`
 - `0.2.3` for workflow-planner UX, fixed strategy authoring, profile-scoped
   ticket isolation, workspace-scoped transition audit, and startup/status fixes
-- later patch releases for compatible fixes after `0.2.3`
+- `0.2.4` for the operate/build/execution plane rewrite, compact startup
+  context, build-mode updates, and connector scaffold workflow
+- later patch releases for compatible fixes after `0.2.4`
 - pre-releases such as `0.3.0a1`, `0.3.0b1`, or `0.3.0rc1` when preparing
   the next minor contract
 

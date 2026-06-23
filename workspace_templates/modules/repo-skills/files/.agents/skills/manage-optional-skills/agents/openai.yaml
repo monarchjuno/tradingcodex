@@ -1,6 +1,0 @@
-interface:
-  display_name: "Manage Optional Skills"
-  short_description: "Maintain role-local optional skills"
-  default_prompt: "Use $manage-optional-skills to create, update, archive, or validate a role-local optional skill."
-policy:
-  allow_implicit_invocation: false

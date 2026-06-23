@@ -5,16 +5,24 @@ allow_login_shell = false
 default_permissions = "tradingcodex"
 model_instructions_file = "prompts/base_instructions/head-manager.md"
 
+[sandbox_workspace_write]
+writable_roots = ["{{TRADINGCODEX_HOME}}"]
+network_access = true
+
 [agents]
 max_threads = {{SUBAGENT_COUNT}}
 max_depth = 1
 
 [[skills.config]]
-path = "{{PROJECT_DIR}}/.agents/skills/orchestrate-workflow/SKILL.md"
+path = "{{PROJECT_DIR}}/.agents/skills/tcx-workflow/SKILL.md"
 enabled = true
 
 [[skills.config]]
-path = "{{PROJECT_DIR}}/.agents/skills/use-tradingcodex-server/SKILL.md"
+path = "{{PROJECT_DIR}}/.agents/skills/tcx-server/SKILL.md"
+enabled = true
+
+[[skills.config]]
+path = "{{PROJECT_DIR}}/.agents/skills/tcx-build/SKILL.md"
 enabled = true
 
 [[skills.config]]
@@ -36,6 +44,12 @@ extends = ":workspace"
 "**/*.env" = "deny"
 ".tradingcodex/secrets/**" = "deny"
 ".tradingcodex/secrets.md" = "deny"
+"**/*broker*credential*" = "deny"
+
+[permissions.tradingcodex.filesystem."{{TRADINGCODEX_HOME}}"]
+"**/*.env" = "deny"
+"secrets/**" = "deny"
+"secrets.md" = "deny"
 "**/*broker*credential*" = "deny"
 
 [permissions.tradingcodex.network]

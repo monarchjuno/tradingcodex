@@ -1,6 +1,0 @@
-interface:
-  display_name: "Synthesize Decision"
-  short_description: "Summarize artifacts into decision state"
-  default_prompt: "Use $synthesize-decision to summarize collected workspace artifacts into a decision state and next allowed action."
-policy:
-  allow_implicit_invocation: false

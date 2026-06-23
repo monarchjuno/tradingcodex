@@ -1,6 +1,0 @@
-interface:
-  display_name: "TradingCodex Operator"
-  short_description: "Operate MCP setup and external gate"
-  default_prompt: "Use $tradingcodex-operator to inspect and repair the TradingCodex MCP setup."
-policy:
-  allow_implicit_invocation: false

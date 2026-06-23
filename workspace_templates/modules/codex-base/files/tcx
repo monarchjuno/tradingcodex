@@ -4,7 +4,22 @@ TRADINGCODEX_SOURCE_ROOT="{{SOURCE_ROOT}}"
 export TRADINGCODEX_WORKSPACE_ROOT="{{PROJECT_DIR}}"
 export DJANGO_SETTINGS_MODULE="${DJANGO_SETTINGS_MODULE:-tradingcodex_service.settings}"
 TRADINGCODEX_PYTHON="${TRADINGCODEX_PYTHON:-{{PYTHON_EXECUTABLE}}}"
-if [ "${1:-}" = "update" ] && command -v uvx >/dev/null 2>&1; then
+TRADINGCODEX_UPDATE_SKIP_REFRESH="${TRADINGCODEX_UPDATE_SKIP_REFRESH:-0}"
+if [ "${1:-}" = "update" ] && [ "${2:-}" = "status" ]; then
+  TRADINGCODEX_UPDATE_SKIP_REFRESH="1"
+fi
+if [ "${1:-}" = "update" ]; then
+  filtered_args=()
+  for arg in "$@"; do
+    if [ "$arg" = "--skip-refresh" ]; then
+      TRADINGCODEX_UPDATE_SKIP_REFRESH="1"
+    else
+      filtered_args+=("$arg")
+    fi
+  done
+  set -- "${filtered_args[@]}"
+fi
+if [ "${1:-}" = "update" ] && [ "$TRADINGCODEX_UPDATE_SKIP_REFRESH" != "1" ] && command -v uvx >/dev/null 2>&1; then
   case "${PYTHONPATH:-}" in
     "$TRADINGCODEX_SOURCE_ROOT")
       unset PYTHONPATH
@@ -18,6 +33,11 @@ fi
 if [ -x "$TRADINGCODEX_PYTHON" ]; then
   export PYTHONPATH="$TRADINGCODEX_SOURCE_ROOT${PYTHONPATH:+:$PYTHONPATH}"
   exec "$TRADINGCODEX_PYTHON" "{{PROJECT_DIR}}/.tradingcodex/cli.py" "$@"
+fi
+if [ "${1:-}" = "update" ] && [ "$TRADINGCODEX_UPDATE_SKIP_REFRESH" = "1" ]; then
+  echo "tcx: --skip-refresh requires the recorded Python to be available: $TRADINGCODEX_PYTHON" >&2
+  echo "tcx: run the package-refresh update from a terminal instead: uvx --refresh --from {{TRADINGCODEX_MCP_PACKAGE_SPEC}} tcx update {{PROJECT_DIR}}" >&2
+  exit 127
 fi
 if command -v uvx >/dev/null 2>&1; then
   case "${PYTHONPATH:-}" in

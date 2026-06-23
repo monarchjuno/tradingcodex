@@ -1,6 +1,0 @@
-interface:
-  display_name: "Use TradingCodex Server"
-  short_description: "Attach and manage broker connectors"
-  default_prompt: "Use $use-tradingcodex-server to attach, inspect, and manage TradingCodex broker connectors safely."
-policy:
-  allow_implicit_invocation: true

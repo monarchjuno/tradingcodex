@@ -1,6 +1,0 @@
-interface:
-  display_name: "Scenario Quality Gates"
-  short_description: "Set workflow quality gates"
-  default_prompt: "Use $scenario-quality-gates to select the workflow scenario, artifacts, and quality gates."
-policy:
-  allow_implicit_invocation: false

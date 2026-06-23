@@ -81,9 +81,9 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
             False,
         ),
         (
-            "$orchestrate-workflow NVDA earnings preview and catalyst review, no order and no trading",
+            "$tcx-workflow NVDA earnings preview and catalyst review, no order and no trading",
             "thesis_review",
-            ["fundamental-analyst", "technical-analyst", "news-analyst", "macro-analyst", "valuation-analyst"],
+            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"],
             False,
         ),
         (
@@ -128,6 +128,12 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
             [],
             True,
         ),
+        (
+            "binance 붙여줘. no order, no execution, do not read secrets.",
+            "connector_build",
+            [],
+            False,
+        ),
     ]
     for index, (prompt, lane, roles, secret_warning) in enumerate(prompt_cases):
         gate = hook_context(workspace, prompt, env_extra, via_hooks_json=index == 0)
@@ -136,10 +142,10 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         assert gate["required_subagents"] == roles
         assert gate["secret_warning"] is secret_warning
         assert gate["confirmation_required"] is False
-        assert gate["context_mode"] == "compact_workflow_gate_v1"
+        assert gate["context_mode"] == "compact_workflow_gate"
         assert gate["starter_prompt_path"] == ".tradingcodex/mainagent/latest-user-prompt-gate.json"
         assert "starter_prompt" not in gate
-        assert len(json.dumps(gate, ensure_ascii=False)) < 1600
+        assert len(json.dumps(gate, ensure_ascii=False)) < 1800
         if roles:
             persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
             starter = persisted_gate["starter_prompt"]
@@ -165,7 +171,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     status = json.loads(tcx(workspace, env_extra, "subagents", "status").stdout)
     assert status["installed_count"] == 9
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 24
+    assert status["skills_installed"] == 19
     plan = json.loads(tcx(workspace, env_extra, "subagents", "plan", "--all").stdout)
     assert plan["requested_count"] == 9
     assert plan["parallel_spawn_ok"] is True

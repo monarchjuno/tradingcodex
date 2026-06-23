@@ -358,12 +358,24 @@ Top-level commands:
 Generated workspace wrapper commands:
 
 - `./tcx doctor`
-- `./tcx update [--no-doctor]`
+- `./tcx update [--no-doctor] [--skip-refresh]`
+- `./tcx update status [--json]`
+- `./tcx mode status`
+- `./tcx mode set build --reason "<reason>"`
+- `./tcx mode set operate`
+- `./tcx connectors status`
+- `./tcx connectors scaffold <template-or-alias> --broker-id <id>`
+- `./tcx connectors register <template-or-alias> --broker-id <id> --credential-ref <ref> --environment <paper|sandbox|testnet>`
+- `./tcx connectors validate <broker-id>`
 - `./tcx workspace status|list`
 - `./tcx profile status|list|create|select|update`
 - `./tcx subagents status`
 - `./tcx subagents prompt [--json|--explain] "<request>"`
 - `./tcx skills optional list|inspect|create|update|activate|archive|delete`
+
+Short aliases such as `binance`, `kis`, `한투`, `upbit`, and `alpaca` resolve
+to canonical connector templates while generated profiles keep the canonical
+template ID.
 - `./tcx strategies list|inspect|create|update|activate|archive|delete`
 - `./tcx validate order <path>`
 - `./tcx approve <path>`
@@ -373,9 +385,9 @@ Generated workspace wrapper commands:
 - `./tcx research create|append|get|list|search|export`
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
-direct user entrypoints: `orchestrate-workflow`,
-`use-tradingcodex-server`, `strategy-creator`, `postmortem`, and active
-`strategy-*` skills. Full inspection is available through
+direct user entrypoints: `tcx-workflow`, `tcx-server`, `tcx-build`,
+`strategy-creator`, `postmortem`, and active `strategy-*` skills. Full
+inspection is available through
 `./tcx skills list --all` and role-specific `./tcx subagents skills <role>`.
 
 Optional-skill and strategy CRUD CLI commands call the same shared application

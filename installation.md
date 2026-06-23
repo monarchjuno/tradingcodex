@@ -82,6 +82,23 @@ uvx --refresh --from tradingcodex tcx update .
 refreshes generated indexes, applies central DB migrations, records workspace
 provenance, and runs `./tcx doctor` unless `--no-doctor` is passed.
 
+Inside a generated Codex workspace, restricted Codex permissions should not run
+workspace updates because update rewrites protected `.codex`
+prompt/config/hook surfaces. If TradingCodex is already installed and startup
+health says the workspace can be aligned to that installed version,
+`head-manager` will ask you either to switch Codex to full access and enable
+TradingCodex build mode, or run this workspace-only update from your terminal:
+
+```bash
+./tcx update --skip-refresh
+```
+
+If `update_status.can_self_update=true` and you explicitly ask for the update,
+`head-manager` can run it directly, then it will stop and tell you to fully
+restart Codex. If a package update is required first, run the
+`uvx --refresh ... tcx update .` or installer-script update command from your
+terminal, then fully restart Codex.
+
 After update, runtime order flows use central DB `OrderTicket` records directly.
 
 After update, fully quit and restart Codex, then start from a new thread in the

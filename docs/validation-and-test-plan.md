@@ -223,7 +223,9 @@ logs/results rather than relying only on static checks.
 Scenarios should include:
 
 - broad investment request asks for workflow confirmation or starter prompt
-- explicit `$orchestrate-workflow` routes to selected role team
+- explicit `$tcx-workflow` routes to the selected role team
+- connector build prompts such as "binance 붙여줘" route to `connector_build`
+  and do not dispatch investment subagents
 - negated execution wording such as "no order" stays out of execution routing
 - guardrail-verification wording does not trigger execution
 - secret-only credential, token, broker-key, password, or `.env` prompts create

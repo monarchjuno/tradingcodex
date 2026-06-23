@@ -1,6 +1,0 @@
-interface:
-  display_name: "Orchestrate Workflow"
-  short_description: "Coordinate workspace investment workflows"
-  default_prompt: "Use $orchestrate-workflow to route a multi-step investment request through the fixed workspace subagents."
-policy:
-  allow_implicit_invocation: true

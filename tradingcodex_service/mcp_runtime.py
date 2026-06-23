@@ -24,6 +24,9 @@ APPROVAL_ROLES = {"risk-manager"}
 EXECUTION_ROLES = {"execution-operator"}
 SAFE_HOME_TOOL_NAMES = frozenset({
     "get_tradingcodex_status",
+    "get_runtime_mode",
+    "get_update_status",
+    "get_connector_build_status",
     "list_broker_connections",
     "get_broker_connection_status",
     "get_order_status",
@@ -182,6 +185,24 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=frozenset({"head-manager"}),
         handler_name="get_tradingcodex_status",
+        input_schema=object_schema(),
+    ),
+    McpToolSpec(
+        name="get_runtime_mode",
+        description="Return TradingCodex operate/build mode status without changing permissions or mode.",
+        category="harness",
+        risk_level="read",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="get_runtime_mode",
+        input_schema=object_schema(),
+    ),
+    McpToolSpec(
+        name="get_update_status",
+        description="Return TradingCodex package/workspace update status and self-update gate metadata without running an update.",
+        category="harness",
+        risk_level="read",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="get_update_status",
         input_schema=object_schema(),
     ),
     McpToolSpec(
@@ -376,13 +397,22 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="preview_order_translation",
-        description="Preview canonical_order_v2 translation for a broker connector without submission, cancellation, or approval authority.",
+        description="Preview canonical_order translation for a broker connector without submission, cancellation, or approval authority.",
         category="orders",
         risk_level="write",
         allowed_roles=frozenset({"head-manager", "portfolio-manager", "risk-manager"}),
         handler_name="preview_order_translation",
         input_schema=object_schema(ORDER_TICKET_SCHEMA["properties"], additional_properties=True),
         capability_required="broker_order.preview",
+    ),
+    McpToolSpec(
+        name="get_connector_build_status",
+        description="Return connector scaffold metadata created by TradingCodex build mode without enabling live execution.",
+        category="brokers",
+        risk_level="read",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="get_connector_build_status",
+        input_schema=object_schema(),
     ),
     McpToolSpec(
         name="sync_broker_account",
@@ -824,6 +854,14 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
             "workspace_context": persist_workspace_context_if_available(workspace_root),
             "mcp_scope": "global-home" if safe_home_mcp_scope() else "project-scoped",
         }
+    if name == "get_runtime_mode":
+        from tradingcodex_service.application.runtime_mode import get_runtime_mode_status
+
+        return get_runtime_mode_status(workspace_root)
+    if name == "get_update_status":
+        from tradingcodex_cli.startup_status import build_update_status
+
+        return build_update_status(workspace_root)
     if name == "simulate_policy":
         return policy.simulate_policy(workspace_root, args)
     if name == "validate_approval_receipt":
@@ -846,6 +884,8 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         return brokers.get_broker_instrument_constraints(workspace_root, args)
     if name == "preview_order_translation":
         return brokers.preview_order_translation(workspace_root, {**args, "principal_id": principal_id})
+    if name == "get_connector_build_status":
+        return brokers.get_connector_build_status(workspace_root, args)
     if name == "sync_broker_account":
         return brokers.sync_broker_account(workspace_root, {**args, "principal_id": principal_id})
     if name == "list_reconciliation_runs":

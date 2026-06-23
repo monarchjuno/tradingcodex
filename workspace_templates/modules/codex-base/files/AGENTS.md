@@ -14,6 +14,11 @@ Repository expectations:
   runtime files.
 - Use `./tcx` for workspace commands. Do not rely on `tcx` being installed in
   `PATH`.
+- Treat TradingCodex as three planes: operate for workflow/status/read-only
+  connector work, build for explicit full-access product and connector changes,
+  and execution for approved order paths through service policy.
+- Build work requires both Codex full access and `tcx mode set build --reason
+  <reason>`. Build mode does not enable live broker execution.
 - Keep prompts lean. Put repeatable procedures in repo skills, standing role
   behavior in role TOML, and generated indexes under `.tradingcodex/generated/`.
 - Keep handoffs context-efficient: pass artifact paths, `context_summary`,

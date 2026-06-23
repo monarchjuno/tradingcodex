@@ -1,6 +1,0 @@
-interface:
-  display_name: "Investment Workflow Map"
-  short_description: "Map investment workflows across universes to TradingCodex lanes"
-  default_prompt: "Use $investment-workflow-map to classify an investment request before dispatch."
-policy:
-  allow_implicit_invocation: false

@@ -195,6 +195,28 @@ The generated `./tcx` wrapper special-cases `update` to prefer
 prevents an old recorded Python path from refreshing the workspace with stale
 template code.
 
+Inside a Codex-generated workspace, `head-manager` runs under a workspace
+permission profile. It can write workspace files and TradingCodex home state,
+but it should not update the generated harness itself: workspace update rewrites
+protected `.codex` prompt/config/hook surfaces and generated files that define
+the current agent. For already-installed packages, the wrapper supports a
+user-terminal workspace-only path:
+
+```bash
+./tcx update --skip-refresh
+```
+
+`--skip-refresh` uses the recorded Python/package and avoids the `uvx` refresh
+step. If startup health reports `update_status.workspace_update_allowed=true`,
+`head-manager` should tell the user to run
+`update_status.workspace_update_command` from their terminal. If startup health
+reports `update_status.package_update_required_first=true`, package refresh is
+also a user-terminal action, normally:
+
+```bash
+uvx --refresh --from tradingcodex tcx update .
+```
+
 ## Project-Scoped MCP Config
 
 Generated Codex workspaces render a project-scoped
@@ -232,6 +254,18 @@ Broker APIs are attached through native TradingCodex connector profiles using
 canonical MCP tools such as `list_broker_connector_templates`,
 `register_broker_connector`, `get_broker_capability_profile`,
 `get_broker_instrument_constraints`, and `preview_order_translation`.
+
+Generated Codex config declares the TradingCodex home directory, normally
+`~/.tradingcodex`, in `sandbox_workspace_write.writable_roots`. This bounded
+writable root is required for the central local DB, migration lock, service
+status, and update preference files when the active Codex surface honors
+project-scoped sandbox roots. It is narrower than disabling the sandbox, and
+generated permission rules continue to deny `.env`, secret, and
+broker-credential-shaped paths under both the workspace and TradingCodex home.
+If a Codex CLI or app run still reports `~/.tradingcodex` outside writable
+roots, the user should add it through user-level Codex config or CLI `--add-dir`
+before running service recovery or update-adjacent commands.
+
 Broker/data MCP servers, when explicitly needed for reviewed read-only
 discovery, are registered inside TradingCodex External MCP Gate with
 `./tcx mcp external ...`, not directly in `.codex/config.toml` or
@@ -258,35 +292,50 @@ The autostart path must be:
 - silent on MCP stdout except for MCP protocol messages
 - not required for direct `./tcx mcp stdio` smoke checks
 
-Generated workspaces also support startup health for Codex sessions. Bootstrap
-writes an initial compact diagnostic cache at
+Generated workspaces also support startup context for Codex sessions.
+Bootstrap writes an initial compact diagnostic cache at
 `.tradingcodex/mainagent/server-status.json`, and the `SessionStart` hook
-refreshes it; neither path starts services, updates workspaces, or opens
-browsers. `head-manager` then uses
-`$use-tradingcodex-server` to run service/MCP doctor checks, call
-`./tcx service status` to explain current reachability/version/DB posture, call
-`./tcx service ensure` when recovery is possible, and tell the user that the
-local dashboard is available at `http://127.0.0.1:48267/`. It opens the
-dashboard in a browser only when the user explicitly asks, and it should provide
-the URL only if browser control is unavailable rather than inferring a browser
-security-policy reason. If project MCP config was created or changed, the user
+refreshes it; neither path starts services, updates workspaces, opens browsers,
+or performs package refresh on its own. The emitted context uses marker
+`tradingcodex-session-context` and keeps only compact fields for
+`mode_status`, `permission_status`, `update_status`, `server_status`,
+`allowed_next_actions`, and `routing_status`.
+
+`head-manager` uses `$tcx-server` for service/MCP doctor checks,
+`./tcx service status`, and `./tcx service ensure`. It tells the user that the
+local dashboard is available at `http://127.0.0.1:48267/` and opens it only
+when explicitly asked. If project MCP config was created or changed, the user
 must fully quit and restart Codex and start a new thread because Codex may not
 hot reload project MCP config.
 
-Startup health may also compare the generated workspace version in
-`.tradingcodex/generated/module-lock.json` with the currently installed/running
-`tcx` package version. The workspace version is the local baseline: if it
-differs from the installed `tcx` version, `head-manager` may recommend aligning
-the workspace to the installed version. If the installed `tcx` is known to be
-older than the latest TradingCodex release, workspace update is blocked until
-the package is updated first, so an old package does not refresh the workspace
-with stale templates. Update recommendations are scoped to the
-new-conversation health pass, not every user turn. If the user declines update
-prompts, `head-manager` records the TradingCodex home preference file, normally
-`~/.tradingcodex/preferences/update.json`, with
+Startup health may compare the generated workspace version in
+`.tradingcodex/generated/module-lock.json` with the installed/running `tcx`
+package version and the latest known TradingCodex release. If update is needed
+while Codex is running under restricted TradingCodex permissions, `head-manager`
+must explain the two supported paths: switch Codex to full access and enable
+TradingCodex build mode, or run the recommended `update_status.command` from a
+terminal. Self-update is allowed only when Codex full access and explicit
+workspace build mode are both active and the user asks for the update. After
+self-update, `head-manager` stops and tells the user to restart Codex.
+
+Build mode is per workspace and explicit:
+
+- `./tcx mode status`
+- `./tcx mode set build --reason "<reason>"`
+- `./tcx mode set operate`
+
+Build mode may update TradingCodex, templates, and broker/API adapter
+scaffolds. It never enables live execution. Update recommendations are scoped
+to the new-conversation health pass, not every user turn. If the user declines
+update prompts, `head-manager` records the TradingCodex home preference file,
+normally `~/.tradingcodex/preferences/update.json`, with
 `suppress_update_recommendation=true`; future new conversations should not
 recommend automatic workspace updates unless the user removes or changes that
 flag, or explicitly asks for an update.
+
+Connector scaffold commands accept short aliases such as `binance`, `kis`,
+`한투`, `upbit`, and `alpaca`; the generated connector profile still records
+the canonical template ID.
 
 ## Hooks
 
@@ -308,14 +357,17 @@ enforcement.
 - execution negation routing such as "no order" and "no trading"
 - strategy authoring prompts remain in `strategy-creator`/strategy CRUD scope
   instead of auto-dispatching fixed investment subagents
+- connector implementation prompts such as "binance 붙여줘" or "connect KIS"
+  route to the `connector_build` lane and `$tcx-build`, not investment
+  dispatch
 - secret-only routing: credential, token, password, broker-key, or `.env`
   storage/read/rotation prompts create warning context without activating
   investment subagent dispatch unless a separate investment or execution
   request remains
-- startup server diagnostics: `SessionStart` records compact service and MCP
-  config status for `head-manager` to repair through `$use-tradingcodex-server`
-- update recommendation diagnostics: `SessionStart` records generated workspace
-  version drift and respects the TradingCodex home update preference file
+- startup diagnostics: `SessionStart` records compact mode, permission,
+  update, service, and routing status for `head-manager`
+- update recommendation diagnostics: `SessionStart` records package/workspace
+  drift and respects the TradingCodex home update preference file
 
 Hooks load only in trusted projects and may be disabled when
 `features.hooks=false`.

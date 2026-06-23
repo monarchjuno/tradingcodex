@@ -4,9 +4,11 @@ import sys
 from pathlib import Path
 
 from tradingcodex_cli.commands.bootstrap import attach, configure_workspace_env, init, service, update
+from tradingcodex_cli.commands.connectors import connectors
 from tradingcodex_cli.commands.db import db
 from tradingcodex_cli.commands.doctor import doctor
 from tradingcodex_cli.commands.mcp import mcp
+from tradingcodex_cli.commands.mode import mode
 from tradingcodex_cli.commands.orders import approve, audit, postmortem, quality_check, risk_check, validate
 from tradingcodex_cli.commands.policy import policy
 from tradingcodex_cli.commands.profile import profile
@@ -36,7 +38,7 @@ def main(argv: list[str] | None = None) -> None:
             doctor(root, _option_value(argv, "--layer") or "all")
         elif command == "service":
             service(argv)
-        elif command in {"subagents", "skills", "strategies", "policy", "mcp", "db", "workspace", "profile", "validate", "risk-check", "approve", "quality-check", "audit", "postmortem", "research", "explain-policy"}:
+        elif command in {"subagents", "skills", "strategies", "policy", "mcp", "db", "workspace", "profile", "mode", "connectors", "validate", "risk-check", "approve", "quality-check", "audit", "postmortem", "research", "explain-policy"}:
             root = configure_workspace_env(Path.cwd())
             dispatch_workspace_command(root, command, argv)
         else:
@@ -57,6 +59,10 @@ def dispatch_workspace_command(root: Path, command: str, argv: list[str]) -> Non
         policy(root, argv)
     elif command == "mcp":
         mcp(root, argv)
+    elif command == "mode":
+        mode(root, argv)
+    elif command == "connectors":
+        connectors(root, argv)
     elif command == "db":
         db(root, argv)
     elif command == "workspace":
@@ -104,9 +110,12 @@ def print_help() -> None:
 Usage:
   tcx attach [workspace] [--overwrite]
   tcx init <workspace> [--overwrite]
-  tcx update [workspace] [--no-doctor]
+  tcx update [workspace] [--no-doctor] [--skip-refresh]
+  tcx update status [--json]
   tcx init --list-modules
   tcx doctor [--layer <layer>]
+  tcx mode status|set
+  tcx connectors status|scaffold|register|validate
   tcx workspace status|list
   tcx profile status|list|create|select|update
   tcx subagents list|status|inspect|diff|project|state|context-audit|plan|skills|prompt

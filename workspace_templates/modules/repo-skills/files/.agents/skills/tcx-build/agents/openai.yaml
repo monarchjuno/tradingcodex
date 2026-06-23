@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Build"
+  short_description: "Update TradingCodex and build connectors"
+  default_prompt: "Use $tcx-build for TradingCodex self-update, harness changes, or broker/API connector build work."
+policy:
+  allow_implicit_invocation: true

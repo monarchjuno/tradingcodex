@@ -57,10 +57,10 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         text_check(root, "guidance", "head-manager instructions installed", ".codex/prompts/base_instructions/head-manager.md", "You are the `head-manager` agent", True),
         path_check(root, "guidance", "local CLI wrapper installed", "tcx", False),
         text_check(root, "guidance", "hooks configured", ".codex/hooks.json", "\"PreToolUse\"", True),
-        text_check(root, "guidance", "scenario quality gates configured", ".codex/prompts/base_instructions/head-manager.md", "scenario-quality-gates", True),
-        text_check(root, "guidance", "investment workflow map configured", ".codex/prompts/base_instructions/head-manager.md", "investment-workflow-map", True),
-        text_check(root, "guidance", "handoff quality gate configured", ".codex/prompts/base_instructions/head-manager.md", "## Handoff quality", True),
-        text_check(root, "guidance", "context efficiency contract configured", ".codex/prompts/base_instructions/head-manager.md", "## Context efficiency", True),
+        text_check(root, "guidance", "session context configured", ".codex/hooks/tradingcodex_hook.py", "tradingcodex-session-context", True),
+        text_check(root, "guidance", "three-plane routing configured", ".codex/prompts/base_instructions/head-manager.md", "TradingCodex has three planes", True),
+        text_check(root, "guidance", "build gate configured", ".codex/prompts/base_instructions/head-manager.md", "Codex permission is full access", True),
+        text_check(root, "guidance", "compact context discipline configured", ".codex/prompts/base_instructions/head-manager.md", "# Context Discipline", True),
         {"layer": "guidance", "name": "subagent max_threads matches roster", "ok": read_thread_policy(root)["max_threads"] == len(list_subagents(root)), "codexNative": True, "detail": f"max_threads={read_thread_policy(root)['max_threads']}, subagents={len(list_subagents(root))}"},
     ]
 
@@ -236,8 +236,9 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(path_check(root, "improvement", "agent index projected", ".tradingcodex/generated/agent-index.json", False))
     checks.append(path_check(root, "improvement", "skill index projected", ".tradingcodex/generated/skill-index.json", False))
     checks.append(path_check(root, "improvement", "projection manifest projected", ".tradingcodex/generated/projection-manifest.json", False))
-    checks.append(text_check(root, "improvement", "no-overlap handoff contract installed", ".codex/prompts/base_instructions/head-manager.md", "Only accepted artifacts move downstream", False))
-    checks.append(text_check(root, "improvement", "context-efficient subagent briefs installed", ".agents/skills/manage-subagents/SKILL.md", "CONTEXT BUDGET:", False))
+    checks.append(text_check(root, "improvement", "no-overlap handoff contract installed", ".codex/prompts/base_instructions/head-manager.md", "Only accepted role artifacts move downstream", False))
+    checks.append(text_check(root, "improvement", "workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "compact hook context", False))
+    checks.append(text_check(root, "improvement", "build skill installed", ".agents/skills/tcx-build/SKILL.md", "Build mode never enables `live_order`", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))
     checks.append(path_check(root, "improvement", "postmortem workflow installed", ".tradingcodex/workflows/postmortem.yaml", False))
     return checks

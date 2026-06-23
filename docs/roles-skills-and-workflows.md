@@ -93,13 +93,15 @@ dispatch gate.
 
 Natural-language investment requests are sufficient workflow activation for
 fixed-role dispatch. Explicit subagent, parallel, delegated-agent, and
-`$orchestrate-workflow` requests remain supported as manual-control entrypoints,
-but they are not required before `head-manager` routes the work.
+`$tcx-workflow` requests remain supported as manual-control entrypoints, but
+they are not required before `head-manager` routes the work.
 
 | Trigger | Handling |
 | --- | --- |
 | General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` injects compact auto-dispatch context with lane, selected team, blocked actions, and the persisted prompt-gate path; `head-manager` dispatches or reuses selected subagents before analysis. |
-| Explicit `$orchestrate-workflow` request | The representative workflow skill becomes the primary manual-control orchestrator and dispatches selected subagents. |
+| Explicit `$tcx-workflow` request | The workflow skill becomes the primary manual-control orchestrator and dispatches selected subagents. |
+| Connector build request, such as "binance 붙여줘" or "connect KIS API" | Route to the `connector_build` lane and `$tcx-build`; scaffold/register/validate read/test connector metadata only, without investment dispatch or live execution. |
+| Runtime/server request, such as "open dashboard" or "check TradingCodex status" | Route to `$tcx-server`; report service/MCP/update posture and use CLI recovery commands without changing execution authority. |
 | Explicit subagent/parallel/delegated request | `UserPromptSubmit` records the explicit activation source; the skill checks existing subagent state before creating/reusing sessions. |
 | Strategy authoring request, such as "Create a quality income strategy" | Do not auto-dispatch investment subagents. Route through `strategy-creator`, CLI, API, or service-layer flows so the strategy skill is created and projected as a root/head-manager strategy entry. Django web previews strategies read-only. |
 | Non-investment repository, docs, or harness administration request | No investment dispatch is required; `head-manager` follows normal Codex coding-agent behavior while preserving execution and secret guardrails. |
@@ -144,7 +146,8 @@ boundary, approval requirements, or information barriers.
 | Situation | Allowed response | Forbidden response |
 | --- | --- | --- |
 | Broad analysis such as "Analyze Apple stock" | auto-dispatch or reuse selected subagents, then wait for outputs before synthesis | Direct business/price/news/recommendation analysis |
-| Explicit workflow request such as "$orchestrate-workflow analyze Apple" | Spawn selected team or reuse active/completed roles, wait for outputs, then synthesize | Analyze without dispatch |
+| Explicit workflow request such as "$tcx-workflow analyze Apple" | Spawn selected team or reuse active/completed roles, wait for outputs, then synthesize | Analyze without dispatch |
+| Connector build request such as "binance 붙여줘" | Check full-access plus TCX build mode, scaffold/register/validate connector metadata through `$tcx-build`, and keep `live_order` disabled | Dispatch investment subagents, ask for raw secrets, or expose raw broker SDK tools |
 | Decision support such as "Should I buy?" | Dispatch analyst/valuation/portfolio/risk team and explain required artifacts/gates | Offer buy/sell opinion without subagent output |
 | Dispatch unavailable, role routing unverified, or dispatch failed | Provide `waiting_for_subagent_dispatch` state and task briefs only | Switch to "I will analyze it myself" |
 | Subagent artifacts exist | Summarize role outputs, conflicts, confidence/missing evidence, and next allowed action | Override subagent evidence with unsupported certainty |
@@ -161,7 +164,7 @@ Instruction/skill separation:
 | Surface | Owns | Must not own |
 | --- | --- | --- |
 | `head-manager` base instructions | durable identity, safety invariants, dispatch fail-closed rule, role boundaries, approved action boundary, skill routing | workflow templates, scenario tables, long checklists, subagent message bodies |
-| Head-manager skills | repeatable workflow procedures, universe maps, scenario gates, subagent briefing/reuse mechanics, synthesis, strategy creation, postmortem workflow | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
+| Head-manager skills | compact repeatable procedures for workflow routing, server/runtime recovery, build-mode work, strategy creation, and postmortems | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
 | Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, single-item display nickname candidates, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
 | Role-owned skills | capability procedure, artifact expectations, quality checks, and local output rules | role eligibility, work for other roles, self-approval, execution outside MCP |
 | Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
@@ -192,17 +195,17 @@ role work directly.
 User-visible skill lists are not the same as enabled or installed skills. The
 main-agent user surface should show only direct user entrypoints by default:
 
-- `orchestrate-workflow`
-- `use-tradingcodex-server`
+- `tcx-workflow`
+- `tcx-server`
+- `tcx-build`
 - `strategy-creator`
 - `postmortem`
 
-Internal head-manager harness skills such as `investment-workflow-map`,
-`scenario-quality-gates`, `manage-subagents`, `manage-optional-skills`, and
-`synthesize-decision` remain enabled for `head-manager`; they are hidden from
-the default user-facing list and must not allow implicit invocation from user
-prompts. Compatibility skills such as `tradingcodex-operator` may remain
-installed for explicit older `$skill` prompts, but should not be part of the
+The root context does not load long workflow maps, scenario-quality gates,
+or connector runbooks as always-visible prompt bulk. Those concerns move into
+service-generated compact context, projected role indexes, and the short
+`tcx-*` skills above. Compatibility skills may remain hidden for one release
+cycle for older generated workspaces, but they should not be part of the
 default user-facing or implicit skill surface.
 
 ## Additional Agent Instructions
@@ -224,16 +227,11 @@ Head-manager skill responsibilities:
 
 | Skill | Responsibility |
 | --- | --- |
-| `orchestrate-workflow` | stage sequencing, lane escalation, and movement across research, thesis, portfolio, risk, order, approval, execution, and postmortem |
-| `investment-workflow-map` | universe/workflow classification, source/as-of posture, support gaps, hero/support artifacts, and readiness labels |
-| `scenario-quality-gates` | scenario selection, minimum useful role-team shape, artifact expectations, blocked actions, and quality gates |
-| `use-tradingcodex-server` | Startup health, local dashboard URL guidance, explicit user-requested dashboard opening, Codex restart guidance, TradingCodex MCP setup, native broker connector template registration, capability-profile inspection, order-translation previews, read-only sync, and troubleshooting without granting execution authority |
-| `tradingcodex-operator` | Compatibility entrypoint for one release cycle; redirects users to `$use-tradingcodex-server` and must not add separate broker, approval, or execution authority |
+| `tcx-workflow` | compact workflow routing, selected-team dispatch/reuse, handoff quality states, and synthesis after accepted artifacts |
+| `tcx-server` | startup health, local dashboard URL guidance, explicit user-requested dashboard opening, Codex restart guidance, TradingCodex MCP setup, update-status explanation, read-only broker/status inspection, and service troubleshooting without granting execution authority |
+| `tcx-build` | full-access plus TCX-build-mode gated self-update, template/harness edits, broker/API connector scaffold/register/validate flows, credential-ref handling, and live-order blocking |
 | `external-data-source-gate` | read-only external evidence-source constraints and External MCP Gate honesty |
-| `manage-subagents` | fixed-role dispatch mechanics, runtime state/reuse checks, compact briefs, artifact review, and conflict handling |
-| `manage-optional-skills` | file-native optional skill create/update/archive guidance for fixed subagents; use `$skill-creator` for skill authoring while preserving core skills, MCP allowlists, permission profiles, and role identity |
 | `strategy-creator` | create, update, validate, and activate user-approved `strategy-*` skills as strategy library entries without granting policy, approval, execution, MCP, or role-boundary authority |
-| `synthesize-decision` | user-facing decision state after required artifacts or outputs exist |
 | `postmortem` | audit-backed process review and improvement proposals after failures, thesis changes, rejected orders, or executions |
 
 ## Strategy Skills
@@ -286,9 +284,9 @@ deleted, overwritten, or reassigned by user customization. User customization
 starts with optional, role-local skills for fixed subagents.
 
 Optional skill CRUD is managed by the shared application service used by the
-`head-manager`, Django web, Django Ninja, and CLI. `manage-optional-skills`
-should route generic `SKILL.md` authoring through `$skill-creator`, then use
-the shared service path for validation, status, and TOML projection.
+`head-manager`, Django web, Django Ninja, and CLI. Generic `SKILL.md`
+authoring should still follow `$skill-creator` discipline, then use the shared
+service path for validation, status, and TOML projection.
 Optional skill `name` and `description` are read from `SKILL.md` frontmatter;
 the sidecar `agents/tradingcodex.json` stores lifecycle metadata such as role,
 scope, status, and timestamps only.
@@ -354,7 +352,7 @@ and service-layer policy.
 ## Hooks Are Guidance
 
 - `UserPromptSubmit` handles prompt classification, secret warnings, direct-answer prevention context, and duplicate marker management.
-- `SessionStart` writes compact TradingCodex server/MCP diagnostics for `head-manager`; startup recovery and dashboard URL guidance stay in `$use-tradingcodex-server`, while browser opening happens only after an explicit user request.
+- `SessionStart` writes compact TradingCodex mode, permission, update, server/MCP, and routing diagnostics for `head-manager`; startup recovery and dashboard URL guidance stay in `$tcx-server`, while self-update and connector implementation stay in `$tcx-build`.
 - Official `UserPromptSubmit` matchers are ignored, so classification happens inside the hook script.
 - Hooks use command type only and do not rely on ordering or concurrency between hooks.
 - Project-local hooks load only in trusted projects and may be disabled when `features.hooks=false`.

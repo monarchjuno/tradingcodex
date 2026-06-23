@@ -27,6 +27,7 @@ from tradingcodex_service.application.harness import (
     build_compact_dispatch_context,
     build_subagent_starter_prompt,
     classify_starter_request,
+    is_connector_build_request,
     is_investment_workflow_request,
     is_secret_only_request,
     is_secret_warning_request,
@@ -64,34 +65,44 @@ def session_start(payload: dict) -> None:
     except Exception as exc:
         server_status = fallback_server_status(ROOT, exc)
         append_hook_audit({"event": "session-start", "warning": "server status check failed", "error": str(exc)})
+    update_status = server_status["update_status"]
     readiness = {
-        "spawn_requested": False,
-        "natural_language_investment_routing": True,
-        "explicit_user_request_required": False,
-        "startup_health": {
+        "marker": "tradingcodex-session-context",
+        "mode_status": server_status["mode_status"],
+        "permission_status": server_status["permission_status"],
+        "update_status": {
+            "update_available": update_status["update_available"],
+            "package_update_required": update_status["package_update_required"],
+            "workspace_update_required": update_status["workspace_update_required"],
+            "can_self_update": update_status["can_self_update"],
+            "command": update_status["command"],
+            "restart_required_after_update": update_status["restart_required_after_update"],
+            "blocked_reason": update_status["head_manager_update_blocked_reason"],
+        },
+        "server_status": {
             "status_path": ".tradingcodex/mainagent/server-status.json",
             "dashboard_url": server_status["dashboard_url"],
             "service_status": server_status["service_status"],
             "restart_codex_required": server_status["restart_codex_required"],
-            "update_status": server_status["update_status"],
             "recommended_action": server_status["recommended_action"],
         },
-        "subagents": EXPECTED_SUBAGENTS,
-        "local_cli": {
-            "command": "./tcx",
-            "plan_all": "./tcx subagents plan --all",
-            "service_status": "./tcx service status",
-            "service_ensure": "./tcx service ensure",
+        "allowed_next_actions": server_status["allowed_next_actions"],
+        "routing_status": {
+            "lane": "startup",
+            "selected_team": [],
+            "blocked_actions": ["live_order", "raw secret", "direct broker API", "execution without approved artifacts"],
         },
-        "spawn_tool_notes": [
-            "use spawn_agent agent_type only when the active schema can select the exact fixed role",
-            "treat missing fixed-role selection as routing-unverified and fail closed",
-            "do not pass model, reasoning, or service-tier overrides for fixed roles",
-        ],
     }
     write_json(ROOT / ".tradingcodex" / "mainagent" / "session-start.json", readiness)
     write_json(ROOT / ".tradingcodex" / "mainagent" / "server-status.json", server_status)
     append_hook_audit({"event": "session-start", "readiness": readiness})
+    output = {
+        "hookSpecificOutput": {
+            "hookEventName": "SessionStart",
+            "additionalContext": json.dumps(readiness, ensure_ascii=False),
+        }
+    }
+    print(json.dumps(output, ensure_ascii=False))
 
 
 def user_prompt_submit(payload: dict) -> None:
@@ -103,20 +114,30 @@ def user_prompt_submit(payload: dict) -> None:
         return
     secret_warning = is_secret_warning_request(prompt)
     secret_only = is_secret_only_request(prompt)
+    connector_build_request = is_connector_build_request(prompt)
     investment_request = is_investment_workflow_request(prompt) and not secret_only
-    if not investment_request and not secret_warning:
+    if not investment_request and not secret_warning and not connector_build_request:
         return
-    plan = classify_starter_request(prompt) if investment_request else {"lane": "secret_warning", "subagents": []}
-    explicit = any(token in prompt.lower() for token in ["subagent", "parallel", "delegated", "$orchestrate-workflow", "서브에이전트"])
+    plan = classify_starter_request(prompt) if investment_request or connector_build_request else {"lane": "secret_warning", "subagents": []}
+    explicit = any(token in prompt.lower() for token in ["subagent", "parallel", "delegated", "$tcx-workflow", "$orchestrate-workflow", "서브에이전트"])
     activation_source = "explicit_subagent" if explicit else "auto_routed_investment_request"
+    if connector_build_request:
+        activation_source = "connector_build_request"
     if not investment_request:
         activation_source = "secret_warning_only"
+    if connector_build_request:
+        activation_source = "connector_build_request"
     compact_context = build_compact_dispatch_context(prompt, ROOT) if investment_request else {
-        "context_mode": "compact_workflow_gate_v1",
+        "context_mode": "compact_workflow_gate",
         "workflow_lane": plan["lane"],
-        "required_subagents": [],
+        "required_subagents": plan.get("subagents", []),
         "starter_prompt_path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
-        "blocked_actions": ["secret storage", "secret echo", "raw credential handling"],
+        "blocked_actions": plan.get("blockedActions", ["secret storage", "secret echo", "raw credential handling"]),
+        "routing_status": {
+            "lane": plan["lane"],
+            "selected_team": plan.get("subagents", []),
+            "blocked_actions": plan.get("blockedActions", []),
+        },
     }
     gate = {
         "marker": "tradingcodex-workflow-gate",
@@ -127,8 +148,8 @@ def user_prompt_submit(payload: dict) -> None:
         "explicit_subagent_request": explicit,
         "activation_source": activation_source,
         "workflow_lane": plan["lane"],
-        "required_subagents": plan["subagents"],
-        "starter_prompt": build_subagent_starter_prompt(prompt, ROOT) if investment_request else "",
+        "required_subagents": plan.get("subagents", []),
+        "starter_prompt": build_subagent_starter_prompt(prompt, ROOT) if investment_request or connector_build_request else "",
         "compact_additional_context": compact_context,
         "secret_warning": secret_warning,
     }

@@ -75,10 +75,14 @@ def attach(argv: list[str]) -> None:
 
 
 def update(argv: list[str]) -> None:
+    if argv and argv[0] == "status":
+        update_status(argv[1:])
+        return
     parser = argparse.ArgumentParser(prog=f"{PROGRAM_NAME} update")
     parser.add_argument("project_dir", nargs="?", default=".")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--no-doctor", action="store_true", help="skip ./tcx doctor after update")
+    parser.add_argument("--skip-refresh", action="store_true", help="wrapper-only: use the recorded Python package instead of refreshing through uvx")
     args = parser.parse_args(argv)
     target = Path(args.project_dir).resolve()
     if not is_generated_workspace(target):
@@ -101,6 +105,27 @@ def update(argv: list[str]) -> None:
     doctor(Path(result["targetDir"]), "all")
     print("\nNext:")
     print("  Fully quit and restart Codex, then start from a new thread so project MCP config is reloaded.")
+
+
+def update_status(argv: list[str]) -> None:
+    from tradingcodex_cli.startup_status import build_update_status
+
+    parser = argparse.ArgumentParser(prog=f"{PROGRAM_NAME} update status")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("project_dir", nargs="?", default=".")
+    args = parser.parse_args(argv)
+    root = configure_workspace_env(Path(args.project_dir).resolve(), force=True)
+    status = build_update_status(root)
+    if args.json:
+        print(json.dumps(status, indent=2, ensure_ascii=False, sort_keys=True))
+        return
+    print(f"Workspace version: {status['workspace_version']}")
+    print(f"Installed package: {status['installed_version']}")
+    print(f"Latest release: {status['latest_release_version']} ({status['latest_release_status']})")
+    print(f"Update available: {status['update_available']}")
+    print(f"Self-update allowed: {status['can_self_update']}")
+    if status.get("recommended_action"):
+        print(f"Next: {status['recommended_action']}")
 
 
 def service(argv: list[str]) -> None:

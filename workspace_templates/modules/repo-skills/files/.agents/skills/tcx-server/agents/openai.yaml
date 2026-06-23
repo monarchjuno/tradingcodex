@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Server"
+  short_description: "Operate TradingCodex server and safe connector status"
+  default_prompt: "Use $tcx-server to check TradingCodex server, mode, update, MCP, or connector status."
+policy:
+  allow_implicit_invocation: true

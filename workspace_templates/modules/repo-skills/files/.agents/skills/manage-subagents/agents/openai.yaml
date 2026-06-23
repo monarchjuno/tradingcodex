@@ -1,6 +1,0 @@
-interface:
-  display_name: "Manage Subagents"
-  short_description: "Build compact subagent briefs"
-  default_prompt: "Use $manage-subagents to prepare compact fixed-role subagent briefs for an assigned workflow."
-policy:
-  allow_implicit_invocation: false
