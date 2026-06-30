@@ -58,6 +58,10 @@ Research markdown frontmatter should preserve:
   approval, execution, or user scope
 - `source_snapshot_ids`: source snapshot files that support the artifact, when
   available
+- `follow_up_requests`: optional structured artifact-driven follow-up proposals
+  with trigger, suggested fixed role, delta question, reason, materiality,
+  provenance, advisory consent posture, and blocked actions; these proposals do
+  not dispatch subagents or decide lane scope
 - decision-quality fields when applicable: `evidence_grade`,
   `source_freshness`, `source_quality`, `conflict_status`,
   `decision_readiness`, forecast permission fields, scenario cases, contrary

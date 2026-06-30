@@ -38,7 +38,7 @@ paths clear.
 | `investment-request-routing` | Classifies user intent and activates fixed-role workflows. | `guardrail.guidance`, `improvement.workflow_quality` |
 | `fixed-role-dispatch` | Maintains head-manager, fixed subagent routing, and no-overlap handoff boundaries. | `guardrail.guidance`, `guardrail.information_barrier`, `improvement.workflow_quality` |
 | `research-memory` | Stores source-aware research artifacts, versions, snapshots, and exports. | `improvement.research_memory` |
-| `workflow-quality-gates` | Defines lane selection, Decision Quality Spine, handoff acceptance, artifact readiness, claim discipline, and synthesis gates. | `guardrail.guidance`, `improvement.workflow_quality` |
+| `workflow-quality-gates` | Defines lane selection, Artifact Supervisor Loop policy, Decision Quality Spine, handoff acceptance, artifact readiness, claim discipline, and synthesis gates. | `guardrail.guidance`, `improvement.workflow_quality` |
 | `decision-package` | Wraps workflow plans, artifact paths, profile gaps, blocked actions, and next steps in Codex-readable workspace markdown. | `guardrail.guidance`, `improvement.workflow_quality`, `improvement.research_memory` |
 | `artifact-quality-contract` | Evaluates workspace artifacts and forecast ledgers for source/as-of posture, claim tags, handoff state, confidence, missing evidence, and next-recipient routing metadata. | `guardrail.guidance`, `improvement.workflow_quality`, `improvement.research_memory` |
 | `context-efficiency-contract` | Keeps workflows bounded through compact briefs, artifact references, context summaries, source snapshot IDs, targeted full-artifact reads, and `subagents context-audit` validation. | `guardrail.guidance`, `guardrail.information_barrier`, `improvement.workflow_quality`, `improvement.context_efficiency` |
@@ -52,7 +52,7 @@ paths clear.
 | `execution-boundary` | Keeps execution behind role action allowlists, approval, duplicate-request, connection, and audit checks. | `guardrail.enforcement`, `guardrail.information_barrier` |
 | `audit-ledger` | Records policy, MCP, order, approval, execution, and hook events. | `guardrail.enforcement`, `improvement.validation_feedback` |
 | `skill-improvement-loop` | Keeps core skills, strategy skills, and role-local optional skill files visible through validation, generated manifests, and read-only status. | `improvement.skill_evolution`, `guardrail.guidance` |
-| `postmortem-loop` | Turns rejected orders, process failures, thesis changes, and executions into improvements. | `improvement.postmortems`, `improvement.validation_feedback` |
+| `postmortem-loop` | Turns rejected orders, process failures, thesis changes, artifact-loop blocks/escalations, and executions into improvements. | `improvement.postmortems`, `improvement.validation_feedback` |
 | `paper-execution` | Provides experimental local paper and validation-only execution paths behind the approved action boundary. | `guardrail.enforcement` |
 
 ## Runtime Surfaces

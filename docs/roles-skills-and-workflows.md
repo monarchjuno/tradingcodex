@@ -238,7 +238,7 @@ Head-manager skill responsibilities:
 
 | Skill | Responsibility |
 | --- | --- |
-| `tcx-workflow` | compact workflow routing, selected-team dispatch/reuse, handoff quality states, and synthesis after accepted artifacts |
+| `tcx-workflow` | compact workflow routing, selected-team dispatch/reuse, Artifact Supervisor Loop planning, handoff quality states, bounded follow-up/escalation proposals, and synthesis after accepted artifacts |
 | `tcx-server` | startup health, local dashboard URL guidance, explicit user-requested dashboard opening, Codex restart guidance, TradingCodex MCP setup, update-status explanation, read-only broker/status inspection, and service troubleshooting without granting execution authority |
 | `tcx-build` | full-access plus TCX-build-mode gated self-update, template/harness edits, broker/API provider connect/scaffold/register/validate flows, credential-ref handling, and live-submit blocking outside service gates |
 | `external-data-source-gate` | read-only external evidence-source constraints and External MCP Gate honesty |
@@ -352,6 +352,22 @@ posture, or core skill behavior.
 - `.tradingcodex/mainagent/subagent-session-state.json` is a compact working
   summary with total counters and a recent-event window. Full subagent event
   history belongs in `trading/audit/subagent-session-events.jsonl`.
+- `.tradingcodex/mainagent/workflow-loop-state.json` is the compact latest
+  assisted-loop summary and pointer. The canonical loop state for a routed
+  prompt lives under
+  `.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json`, with
+  the matching prompt gate beside it. It contains selected team, allowed
+  follow-up team, escalation-only roles, pending tasks, planner decisions,
+  blocked actions, and stop reason. It is inspectable state, not an automatic
+  recursive dispatch mechanism.
+- `.tradingcodex/mainagent/session-workflow-runs.json` maps Codex session or
+  thread keys to workflow run ids. Subagent start/stop records use run id,
+  role, and subagent session id so a reused role session can continue the right
+  workflow without touching another active Codex app thread.
+- `tcx subagents loop --artifact <path>` and the matching web/API preview read
+  artifact handoff state and `follow_up_requests`, then return closed planner
+  actions. Recording the result updates workspace loop state only; Codex still
+  uses the explicit fixed-role spawn path for any real follow-up.
 - Downstream roles start from artifact path plus `context_summary`; they open
   full markdown only for disputed, stale, missing, or load-bearing evidence.
 - The head-manager should tell subagents to write reader-facing research artifacts in the user's language from the original request unless the user explicitly requests another artifact language. File paths, frontmatter keys, symbols, tickers, source names, and quoted source text stay in their natural/original form.

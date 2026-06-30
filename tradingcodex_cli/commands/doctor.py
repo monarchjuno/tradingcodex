@@ -241,6 +241,18 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(text_check(root, "improvement", "no-overlap handoff contract installed", ".codex/prompts/base_instructions/head-manager.md", "Only accepted role artifacts move downstream", False))
     checks.append(text_check(root, "improvement", "decision quality spine installed", ".codex/prompts/base_instructions/head-manager.md", "Decision Quality Spine", False))
     checks.append(text_check(root, "improvement", "workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "compact hook context", False))
+    checks.append(text_check(root, "improvement", "artifact supervisor loop skill installed", ".agents/skills/tcx-workflow/SKILL.md", "Artifact Supervisor Loop", False))
+    checks.append(text_check(root, "improvement", "loop state hook installed", ".codex/hooks/tradingcodex_hook.py", "workflow-loop-state.json", True))
+    checks.append(text_check(root, "improvement", "run-specific loop state hook installed", ".codex/hooks/tradingcodex_hook.py", "session-workflow-runs.json", True))
+    checks.append(text_check(root, "improvement", "artifact follow-up contract schema installed", ".tradingcodex/schemas/research_artifact.schema.json", "follow_up_requests", False))
+    checks.append({
+        "layer": "improvement",
+        "name": "loop state file current or not yet started",
+        "ok": True,
+        "warn": not (root / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").exists(),
+        "codexNative": True,
+        "detail": "found .tradingcodex/mainagent/workflow-loop-state.json" if (root / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").exists() else "no workflow-loop-state.json until the next routed workflow",
+    })
     checks.append(path_check(root, "improvement", "forecast ledger directory installed", "trading/forecasts", False))
     checks.append(text_check(root, "improvement", "build skill installed", ".agents/skills/tcx-build/SKILL.md", "Build mode may create live-capable providers", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))

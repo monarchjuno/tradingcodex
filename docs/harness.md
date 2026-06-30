@@ -113,12 +113,27 @@ It is a tag and review lens applied to components.
 Improvement does not authorize execution. A high-quality report still needs the
 guardrail path before any draft, approval, or non-live connection use.
 
-Decision Quality Spine is part of Improvement, not a new monolithic workflow.
-It adds shared expectations for intent normalization, scenario reasoning,
-forecast permission, numeric data QC, anti-overfit review, challenge review,
-readiness labels, and append-only forecast ledger records. The spine applies
-inside the selected lane and selected team only; it never widens role authority,
-MCP access, approval, execution, broker, or secret boundaries.
+The Artifact Supervisor Loop is part of Improvement, not a new monolithic
+workflow. It turns accepted, revised, blocked, and waiting artifacts into
+bounded follow-up, challenge, escalation, or synthesis decisions. The Decision
+Quality Spine remains the cross-lane quality contract inside that loop. Neither
+the loop nor the spine widens role authority, MCP access, approval, execution,
+broker, or secret boundaries.
+
+Runtime loop inspection is file-native and read-first. Hooks write canonical
+per-run state under
+`.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json` and a
+compact latest summary at `.tradingcodex/mainagent/workflow-loop-state.json`;
+`tcx subagents plan` shows the current selected team, allowed follow-up team,
+escalation-only roles, pending tasks, stop reason, and canonical state path.
+Codex session/thread ids are mapped through
+`.tradingcodex/mainagent/session-workflow-runs.json`, so multiple Codex app
+threads in the same workspace can continue different loops without overwriting
+each other. `tcx subagents loop --artifact <path>` previews closed planner
+actions from artifact handoff state and `follow_up_requests`. `--record` may
+append the computed pending tasks and escalation proposals to the loop state and
+`trading/audit/workflow-loop-events.jsonl`, but it still does not spawn
+subagents, approve orders, or execute.
 
 ## Interface Implications
 

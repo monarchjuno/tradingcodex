@@ -13,5 +13,16 @@ Apply it inside the selected lane and selected team only:
 7. For recommendation, sizing, or portfolio-fit scope, keep investor-profile gaps visible until answered.
 8. Synthesize only accepted artifacts and return `waiting`, `revise`, or `blocked` when support is weak.
 
+Artifact handoff states are `accepted`, `revise`, `blocked`, and `waiting`.
+They are not terminal workflow actions. Terminal workflow actions are
+`synthesize`, `blocked`, `waiting`, or `lane_escalation_proposal`.
+
+Artifacts may include `follow_up_requests` with `trigger`, `suggested_role`,
+`question`, `reason`, `materiality`, source artifact provenance, advisory
+`suggested_consent_posture`, and blocked actions. Subagents propose these
+requests only. Head-manager recalculates lane scope and consent from
+`allowed_followup_team`, `escalation_team`, and `loop_policy` before creating
+any delta follow-up brief.
+
 Forecast ledger records live under `trading/forecasts/*.jsonl` and are
 append-only. Do not create them without accepted role artifacts.

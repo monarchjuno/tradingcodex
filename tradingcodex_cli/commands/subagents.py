@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any
 
 from tradingcodex_service.application.agents import (
     AGENT_SPECS,
@@ -11,13 +12,20 @@ from tradingcodex_service.application.agents import (
     EXPECTED_SUBAGENTS,
 )
 from tradingcodex_service.application.context_budget import audit_context_budget
-from tradingcodex_service.application.harness import build_subagent_starter_prompt, build_workflow_intake_summary
+from tradingcodex_service.application.harness import (
+    build_subagent_starter_prompt,
+    build_workflow_intake_summary,
+    evaluate_artifact_supervisor_loop,
+    is_connector_build_request,
+    is_investment_workflow_request,
+)
 from tradingcodex_cli.commands.utils import (
     _option_value,
     _parse_agent_list,
     list_skills,
     list_subagents,
     print_json,
+    read_loop_state,
     read_subagent_state,
     read_thread_policy,
     skills_for_role,
@@ -66,6 +74,13 @@ def subagents(root: Path, argv: list[str]) -> None:
         if result["status"] != "pass":
             sys.exit(1)
         return
+    if sub == "loop":
+        request = _option_value(args, "--request") or _option_value(args, "--prompt") or ""
+        artifacts = _artifact_args(args)
+        if not artifacts:
+            raise ValueError("Usage: tcx subagents loop --request <request> --artifact <path> [--record]")
+        print_json(evaluate_artifact_supervisor_loop(root, request, artifacts, record="--record" in args))
+        return
     if sub == "inspect":
         role = args[0] if args else ""
         if not role:
@@ -92,6 +107,10 @@ def subagents(root: Path, argv: list[str]) -> None:
         return
     if sub == "plan":
         installed = list_subagents(root)
+        request_text = " ".join(arg for arg in args if arg != "--json").strip()
+        if "--all" not in args and request_text and (is_investment_workflow_request(request_text) or is_connector_build_request(request_text)):
+            print_json(_workflow_loop_plan(root, request_text, installed))
+            return
         requested = [agent["name"] for agent in installed] if "--all" in args else _parse_agent_list(args)
         if not requested:
             raise ValueError("Usage: tcx subagents plan <agent...>|--all")
@@ -121,6 +140,47 @@ def subagents(root: Path, argv: list[str]) -> None:
         print_json({"agent": role, "skills": skills_for_role(root, role)})
         return
     raise ValueError(f"Unknown subagents command: {sub}")
+
+
+def _workflow_loop_plan(root: Path, request: str, installed: list[dict[str, str]]) -> dict[str, Any]:
+    summary = build_workflow_intake_summary(request, root)
+    selected = list(summary.get("selected_team") or [item.get("role") for item in summary.get("subagents") or [] if item.get("role")])
+    installed_names = {agent["name"] for agent in installed}
+    unknown = [agent for agent in selected if agent not in installed_names]
+    thread_policy = read_thread_policy(root)
+    size = max(1, int(thread_policy["max_parallel_subagents"]))
+    batches = [{"batch": i + 1, "agents": selected[i:i + size]} for i in range(0, len(selected), size)]
+    loop_state = read_loop_state(root)
+    return {
+        "request": request,
+        "workflow_lane": summary.get("workflow_lane"),
+        "initial_dispatch": selected,
+        "allowed_followup_team": summary.get("allowed_followup_team") or [],
+        "escalation_team": summary.get("escalation_team") or [],
+        "loop_policy": summary.get("loop_policy") or {},
+        "workflow_loop_state_path": summary.get("workflow_loop_state_path"),
+        "workflow_loop_run_state_path": loop_state.get("state_path", "") if isinstance(loop_state, dict) else "",
+        "pending_tasks": loop_state.get("pending_tasks", []) if isinstance(loop_state, dict) else [],
+        "stop_reason": loop_state.get("stop_reason", "") if isinstance(loop_state, dict) else "",
+        "unknown_agents": unknown,
+        "thread_policy": thread_policy,
+        "parallel_spawn_ok": not unknown and len(batches) <= 1,
+        "required_batches": len(batches),
+        "batches": batches,
+        "terminal_workflow_actions": summary.get("terminal_workflow_actions") or [],
+        "artifact_handoff_states": summary.get("artifact_handoff_states") or [],
+        "planner_actions": summary.get("planner_actions") or [],
+        "exit_criteria": summary.get("exit_criteria") or [],
+        "recommendation": "record assisted loop state and dispatch selected roles" if selected else "head-manager lane; no fixed-role dispatch",
+    }
+
+
+def _artifact_args(args: list[str]) -> list[str]:
+    artifacts: list[str] = []
+    for index, arg in enumerate(args):
+        if arg in {"--artifact", "--artifacts"} and index + 1 < len(args):
+            artifacts.extend(item.strip() for item in args[index + 1].split(",") if item.strip())
+    return artifacts
 
 
 def _format_prompt_explanation(summary: dict, prompt: str) -> str:

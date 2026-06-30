@@ -95,6 +95,60 @@
     </div>
     {% endif %}
 
+    {% if intake_summary.allowed_followup_team or intake_summary.escalation_team %}
+    <div class="tc-workflow-stages">
+      <span class="tc-eyebrow">Supervisor loop</span>
+      <div class="tc-method-list">
+        <div class="tc-method-item">
+          <strong>Allowed follow-up</strong>
+          <span>{% for role in intake_summary.allowed_followup_team %}{{ role }}{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}</span>
+        </div>
+        <div class="tc-method-item">
+          <strong>Escalation-only</strong>
+          <span>{% for role in intake_summary.escalation_team %}{{ role }}{% if not forloop.last %}, {% endif %}{% empty %}none{% endfor %}</span>
+        </div>
+        <div class="tc-method-item">
+          <strong>Loop state</strong>
+          <span>{{ intake_summary.workflow_loop_state_path }}</span>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {% if workflow_loop_preview.state_exists or workflow_loop_preview.pending_tasks or workflow_loop_preview.escalation_proposals or workflow_loop_preview.blocked_actions %}
+    <div class="tc-workflow-stages">
+      <span class="tc-eyebrow">Loop status</span>
+      <div class="tc-method-list">
+        <div class="tc-method-item">
+          <strong>Stop reason</strong>
+          <span>{{ workflow_loop_preview.stop_reason|default:"not started" }}</span>
+        </div>
+        {% if workflow_loop_preview.pending_tasks %}
+        <div class="tc-method-item">
+          <strong>Pending follow-up</strong>
+          {% for task in workflow_loop_preview.pending_tasks|slice:":4" %}
+          <span>{{ task.role }} · {{ task.planner_action }} · {{ task.status }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if workflow_loop_preview.escalation_proposals %}
+        <div class="tc-method-item">
+          <strong>Escalation proposals</strong>
+          {% for item in workflow_loop_preview.escalation_proposals|slice:":4" %}
+          <span>{{ item.suggested_role }} · {{ item.policy_reason }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
+        {% if workflow_loop_preview.blocked_actions %}
+        <div class="tc-method-item">
+          <strong>Blocked actions</strong>
+          <span>{% for action in workflow_loop_preview.blocked_actions %}{{ action }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {% if intake_summary.judgment_controls %}
     <div class="tc-workflow-stages">
       <span class="tc-eyebrow">Judgment controls</span>

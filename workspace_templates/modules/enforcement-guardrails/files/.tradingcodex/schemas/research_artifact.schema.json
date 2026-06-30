@@ -34,6 +34,65 @@
     "next_recipient": { "type": "string" },
     "blocked_actions": { "type": "array" },
     "source_snapshot_ids": { "type": "array", "items": { "type": "string" } },
+    "follow_up_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["trigger", "suggested_role", "question", "reason", "materiality"],
+        "properties": {
+          "trigger": {
+            "type": "string",
+            "enum": [
+              "coverage_gap",
+              "freshness_gap",
+              "contradiction",
+              "material_driver",
+              "assumption_change",
+              "method_gap",
+              "scope_boundary",
+              "forecast_gap",
+              "profile_gap"
+            ]
+          },
+          "suggested_role": {
+            "type": "string",
+            "enum": [
+              "fundamental-analyst",
+              "technical-analyst",
+              "news-analyst",
+              "macro-analyst",
+              "instrument-analyst",
+              "valuation-analyst",
+              "portfolio-manager",
+              "risk-manager"
+            ]
+          },
+          "question": { "type": "string" },
+          "reason": { "type": "string" },
+          "materiality": { "type": "string", "enum": ["low", "medium", "high"] },
+          "requested_by_role": { "type": "string" },
+          "created_at": { "type": "string" },
+          "source_artifact_id": { "type": "string" },
+          "source_artifact_path": { "type": "string" },
+          "source_artifact_version": { "type": "integer" },
+          "source_artifact_content_hash": { "type": "string" },
+          "trigger_evidence_refs": { "type": "array" },
+          "required_inputs": { "type": "array" },
+          "suggested_consent_posture": {
+            "type": "string",
+            "enum": ["no_consent_expected", "consent_required", "unknown"]
+          },
+          "blocked_actions": { "type": "array" }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["within_current_lane"] },
+            { "required": ["requires_user_consent"] }
+          ]
+        },
+        "additionalProperties": true
+      }
+    },
     "version": { "type": "integer" },
     "content_hash": { "type": "string" },
     "workspace_native": { "type": "boolean" },

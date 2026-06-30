@@ -99,6 +99,7 @@ def mcp(root: Path, argv: list[str]) -> None:
         "next_action": _option_value(args, "--next-action"),
         "blocked_actions": _list_option(args, "--blocked-actions"),
         "source_snapshot_ids": _list_option(args, "--source-snapshot-ids"),
+        "follow_up_requests": _list_option(args, "--follow-up-requests"),
         "query": _option_value(args, "--query") or _option_value(args, "--q"),
         "limit": _int_option(args, "--limit"),
         "provider": _option_value(args, "--provider"),

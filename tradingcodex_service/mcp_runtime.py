@@ -151,6 +151,7 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "next_action": {"type": "string"},
     "blocked_actions": {"type": "array"},
     "source_snapshot_ids": {"type": "array", "items": {"type": "string"}},
+    "follow_up_requests": {"type": "array"},
 }
 ORDER_TICKET_SCHEMA = json_object_schema(
     {

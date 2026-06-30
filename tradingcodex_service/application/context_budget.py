@@ -11,6 +11,7 @@ from tradingcodex_service.application.research import list_workspace_research_ar
 MAX_HOOK_CONTEXT_TOKENS = 500
 MAX_STARTER_PROMPT_TOKENS = 1200
 MAX_SESSION_STATE_TOKENS = 2000
+MAX_LOOP_STATE_TOKENS = 2000
 MAX_CONTEXT_SUMMARY_CHARS = 1200
 LARGE_ARTIFACT_BODY_TOKENS = 6000
 
@@ -20,9 +21,12 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     gate_path = root / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json"
     gate_history_path = root / ".tradingcodex" / "mainagent" / "prompt-gate-history.jsonl"
     state_path = root / ".tradingcodex" / "mainagent" / "subagent-session-state.json"
+    loop_state_path = root / ".tradingcodex" / "mainagent" / "workflow-loop-state.json"
     gate = _read_json(gate_path, {})
     gate_history = _read_jsonl(gate_history_path)
     state = _read_json(state_path, {"active": {}, "completed": [], "events": []})
+    loop_state = _read_json(loop_state_path, {})
+    loop_state_canonical_path = str(loop_state.get("state_path") or "") if isinstance(loop_state, dict) else ""
     checks: list[dict[str, Any]] = []
     warnings: list[str] = []
 
@@ -31,9 +35,11 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     starter_prompt = str(gate.get("starter_prompt") or "")
     gate_text = _json_text(gate)
     state_text = _json_text(state)
+    loop_state_text = _json_text(loop_state)
     compact_tokens = estimate_tokens(compact_text)
     starter_prompt_tokens = estimate_tokens(starter_prompt)
     state_tokens = estimate_tokens(state_text)
+    loop_state_tokens = estimate_tokens(loop_state_text)
     state_events = state.get("events", []) if isinstance(state.get("events"), list) else []
     state_completed = state.get("completed", []) if isinstance(state.get("completed"), list) else []
     state_event_count_total = int(state.get("event_count_total") or len(state_events))
@@ -131,6 +137,15 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
         retained_events=len(state_events),
         total_events=state_event_count_total,
     )
+    _add_check(
+        checks,
+        "workflow loop state stays compact",
+        not loop_state or loop_state_tokens <= MAX_LOOP_STATE_TOKENS,
+        estimated_tokens=loop_state_tokens,
+        limit_tokens=MAX_LOOP_STATE_TOKENS,
+        pending_tasks=len(loop_state.get("pending_tasks", []) if isinstance(loop_state.get("pending_tasks"), list) else []),
+        completed_artifacts=len(loop_state.get("completed_artifacts", []) if isinstance(loop_state.get("completed_artifacts"), list) else []),
+    )
 
     artifact_records = []
     missing_context_summary = []
@@ -224,6 +239,17 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
             "event_count": state_event_count_total,
             "retained_event_count": len(state_events),
             "retention": state.get("retention", {}),
+        },
+        "loop_state": {
+            "path": ".tradingcodex/mainagent/workflow-loop-state.json",
+            "canonical_state_path": loop_state_canonical_path,
+            "exists": bool(loop_state),
+            "estimated_tokens": loop_state_tokens,
+            "workflow_run_id": loop_state.get("workflow_run_id"),
+            "lane": loop_state.get("lane"),
+            "pending_task_count": len(loop_state.get("pending_tasks", []) if isinstance(loop_state.get("pending_tasks"), list) else []),
+            "completed_artifact_count": len(loop_state.get("completed_artifacts", []) if isinstance(loop_state.get("completed_artifacts"), list) else []),
+            "stop_reason": loop_state.get("stop_reason", ""),
         },
         "artifacts": {
             "checked": len(artifact_records),

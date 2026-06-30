@@ -115,7 +115,7 @@ Generated workspaces contain:
   first-read experience clear for non-expert users
 - context-budget audit: `./tcx subagents context-audit --strict` inspects the
   latest prompt gate, prompt-gate history, compact hook context, subagent
-  session state, and research artifacts after long multi-subagent runs; it
+  session state, workflow loop state, and research artifacts after long multi-subagent runs; it
   fails strict mode when handoff artifacts lack `context_summary`, compact gate
   history grows beyond budget, or gate/state/history payloads look like pasted
   markdown artifacts, and warns when reader-first fields are missing
@@ -123,6 +123,17 @@ Generated workspaces contain:
   keeps total counters plus recent active/completed/event records for Codex
   context; the full event stream remains in
   `trading/audit/subagent-session-events.jsonl`
+- compact workflow loop state: `.tradingcodex/mainagent/workflow-loop-state.json`
+  is the latest summary and pointer; the canonical state for each routed prompt
+  lives under `.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json`
+  with the matching prompt gate beside it. The state records selected team,
+  allowed follow-up team, escalation-only roles, loop policy, pending tasks,
+  planner decisions, escalation proposals, blocked actions, and stop reason
+  without spawning subagents recursively
+- Codex session/thread routing map:
+  `.tradingcodex/mainagent/session-workflow-runs.json` maps a Codex app session
+  key to the active `workflow_run_id`, so two app threads in one attached
+  workspace can continue different loops without clobbering each other
 - fixed subagents configured for `model = "gpt-5.5"` and `model_reasoning_effort = "high"`
 - fixed subagent `nickname_candidates` set to a single item matching the exact role `name`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
@@ -382,6 +393,12 @@ enforcement.
 - compact hook `additionalContext`; the full generated starter prompt remains
   in `.tradingcodex/mainagent/latest-user-prompt-gate.json` and is loaded only
   when the compact gate is insufficient
+- compact Artifact Supervisor Loop metadata in hook context for
+  `allowed_followup_team`, `escalation_team`, `loop_policy`, the latest loop
+  summary, and the canonical run-specific loop-state path
+- assisted loop planner previews through `./tcx subagents loop --artifact
+  <path>`, with optional `--record` limited to file-native pending tasks,
+  planner decisions, escalation proposals, blocked actions, and stop reason
 - execution negation routing such as "no order" and "no trading"
 - strategy authoring prompts remain in `strategy-creator`/strategy CRUD scope
   instead of auto-dispatching fixed investment subagents

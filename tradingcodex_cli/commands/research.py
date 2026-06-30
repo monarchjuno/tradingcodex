@@ -39,6 +39,7 @@ def research(root: Path, argv: list[str]) -> None:
             "next_action": _option_value(args, "--next-action") or "",
             "blocked_actions": _list_option(args, "--blocked-actions") or [],
             "source_snapshot_ids": _list_option(args, "--source-snapshot-ids") or [],
+            "follow_up_requests": _list_option(args, "--follow-up-requests") or [],
             "created_by": _option_value(args, "--created-by") or "head-manager",
             "export_path": _option_value(args, "--export-path"),
         }
@@ -63,6 +64,7 @@ def research(root: Path, argv: list[str]) -> None:
             "next_action": _option_value(args, "--next-action") or "",
             "blocked_actions": _list_option(args, "--blocked-actions"),
             "source_snapshot_ids": _list_option(args, "--source-snapshot-ids"),
+            "follow_up_requests": _list_option(args, "--follow-up-requests"),
             "created_by": _option_value(args, "--created-by") or "head-manager",
             "export_path": _option_value(args, "--export-path"),
         }))

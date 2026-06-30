@@ -27,6 +27,7 @@ from tradingcodex_service.application.agents import (
 )
 from tradingcodex_service.application.harness import (
     PROFILE_FIELD_KEYS,
+    build_workflow_loop_preview,
     build_workflow_intake_summary,
     build_subagent_starter_prompt,
     get_harness_health,
@@ -527,12 +528,18 @@ def research(request: HttpRequest) -> HttpResponse:
             artifact_preview = _with_preview_universe_label(artifact_preview)
         else:
             artifact_preview = render_markdown_preview("_Research file is unavailable._", source_label="workspace research file")
+    loop_preview = build_workflow_loop_preview(
+        root,
+        str(request.GET.get("q") or ""),
+        [str(selected_artifact["path"])] if selected_artifact else None,
+    )
     context = {
         **base_context(request, "research"),
         "artifacts": artifacts,
         "selected_artifact": selected_artifact,
         "selected_artifact_id": selected_artifact_id,
         "artifact_preview": artifact_preview,
+        "workflow_loop_preview": loop_preview,
         "research": research_overview(root),
     }
     return render(request, "web/research.html", context)
@@ -837,6 +844,7 @@ def starter_prompt(request: HttpRequest) -> HttpResponse:
         "starter_prompt_examples": starter_prompt_examples(),
         "starter_prompt": build_subagent_starter_prompt(query, root) if query.strip() else "",
         "intake_summary": build_workflow_intake_summary(query, root),
+        "workflow_loop_preview": build_workflow_loop_preview(root, query),
     }
     return render(request, "web/starter_prompt.html", context)
 
@@ -853,6 +861,7 @@ def starter_prompt_fragment(request: HttpRequest) -> HttpResponse:
             "query": query,
             "starter_prompt": build_subagent_starter_prompt(query, root) if query.strip() else "",
             "intake_summary": build_workflow_intake_summary(query, root),
+            "workflow_loop_preview": build_workflow_loop_preview(root, query),
         },
     )
 
@@ -904,6 +913,7 @@ def starter_profile_update(request: HttpRequest) -> HttpResponse:
             "query": query,
             "starter_prompt": build_subagent_starter_prompt(query, root) if query.strip() else "",
             "intake_summary": build_workflow_intake_summary(query, root),
+            "workflow_loop_preview": build_workflow_loop_preview(root, query),
             "profile_saved": True,
         },
     )

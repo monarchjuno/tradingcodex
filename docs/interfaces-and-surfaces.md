@@ -137,6 +137,10 @@ primary web entrypoint. When present, it is server-rendered SVG/HTML and shows:
   section, and the copy-ready Codex prompt plus run commands live in a
   collapsed Codex handoff section. The page can show short example prompts that
   link back into the same local preview flow.
+- The product web app can preview Artifact Supervisor Loop state, selected
+  artifact follow-up requests, pending loop tasks, escalation proposals, and
+  blocked actions. This preview is read-only; it does not spawn subagents,
+  approve orders, execute orders, or create lane escalation consent.
 - The workflow preview can save answered investor-profile context to the
   active profile so later workflow intake reuses it and only asks unanswered
   suitability/profile questions.
@@ -190,6 +194,9 @@ Django Ninja provides local/staff typed control APIs:
   `intake_summary` for idea translation, plain-language workflow explanation,
   blocked-action reasons, next allowed actions, stage exit criteria, and direct
   profile questions
+- `POST /api/harness/subagents/loop` returns closed Artifact Supervisor Loop
+  planner actions for artifact paths and can optionally record file-native
+  pending tasks/escalation proposals without spawning agents
 - `GET /api/subagents`
 - `GET /api/subagents/{role}/skills`
 - `GET|POST /api/subagents/{role}/optional-skills`
@@ -341,7 +348,7 @@ Top-level commands:
 - `tcx doctor [--layer <name>]`
 - `tcx workspace status|list`
 - `tcx profile status|list|create|select|update`
-- `tcx subagents status|list|inspect|diff|project|plan|skills|prompt|state`
+- `tcx subagents status|list|inspect|diff|project|plan|loop|skills|prompt|state`
 - `tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal`
 - `tcx research create|append|get|list|search|export`
 - `tcx policy simulate`
@@ -372,6 +379,7 @@ Generated workspace wrapper commands:
 - `./tcx profile status|list|create|select|update`
 - `./tcx subagents status`
 - `./tcx subagents prompt [--json|--explain] "<request>"`
+- `./tcx subagents loop --request "<request>" --artifact <path> [--record]`
 - `./tcx skills optional list|inspect|create|update|activate|archive|delete`
 
 Connector setup is provider-first. Core ships the `paper` provider only; a

@@ -52,6 +52,37 @@
     </div>
   </div>
   {% endif %}
+  {% if workflow_loop_preview.artifact_evaluations or workflow_loop_preview.pending_tasks or workflow_loop_preview.escalation_proposals %}
+  <div class="tc-workflow-stages">
+    <span class="tc-eyebrow">Loop preview</span>
+    <div class="tc-method-list">
+      {% for item in workflow_loop_preview.artifact_evaluations %}
+      <div class="tc-method-item">
+        <strong>{{ item.artifact_evaluation }}</strong>
+        <span>{{ item.role }} · {{ item.handoff_state }} · {{ item.follow_up_request_count }} follow-up request{% if item.follow_up_request_count != 1 %}s{% endif %}</span>
+      </div>
+      {% endfor %}
+      {% for task in workflow_loop_preview.pending_tasks %}
+      <div class="tc-method-item">
+        <strong>{{ task.role }}</strong>
+        <span>{{ task.planner_action }} · {{ task.trigger }} · {{ task.status }}</span>
+      </div>
+      {% endfor %}
+      {% for item in workflow_loop_preview.escalation_proposals %}
+      <div class="tc-method-item">
+        <strong>{{ item.suggested_role }}</strong>
+        <span>{{ item.policy_reason }}</span>
+      </div>
+      {% endfor %}
+      {% if workflow_loop_preview.blocked_actions %}
+      <div class="tc-method-item">
+        <strong>Blocked actions</strong>
+        <span>{% for action in workflow_loop_preview.blocked_actions %}{{ action }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
   {% if artifact_preview.metadata_items %}
   <div class="tc-frontmatter-card">
     <div class="tc-frontmatter-head">

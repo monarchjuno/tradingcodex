@@ -69,7 +69,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="workflow-quality-gates",
         label="Workflow Quality Gates",
-        summary="Defines lane selection, Decision Quality Spine, handoff acceptance, artifact readiness, claim discipline, and synthesis gates.",
+        summary="Defines lane selection, Artifact Supervisor Loop policy, Decision Quality Spine, handoff acceptance, artifact readiness, claim discipline, and synthesis gates.",
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality"),
         surfaces={
@@ -79,7 +79,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
             "tests": ("quality-scenarios", "routing"),
         },
         depends_on=("investment-request-routing", "fixed-role-dispatch"),
-        owned_capabilities=("workflow.quality_gate", "workflow.decision_quality_spine"),
+        owned_capabilities=("workflow.quality_gate", "workflow.decision_quality_spine", "workflow.artifact_supervisor_loop"),
         validation=("pytest", "routing scenario tests"),
     ),
     HarnessComponent(
@@ -380,12 +380,12 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="postmortem-loop",
         label="Postmortem Loop",
-        summary="Turns rejected orders, process failures, thesis changes, and executions into improvements.",
+        summary="Turns rejected orders, process failures, thesis changes, artifact-loop blocks/escalations, and executions into improvements.",
         status="core",
         tags=("improvement.postmortems", "improvement.validation_feedback"),
         surfaces={
             "skills": ("postmortem",),
-            "services": ("audit", "orders"),
+            "services": ("audit", "harness", "orders"),
             "templates": ("postmortem", "repo-skills"),
             "tests": ("postmortem",),
         },

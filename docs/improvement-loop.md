@@ -91,6 +91,8 @@ Postmortems are not only for executed orders. They also apply to:
 - stale or weak evidence
 - thesis changes
 - routing failures
+- blocked, revised, or escalated artifact supervisor loops recorded in
+  `trading/audit/workflow-loop-events.jsonl`
 - process gaps
 
 A useful postmortem should end with concrete harness, guardrail, policy, skill,

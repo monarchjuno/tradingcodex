@@ -5,7 +5,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.common import _status_class, _unique
+from tradingcodex_service.application.artifact_quality import evaluate_artifact_quality
+from tradingcodex_service.application.common import _status_class, _unique, append_jsonl, now_iso, read_json, sanitize_id, stable_hash, write_json
 from tradingcodex_service.application.agents import (
     AGENT_SPECS,
     EXPECTED_SKILLS,
@@ -172,6 +173,54 @@ FORECAST_HORIZON_PATTERN = re.compile(
     re.I,
 )
 HANDOFF_STATES = ("accepted", "revise", "blocked", "waiting")
+ARTIFACT_EVALUATION_STATES = ("accept_artifact", "revise_artifact", "block_artifact", "wait_for_artifact")
+TERMINAL_WORKFLOW_ACTIONS = ("synthesize", "blocked", "waiting", "lane_escalation_proposal")
+PLANNER_ACTIONS = (
+    "revise_same_role",
+    "follow_up_existing_team",
+    "challenge_conflict",
+    "downstream_handoff",
+    "lane_escalation_proposal",
+    "blocked",
+    "waiting",
+    "synthesize",
+)
+FIXED_INVESTMENT_ROLES = (
+    "fundamental-analyst",
+    "technical-analyst",
+    "news-analyst",
+    "macro-analyst",
+    "instrument-analyst",
+    "valuation-analyst",
+    "portfolio-manager",
+    "risk-manager",
+    "execution-operator",
+)
+RESEARCH_AND_DECISION_ROLES = tuple(role for role in FIXED_INVESTMENT_ROLES if role != "execution-operator")
+LOOP_STATE_PATH = ".tradingcodex/mainagent/workflow-loop-state.json"
+LOOP_RUNS_DIR = ".tradingcodex/mainagent/workflows"
+LOOP_RUN_STATE_FILENAME = "loop-state.json"
+DEFAULT_LOOP_POLICY = {
+    "max_iterations": 3,
+    "max_followups_per_iteration": 2,
+    "max_same_role_revisions": 1,
+    "max_total_subagent_tasks": 8,
+    "max_loop_subagent_tasks": 4,
+    "require_user_consent_for_lane_escalation": True,
+    "synthesize_on_budget_exhaustion": False,
+    "terminal_workflow_actions": list(TERMINAL_WORKFLOW_ACTIONS),
+    "artifact_handoff_states": list(HANDOFF_STATES),
+    "artifact_evaluation_states": list(ARTIFACT_EVALUATION_STATES),
+    "planner_actions": list(PLANNER_ACTIONS),
+}
+LANE_LOOP_POLICY_OVERRIDES: dict[str, dict[str, Any]] = {
+    "research_only": {"max_iterations": 2, "max_loop_subagent_tasks": 3},
+    "order_ticket_draft_gate": {"max_iterations": 2, "max_loop_subagent_tasks": 2},
+    "order_ticket_approval_execution_gate": {"max_iterations": 1, "max_followups_per_iteration": 1, "max_loop_subagent_tasks": 1},
+    "connector_build": {"max_iterations": 1, "max_followups_per_iteration": 0, "max_total_subagent_tasks": 0, "max_loop_subagent_tasks": 0},
+    "head_manager_connector_operations": {"max_iterations": 1, "max_followups_per_iteration": 0, "max_total_subagent_tasks": 0, "max_loop_subagent_tasks": 0},
+    "head_manager_strategy_authoring": {"max_iterations": 1, "max_followups_per_iteration": 0, "max_total_subagent_tasks": 0, "max_loop_subagent_tasks": 0},
+}
 WORKFLOW_LANE_COPY: dict[str, dict[str, str]] = {
     "research_only": {
         "label": "Research check",
@@ -912,7 +961,8 @@ def classify_starter_request(request: str) -> dict[str, Any]:
         ) and not flags.get("forecast_negated")
         flags["profile_gate_required"] = lane in PROFILE_REQUIRED_LANES
         flags["anti_overfit_required"] = bool(flags.get("backtest_or_signal_validation_requested"))
-        return {**payload, "intent": flags, "routingFlags": flags}
+        loop_contract = build_artifact_supervisor_loop_contract(payload, flags)
+        return {**payload, "intent": flags, "routingFlags": flags, **loop_contract}
 
     if intent.strategy_authoring_requested:
         return finish({
@@ -987,6 +1037,484 @@ def classify_starter_request(request: str) -> dict[str, Any]:
     if intent.broad_thesis_default:
         return finish({"universe": universe, "lane": "thesis_review", "subagents": _unique(thesis_roles), "blockedActions": ["order ticket", "approval", "execution", "direct broker API", "secret read"]})
     return finish({"universe": universe, "lane": "research_only", "subagents": _unique(research), "blockedActions": ["valuation unless requested", "order ticket", "approval", "execution", "direct broker API", "secret read"]})
+
+
+def build_artifact_supervisor_loop_contract(plan: dict[str, Any], flags: dict[str, Any] | None = None) -> dict[str, Any]:
+    lane = str(plan.get("lane") or "research_only")
+    selected = _unique([role for role in plan.get("subagents") or [] if role in FIXED_INVESTMENT_ROLES])
+    flags = flags or {}
+    allowed = selected if selected else []
+    escalation = _loop_escalation_team(lane, selected)
+    if flags.get("valuation_negated"):
+        escalation = [role for role in escalation if role != "valuation-analyst"]
+    if flags.get("news_negated"):
+        escalation = [role for role in escalation if role != "news-analyst"]
+    if flags.get("technical_only"):
+        escalation = [role for role in escalation if role in {"technical-analyst", "instrument-analyst"}]
+    if lane == "research_only":
+        allowed = [role for role in allowed if role not in {"valuation-analyst", "portfolio-manager", "risk-manager", "execution-operator"}]
+        if flags.get("valuation_negated"):
+            escalation = [role for role in escalation if role != "valuation-analyst"]
+    if lane in {"connector_build", "head_manager_connector_operations", "head_manager_strategy_authoring"}:
+        allowed = []
+        escalation = []
+    policy = build_loop_policy(lane)
+    return {
+        "selectedTeam": selected,
+        "allowedFollowupTeam": _unique(allowed),
+        "escalationTeam": _unique([role for role in escalation if role not in selected and role not in allowed]),
+        "loopPolicy": policy,
+        "loopStatePath": LOOP_STATE_PATH,
+        "loopRunStatePattern": f"{LOOP_RUNS_DIR}/<workflow_run_id>/{LOOP_RUN_STATE_FILENAME}",
+        "exitCriteria": build_loop_exit_criteria(lane),
+        "terminalWorkflowActions": list(TERMINAL_WORKFLOW_ACTIONS),
+        "artifactHandoffStates": list(HANDOFF_STATES),
+        "plannerActions": list(PLANNER_ACTIONS),
+    }
+
+
+def build_loop_policy(lane: str) -> dict[str, Any]:
+    policy = {**DEFAULT_LOOP_POLICY, **LANE_LOOP_POLICY_OVERRIDES.get(lane, {})}
+    return {
+        **policy,
+        "terminal_workflow_actions": list(policy["terminal_workflow_actions"]),
+        "artifact_handoff_states": list(policy["artifact_handoff_states"]),
+        "artifact_evaluation_states": list(policy["artifact_evaluation_states"]),
+        "planner_actions": list(policy["planner_actions"]),
+    }
+
+
+def plan_follow_up_request(plan: dict[str, Any], follow_up_request: dict[str, Any]) -> dict[str, Any]:
+    role = str(follow_up_request.get("suggested_role") or "")
+    trigger = str(follow_up_request.get("trigger") or "")
+    allowed = set(plan.get("allowedFollowupTeam") or [])
+    escalation = set(plan.get("escalationTeam") or [])
+    policy_reason = ""
+    if role in allowed:
+        planner_action = "challenge_conflict" if trigger == "contradiction" else "follow_up_existing_team"
+        policy_within_current_lane = True
+        policy_requires_user_consent = False
+        policy_reason = f"{role} is in allowed_followup_team for {plan.get('lane')}"
+    elif role in escalation or trigger == "scope_boundary":
+        planner_action = "lane_escalation_proposal"
+        policy_within_current_lane = False
+        policy_requires_user_consent = True
+        policy_reason = f"{role or 'requested role'} is outside allowed_followup_team for {plan.get('lane')}"
+    else:
+        planner_action = "blocked"
+        policy_within_current_lane = False
+        policy_requires_user_consent = True
+        policy_reason = f"{role or 'requested role'} is not allowed for this routed lane"
+    if role == "execution-operator":
+        planner_action = "blocked"
+        policy_within_current_lane = False
+        policy_requires_user_consent = True
+        policy_reason = "follow_up_requests cannot request execution work"
+    return {
+        "planner_decision": planner_action,
+        "suggested_role": role,
+        "trigger": trigger,
+        "policy_within_current_lane": policy_within_current_lane,
+        "policy_requires_user_consent": policy_requires_user_consent,
+        "policy_reason": policy_reason,
+        "delta_brief": build_delta_follow_up_brief(plan, follow_up_request, planner_action),
+    }
+
+
+def build_delta_follow_up_brief(plan: dict[str, Any], follow_up_request: dict[str, Any], planner_action: str) -> str:
+    parts = [
+        f"Planner action: {planner_action}",
+        f"Workflow lane: {plan.get('lane')}",
+        f"Source artifact: {follow_up_request.get('source_artifact_path') or follow_up_request.get('source_artifact_id') or 'unknown'}",
+        f"Trigger: {follow_up_request.get('trigger') or 'unknown'}",
+        f"Question: {follow_up_request.get('question') or ''}",
+        f"Reason: {follow_up_request.get('reason') or ''}",
+        "Use only artifact path, context_summary, source/as-of metadata, and this delta question; do not paste full prior artifacts.",
+    ]
+    return "\n".join(parts)
+
+
+def workflow_loop_state_relpath(workflow_run_id: str) -> str:
+    return f"{LOOP_RUNS_DIR}/{sanitize_id(workflow_run_id)}/{LOOP_RUN_STATE_FILENAME}"
+
+
+def workflow_loop_state_path(workspace_root: Path | str, workflow_run_id: str) -> Path:
+    return Path(workspace_root) / workflow_loop_state_relpath(workflow_run_id)
+
+
+def read_workflow_loop_state(workspace_root: Path | str | None = None, workflow_run_id: str = "") -> dict[str, Any]:
+    root = Path(workspace_root or ".")
+    if workflow_run_id:
+        state = read_json(workflow_loop_state_path(root, workflow_run_id), {})
+        return state if isinstance(state, dict) else {}
+    latest = read_json(root / LOOP_STATE_PATH, {})
+    if isinstance(latest, dict):
+        state_path = str(latest.get("state_path") or "")
+        if state_path and state_path != LOOP_STATE_PATH:
+            state = read_json(root / state_path, latest)
+            return state if isinstance(state, dict) else latest
+        return latest
+    state = latest
+    return state if isinstance(state, dict) else {}
+
+
+def compact_workflow_loop_summary(state: dict[str, Any]) -> dict[str, Any]:
+    workflow_run_id = str(state.get("workflow_run_id") or "")
+    pending = state.get("pending_tasks") if isinstance(state.get("pending_tasks"), list) else []
+    completed = state.get("completed_artifacts") if isinstance(state.get("completed_artifacts"), list) else []
+    decisions = state.get("loop_decisions") if isinstance(state.get("loop_decisions"), list) else []
+    return {
+        "workflow_run_id": workflow_run_id,
+        "lane": state.get("lane", ""),
+        "state_path": workflow_loop_state_relpath(workflow_run_id) if workflow_run_id else LOOP_STATE_PATH,
+        "iteration": state.get("iteration", 0),
+        "pending_tasks": pending,
+        "completed_artifacts": completed[-12:],
+        "loop_decisions": decisions[-12:],
+        "escalation_proposals": state.get("escalation_proposals", []) if isinstance(state.get("escalation_proposals"), list) else [],
+        "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
+        "stop_reason": state.get("stop_reason", ""),
+        "state_mode": state.get("state_mode", "inspectable_assisted_loop"),
+        "auto_spawn": False,
+        "recursive_hook_dispatch": False,
+        "updated_at": state.get("updated_at", ""),
+    }
+
+
+def write_workflow_loop_state(workspace_root: Path | str, state: dict[str, Any], *, update_latest: bool = True) -> str:
+    root = Path(workspace_root)
+    workflow_run_id = str(state.get("workflow_run_id") or "")
+    relpath = workflow_loop_state_relpath(workflow_run_id) if workflow_run_id else LOOP_STATE_PATH
+    state["state_path"] = relpath
+    write_json(root / relpath, state)
+    if update_latest:
+        write_json(root / LOOP_STATE_PATH, compact_workflow_loop_summary(state))
+    return relpath
+
+
+def build_workflow_loop_preview(
+    workspace_root: Path | str | None = None,
+    request: str = "",
+    artifact_paths: list[str] | None = None,
+) -> dict[str, Any]:
+    root = Path(workspace_root or ".")
+    state = read_workflow_loop_state(root)
+    artifacts = artifact_paths or []
+    if artifacts:
+        return evaluate_artifact_supervisor_loop(root, request, artifacts, record=False)
+    return {
+        "workflow_run_id": state.get("workflow_run_id", ""),
+        "workflow_lane": state.get("lane", ""),
+        "state_exists": bool(state),
+        "state_path": state.get("state_path") or LOOP_STATE_PATH,
+        "latest_state_path": LOOP_STATE_PATH,
+        "pending_tasks": state.get("pending_tasks", []) if isinstance(state.get("pending_tasks"), list) else [],
+        "completed_artifacts": state.get("completed_artifacts", []) if isinstance(state.get("completed_artifacts"), list) else [],
+        "loop_decisions": state.get("loop_decisions", []) if isinstance(state.get("loop_decisions"), list) else [],
+        "escalation_proposals": state.get("escalation_proposals", []) if isinstance(state.get("escalation_proposals"), list) else [],
+        "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
+        "stop_reason": state.get("stop_reason", ""),
+        "auto_spawn": False,
+        "recursive_hook_dispatch": False,
+    }
+
+
+def evaluate_artifact_supervisor_loop(
+    workspace_root: Path | str | None,
+    request: str,
+    artifact_paths: list[str],
+    *,
+    record: bool = False,
+) -> dict[str, Any]:
+    root = Path(workspace_root or ".")
+    state = read_workflow_loop_state(root)
+    plan = _loop_plan_for_runtime(request, state)
+    policy = plan.get("loopPolicy") or build_loop_policy(str(plan.get("lane") or "research_only"))
+    workflow_run_id = str(state.get("workflow_run_id") or f"workflow-preview-{stable_hash({'request': request, 'artifacts': artifact_paths})[:12]}")
+    pending_tasks: list[dict[str, Any]] = []
+    escalation_proposals: list[dict[str, Any]] = []
+    loop_decisions: list[dict[str, Any]] = []
+    artifact_evaluations: list[dict[str, Any]] = []
+    blocked_actions = list(state.get("blocked_actions") or plan.get("blockedActions") or [])
+    task_budget = int(policy.get("max_loop_subagent_tasks") or 0)
+    existing_loop_tasks = [
+        task for task in state.get("pending_tasks", []) if isinstance(task, dict) and task.get("task_type") != "initial_dispatch"
+    ]
+    remaining_budget = max(0, task_budget - len(existing_loop_tasks))
+    followups_this_iteration = int(policy.get("max_followups_per_iteration") or 0)
+
+    for artifact_path in artifact_paths:
+        quality = evaluate_artifact_quality(root, artifact_path, strict=True)
+        frontmatter = quality.get("frontmatter") or {}
+        role = str(frontmatter.get("role") or "unknown")
+        handoff_state = str(frontmatter.get("handoff_state") or "waiting")
+        evaluation_action = _artifact_evaluation_action(quality, handoff_state)
+        artifact_record = {
+            "artifact_path": quality.get("path") or artifact_path,
+            "role": role,
+            "handoff_state": handoff_state,
+            "artifact_evaluation": evaluation_action,
+            "quality_status": quality.get("status"),
+            "context_summary": frontmatter.get("context_summary", ""),
+            "follow_up_request_count": len(frontmatter.get("follow_up_requests") or []),
+            "warnings": quality.get("warnings", [])[:5],
+        }
+        artifact_evaluations.append(artifact_record)
+
+        if evaluation_action == "revise_artifact":
+            pending_tasks.append(_same_role_revision_task(workflow_run_id, plan, artifact_record, quality))
+            loop_decisions.append(_loop_decision("revise_same_role", f"{role} artifact needs repair before downstream use", artifact_record))
+            continue
+        if evaluation_action == "block_artifact":
+            blocked_actions = _unique([*blocked_actions, *[str(item) for item in frontmatter.get("blocked_actions") or []]])
+            loop_decisions.append(_loop_decision("blocked", f"{role} artifact is blocked", artifact_record))
+            continue
+        if evaluation_action == "wait_for_artifact":
+            loop_decisions.append(_loop_decision("waiting", f"{role} artifact is waiting or unavailable", artifact_record))
+            continue
+
+        for index, follow_up in enumerate(frontmatter.get("follow_up_requests") or [], start=1):
+            if not isinstance(follow_up, dict):
+                continue
+            request_with_source = {
+                **follow_up,
+                "source_artifact_path": follow_up.get("source_artifact_path") or artifact_record["artifact_path"],
+                "source_artifact_id": follow_up.get("source_artifact_id") or frontmatter.get("artifact_id"),
+            }
+            decision = plan_follow_up_request(plan, request_with_source)
+            planner_action = decision["planner_decision"]
+            decision_record = {
+                **decision,
+                "source_artifact_path": request_with_source.get("source_artifact_path"),
+                "requested_by_role": request_with_source.get("requested_by_role") or role,
+                "materiality": request_with_source.get("materiality"),
+            }
+            if planner_action in {"follow_up_existing_team", "challenge_conflict"} and len(pending_tasks) < followups_this_iteration and remaining_budget > 0:
+                pending_tasks.append(_follow_up_task(workflow_run_id, plan, request_with_source, decision, index))
+                remaining_budget -= 1
+                loop_decisions.append(_loop_decision(planner_action, decision["policy_reason"], decision_record))
+            elif planner_action == "lane_escalation_proposal":
+                escalation_proposals.append(decision_record)
+                loop_decisions.append(_loop_decision(planner_action, decision["policy_reason"], decision_record))
+            elif planner_action in {"follow_up_existing_team", "challenge_conflict"}:
+                wait_record = {**decision_record, "budget_exhausted": True}
+                loop_decisions.append(_loop_decision("waiting", "loop task budget exhausted before follow-up could be queued", wait_record))
+            else:
+                loop_decisions.append(_loop_decision(planner_action, decision["policy_reason"], decision_record))
+
+    terminal_action = _loop_terminal_action(pending_tasks, escalation_proposals, loop_decisions, artifact_evaluations)
+    result = {
+        "workflow_run_id": workflow_run_id,
+        "workflow_lane": plan.get("lane"),
+        "state_path": workflow_loop_state_relpath(workflow_run_id),
+        "latest_state_path": LOOP_STATE_PATH,
+        "loop_policy": policy,
+        "selected_team": plan.get("selectedTeam") or plan.get("subagents") or [],
+        "allowed_followup_team": plan.get("allowedFollowupTeam") or [],
+        "escalation_team": plan.get("escalationTeam") or [],
+        "artifact_evaluations": artifact_evaluations,
+        "pending_tasks": pending_tasks,
+        "loop_decisions": loop_decisions,
+        "escalation_proposals": escalation_proposals,
+        "blocked_actions": _unique([str(item) for item in blocked_actions]),
+        "terminal_action": terminal_action,
+        "stop_reason": _loop_stop_reason(terminal_action),
+        "auto_spawn": False,
+        "recursive_hook_dispatch": False,
+    }
+    if record:
+        _record_workflow_loop_result(root, state, result)
+    return result
+
+
+def _loop_plan_for_runtime(request: str, state: dict[str, Any]) -> dict[str, Any]:
+    if request.strip():
+        return classify_starter_request(request)
+    lane = str(state.get("lane") or "research_only")
+    selected = [str(role) for role in state.get("selected_team") or []]
+    plan: dict[str, Any] = {
+        "universe": "public_equity",
+        "lane": lane,
+        "subagents": selected,
+        "blockedActions": [str(item) for item in state.get("blocked_actions") or []],
+        "selectedTeam": selected,
+        "allowedFollowupTeam": [str(role) for role in state.get("allowed_followup_team") or selected],
+        "escalationTeam": [str(role) for role in state.get("escalation_team") or []],
+        "loopPolicy": state.get("loop_policy") or build_loop_policy(lane),
+        "loopStatePath": LOOP_STATE_PATH,
+        "exitCriteria": build_loop_exit_criteria(lane),
+        "terminalWorkflowActions": list(TERMINAL_WORKFLOW_ACTIONS),
+        "artifactHandoffStates": list(HANDOFF_STATES),
+        "plannerActions": list(PLANNER_ACTIONS),
+    }
+    return plan
+
+
+def _artifact_evaluation_action(quality: dict[str, Any], handoff_state: str) -> str:
+    if not quality.get("exists") or handoff_state == "waiting":
+        return "wait_for_artifact"
+    if handoff_state == "blocked":
+        return "block_artifact"
+    if handoff_state == "revise" or quality.get("status") != "pass":
+        return "revise_artifact"
+    return "accept_artifact"
+
+
+def _same_role_revision_task(workflow_run_id: str, plan: dict[str, Any], artifact: dict[str, Any], quality: dict[str, Any]) -> dict[str, Any]:
+    role = str(artifact.get("role") or "unknown")
+    task_key = stable_hash({"run": workflow_run_id, "role": role, "artifact": artifact.get("artifact_path"), "action": "revise_same_role"})[:12]
+    return {
+        "task_id": f"{workflow_run_id}:{role}:revise:{task_key}",
+        "role": role,
+        "task_type": "same_role_revision",
+        "status": "pending",
+        "planner_action": "revise_same_role",
+        "source_artifact_path": artifact.get("artifact_path"),
+        "delta_brief": "\n".join([
+            "Planner action: revise_same_role",
+            f"Workflow lane: {plan.get('lane')}",
+            f"Source artifact: {artifact.get('artifact_path')}",
+            f"Context summary: {artifact.get('context_summary') or ''}",
+            "Repair artifact quality or handoff gaps before downstream use.",
+            "Warnings: " + "; ".join(str(item) for item in quality.get("warnings", [])[:4]),
+        ]),
+    }
+
+
+def _follow_up_task(
+    workflow_run_id: str,
+    plan: dict[str, Any],
+    follow_up_request: dict[str, Any],
+    decision: dict[str, Any],
+    index: int,
+) -> dict[str, Any]:
+    role = str(follow_up_request.get("suggested_role") or "unknown")
+    task_key = stable_hash({"run": workflow_run_id, "role": role, "follow_up": follow_up_request, "index": index})[:12]
+    return {
+        "task_id": f"{workflow_run_id}:{role}:followup:{task_key}",
+        "role": role,
+        "task_type": "artifact_follow_up",
+        "status": "pending",
+        "planner_action": decision.get("planner_decision") or "follow_up_existing_team",
+        "source_artifact_path": follow_up_request.get("source_artifact_path"),
+        "trigger": follow_up_request.get("trigger"),
+        "materiality": follow_up_request.get("materiality"),
+        "policy_within_current_lane": decision.get("policy_within_current_lane"),
+        "policy_requires_user_consent": decision.get("policy_requires_user_consent"),
+        "delta_brief": decision.get("delta_brief"),
+    }
+
+
+def _loop_decision(planner_action: str, reason: str, detail: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ts": now_iso(),
+        "planner_action": planner_action,
+        "reason": reason,
+        "detail": detail,
+    }
+
+
+def _loop_terminal_action(
+    pending_tasks: list[dict[str, Any]],
+    escalation_proposals: list[dict[str, Any]],
+    loop_decisions: list[dict[str, Any]],
+    artifact_evaluations: list[dict[str, Any]],
+) -> str:
+    actions = {str(item.get("planner_action") or "") for item in loop_decisions}
+    if "blocked" in actions:
+        return "blocked"
+    if escalation_proposals:
+        return "lane_escalation_proposal"
+    if pending_tasks or "waiting" in actions or any(item.get("artifact_evaluation") == "wait_for_artifact" for item in artifact_evaluations):
+        return "waiting"
+    return "synthesize" if artifact_evaluations else "waiting"
+
+
+def _loop_stop_reason(terminal_action: str) -> str:
+    if terminal_action == "synthesize":
+        return "accepted_artifacts_ready_for_synthesis"
+    if terminal_action == "lane_escalation_proposal":
+        return "user_visible_lane_escalation_required"
+    if terminal_action == "blocked":
+        return "workflow_blocked_by_artifact_or_policy"
+    return "waiting_for_artifact_or_delta_followup"
+
+
+def _record_workflow_loop_result(root: Path, state: dict[str, Any], result: dict[str, Any]) -> None:
+    existing = read_workflow_loop_state(root, str(result["workflow_run_id"]))
+    merged = dict(existing or state or {})
+    merged.update({
+        "workflow_run_id": result["workflow_run_id"],
+        "lane": result["workflow_lane"],
+        "loop_policy": result["loop_policy"],
+        "selected_team": result["selected_team"],
+        "allowed_followup_team": result["allowed_followup_team"],
+        "escalation_team": result["escalation_team"],
+        "blocked_actions": result["blocked_actions"],
+        "stop_reason": result["stop_reason"],
+        "updated_at": now_iso(),
+    })
+    merged["pending_tasks"] = [
+        *(merged.get("pending_tasks", []) if isinstance(merged.get("pending_tasks"), list) else []),
+        *result["pending_tasks"],
+    ]
+    merged["loop_decisions"] = [
+        *(merged.get("loop_decisions", []) if isinstance(merged.get("loop_decisions"), list) else []),
+        *result["loop_decisions"],
+    ][-40:]
+    merged["escalation_proposals"] = [
+        *(merged.get("escalation_proposals", []) if isinstance(merged.get("escalation_proposals"), list) else []),
+        *result["escalation_proposals"],
+    ][-20:]
+    merged["completed_artifacts"] = [
+        *(merged.get("completed_artifacts", []) if isinstance(merged.get("completed_artifacts"), list) else []),
+        *[
+            {
+                "role": item.get("role"),
+                "artifact_path": item.get("artifact_path"),
+                "handoff_state": item.get("handoff_state"),
+                "artifact_evaluation": item.get("artifact_evaluation"),
+                "completed_at": now_iso(),
+            }
+            for item in result["artifact_evaluations"]
+        ],
+    ][-40:]
+    merged["iteration"] = int(merged.get("iteration") or 0) + 1
+    merged["state_mode"] = "inspectable_assisted_loop"
+    merged["auto_spawn"] = False
+    merged["recursive_hook_dispatch"] = False
+    write_workflow_loop_state(root, merged)
+    append_jsonl(root / "trading" / "audit" / "workflow-loop-events.jsonl", {"ts": now_iso(), "event": "planner-preview-recorded", **result})
+
+
+def build_loop_exit_criteria(lane: str) -> list[str]:
+    if lane == "research_only":
+        return ["selected research artifacts accepted or blocked", "no automatic valuation, portfolio, risk, approval, or execution expansion"]
+    if lane == "thesis_review":
+        return ["accepted research and valuation artifacts or explicit revise/blocked/waiting state", "challenge review preserves material conflicts"]
+    if lane == "thesis_review_then_portfolio_risk_review":
+        return ["accepted research, valuation, portfolio, and risk artifacts or explicit revise/blocked/waiting state", "profile gaps and blocked actions remain visible"]
+    if lane == "portfolio_risk_review":
+        return ["accepted portfolio/risk artifacts or explicit revise/blocked/waiting state", "no order drafting, approval, or execution"]
+    if lane == "order_ticket_draft_gate":
+        return ["draft-readiness artifact accepted or blocked", "approval and execution remain blocked"]
+    if lane == "order_ticket_approval_execution_gate":
+        return ["service-layer approval/execution preconditions verified or blocked", "no natural-language approval or self-approval"]
+    return ["lane-specific work is complete or blocked", "no execution-sensitive authority is widened"]
+
+
+def _loop_escalation_team(lane: str, selected: list[str]) -> list[str]:
+    if lane == "research_only":
+        return list(RESEARCH_AND_DECISION_ROLES)
+    if lane == "thesis_review":
+        return ["macro-analyst", "instrument-analyst", "portfolio-manager", "risk-manager"]
+    if lane == "thesis_review_then_portfolio_risk_review":
+        return ["macro-analyst", "instrument-analyst"]
+    if lane == "portfolio_risk_review":
+        return ["fundamental-analyst", "technical-analyst", "news-analyst", "macro-analyst", "instrument-analyst", "valuation-analyst"]
+    if lane == "order_ticket_draft_gate":
+        return ["execution-operator"]
+    return []
 
 
 def classify_investment_universe(text: str) -> str:
@@ -1091,6 +1619,10 @@ def build_subagent_starter_prompt(request: str, workspace_root: Path | str | Non
         "Decision Quality Spine: preserve constraints and negations; require evidence_grade, source_freshness, source_quality, conflict_status, decision_readiness, confidence, missing_evidence, next_recipient, and blocked_actions in role artifacts.",
         "Scenario discipline: when thesis or valuation is in scope, include scenario cases, contrary_evidence, update_triggers, invalidation_conditions, and unresolved conflicts or mark the artifact not-decision-ready.",
         "Iteration controls: stay within the selected lane; verify handoff quality after each artifact; lane controls: " + format_loop_controls(plan),
+        "Artifact Supervisor Loop: evaluate artifacts first; accepted is a handoff state, not terminal action.",
+        "Loop roles: follow-up=" + (", ".join(plan.get("allowedFollowupTeam") or []) or "none") + "; escalation-only roles stay proposal-only in loop state.",
+        "Follow-ups: subagents may propose `follow_up_requests`; recompute lane/consent before recording deltas.",
+        "Loop state: keep compact tasks, decisions, escalations, blocks, and stop reason in " + str(plan.get("loopStatePath") or LOOP_STATE_PATH) + "; no recursive dispatch.",
         "Judgment controls: fixed rules and selected strategy context are read-only; do not change strategy, policy, role authority, approval, execution, or MCP gates; lane controls: " + format_judgment_controls_compact(plan),
         "Challenge review: before final synthesis, name contrary evidence, alternatives, stale or missing data, profile gaps, and policy/strategy conflicts; use revise, blocked, or waiting if material.",
         "Method lenses for this lane: " + format_method_lenses(plan) + "; guardrails: separate facts, inferences, and assumptions; check portfolio fit before action advice.",
@@ -1150,16 +1682,28 @@ def build_compact_dispatch_context(request: str, workspace_root: Path | str | No
     plan = classify_starter_request(request)
     profile_status = investor_profile_status(plan, workspace_root)
     has_subagents = bool(plan["subagents"])
+    allowed_followup_team = plan.get("allowedFollowupTeam") or []
+    escalation_team = plan.get("escalationTeam") or []
+    allowed_same_as_selected = allowed_followup_team == plan["subagents"]
+    loop_contract = {
+        "state_path": plan.get("loopStatePath", LOOP_STATE_PATH),
+        "allowed_ref": "selected_team" if allowed_same_as_selected else "allowed_followup_team",
+        "escalation_count": len(escalation_team),
+        "max_iterations": (plan.get("loopPolicy") or {}).get("max_iterations"),
+    }
+    if not allowed_same_as_selected:
+        loop_contract["allowed_followup_team"] = allowed_followup_team
     context = {
         "context_mode": "compact_workflow_gate",
         "workflow_lane": plan["lane"],
         "required_subagents": plan["subagents"],
+        "loop_contract": loop_contract,
         "routing_status": {
             "lane": plan["lane"],
             "selected_team": plan["subagents"],
             "blocked_actions": plan["blockedActions"],
         },
-        "research_artifact_language": infer_research_artifact_language(request),
+        "research_artifact_language": compact_artifact_language(request),
         "profile_missing": [
             PROFILE_COMPACT_KEYS.get(PROFILE_FIELD_KEYS.get(field, field), field)
             for field in profile_status["missing_fields"]
@@ -1210,6 +1754,16 @@ def build_workflow_intake_summary(request: str, workspace_root: Path | str | Non
         "investment_universe_label": investment_universe_label(plan["universe"]),
         "workflow_lane": plan["lane"],
         "routing_flags": plan.get("routingFlags", {}),
+        "selected_team": plan.get("selectedTeam", plan.get("subagents", [])),
+        "allowed_followup_team": plan.get("allowedFollowupTeam", []),
+        "escalation_team": plan.get("escalationTeam", []),
+        "loop_policy": plan.get("loopPolicy", {}),
+        "workflow_loop_state_path": plan.get("loopStatePath", LOOP_STATE_PATH),
+        "workflow_loop_run_state_pattern": plan.get("loopRunStatePattern", f"{LOOP_RUNS_DIR}/<workflow_run_id>/{LOOP_RUN_STATE_FILENAME}"),
+        "terminal_workflow_actions": plan.get("terminalWorkflowActions", list(TERMINAL_WORKFLOW_ACTIONS)),
+        "artifact_handoff_states": plan.get("artifactHandoffStates", list(HANDOFF_STATES)),
+        "planner_actions": plan.get("plannerActions", list(PLANNER_ACTIONS)),
+        "exit_criteria": plan.get("exitCriteria", []),
         "subagents": build_selected_role_details(plan),
         "workflow_stages": build_workflow_stages(plan),
         "method_lenses": build_method_lenses(plan),
@@ -1226,6 +1780,24 @@ def build_workflow_intake_summary(request: str, workspace_root: Path | str | Non
         "artifact_language": infer_research_artifact_language(request),
         "plain_language_output": True,
     }
+
+
+def compact_loop_policy(plan: dict[str, Any]) -> dict[str, Any]:
+    policy = plan.get("loopPolicy") or build_loop_policy(str(plan.get("lane") or "research_only"))
+    return {
+        "max_iterations": policy.get("max_iterations"),
+        "max_followups_per_iteration": policy.get("max_followups_per_iteration"),
+        "max_same_role_revisions": policy.get("max_same_role_revisions"),
+        "max_total_subagent_tasks": policy.get("max_total_subagent_tasks"),
+        "max_loop_subagent_tasks": policy.get("max_loop_subagent_tasks"),
+    }
+
+
+def compact_artifact_language(request: str) -> str:
+    language = infer_research_artifact_language(request)
+    if language.startswith("same language"):
+        return "same_as_request"
+    return language
 
 
 def investment_universe_label(universe: str | None) -> str:

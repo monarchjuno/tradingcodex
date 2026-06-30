@@ -30,16 +30,18 @@ from tradingcodex_service.application.components import (
     list_components_by_tag,
     list_harness_components,
 )
-from tradingcodex_service.application.artifact_quality import estimate_tokens, evaluate_decision_quality
+from tradingcodex_service.application.artifact_quality import estimate_tokens, evaluate_artifact_quality, evaluate_decision_quality
 from tradingcodex_service.application.harness import (
     build_compact_dispatch_context,
     build_subagent_starter_prompt,
     build_workflow_intake_summary,
     classify_starter_request,
+    evaluate_artifact_supervisor_loop,
     is_connector_build_request,
     is_investment_workflow_request,
     is_secret_only_request,
     normalize_investment_intent,
+    plan_follow_up_request,
 )
 from tradingcodex_service.application.decision_packages import (
     build_workflow_plan,
@@ -2067,6 +2069,218 @@ def test_subagents_prompt_cli_and_api_expose_intake_summary(tmp_path: Path, monk
     assert complete_profile["intake_summary"]["questions_to_answer"] == []
     assert complete_profile["intake_summary"]["investor_profile"]["completion"] == 1.0
     assert complete_profile["intake_summary"]["next_allowed_actions"][0]["label"] == "Use saved profile context"
+
+
+def test_artifact_supervisor_loop_contract(monkeypatch, tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    monkeypatch.setenv("TRADINGCODEX_WORKSPACE_ROOT", str(workspace))
+    request = "Analyze NVDA. No order, no trading."
+    plan = classify_starter_request(request)
+    assert plan["loopStatePath"] == ".tradingcodex/mainagent/workflow-loop-state.json"
+    assert plan["allowedFollowupTeam"] == plan["subagents"]
+    assert "portfolio-manager" in plan["escalationTeam"]
+    assert "accepted" in plan["artifactHandoffStates"]
+    assert "accepted" not in plan["terminalWorkflowActions"]
+
+    allowed_decision = plan_follow_up_request(plan, {
+        "trigger": "material_driver",
+        "suggested_role": "valuation-analyst",
+        "question": "Assess whether the driver changes scenario assumptions.",
+        "reason": "News artifact found a material driver.",
+        "materiality": "high",
+        "within_current_lane": False,
+        "requires_user_consent": True,
+    })
+    assert allowed_decision["planner_decision"] == "follow_up_existing_team"
+    assert allowed_decision["policy_within_current_lane"] is True
+    assert allowed_decision["policy_requires_user_consent"] is False
+
+    escalation_decision = plan_follow_up_request(plan, {
+        "trigger": "scope_boundary",
+        "suggested_role": "portfolio-manager",
+        "question": "Check portfolio fit.",
+        "reason": "The useful next question is outside thesis review.",
+        "materiality": "medium",
+    })
+    assert escalation_decision["planner_decision"] == "lane_escalation_proposal"
+    assert escalation_decision["policy_requires_user_consent"] is True
+
+    hook_context = run_user_prompt_hook(workspace, request)
+    assert hook_context
+    assert hook_context["loop_contract"]["state_path"].startswith(".tradingcodex/mainagent/workflows/")
+    assert hook_context["loop_contract"]["state_path"].endswith("/loop-state.json")
+    latest_loop_state = json.loads((workspace / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").read_text(encoding="utf-8"))
+    assert latest_loop_state["state_path"] == hook_context["loop_contract"]["state_path"]
+    loop_state = json.loads((workspace / hook_context["loop_contract"]["state_path"]).read_text(encoding="utf-8"))
+    assert loop_state["workflow_run_id"] == hook_context["workflow_run_id"]
+    assert loop_state["state_path"] == hook_context["loop_contract"]["state_path"]
+    assert loop_state["selected_team"] == hook_context["required_subagents"]
+    assert loop_state["allowed_followup_team"] == hook_context["required_subagents"]
+    assert loop_state["state_mode"] == "inspectable_assisted_loop"
+    assert loop_state["auto_spawn"] is False
+    assert loop_state["pending_tasks"][0]["status"] == "pending"
+
+    plan_cli = json.loads(run(["./tcx", "subagents", "plan", request], workspace).stdout)
+    assert plan_cli["workflow_lane"] == "thesis_review"
+    assert plan_cli["initial_dispatch"] == hook_context["required_subagents"]
+    assert plan_cli["allowed_followup_team"] == hook_context["required_subagents"]
+    assert plan_cli["workflow_loop_state_path"] == ".tradingcodex/mainagent/workflow-loop-state.json"
+    assert plan_cli["pending_tasks"]
+
+    thread_a = run_user_prompt_hook(workspace, "Analyze MSFT. No order, no trading.", {"session_id": "thread-a"})
+    thread_b = run_user_prompt_hook(workspace, "Analyze AAPL. No order, no trading.", {"session_id": "thread-b"})
+    assert thread_a and thread_b
+    thread_a_path = thread_a["loop_contract"]["state_path"]
+    thread_b_path = thread_b["loop_contract"]["state_path"]
+    assert thread_a_path != thread_b_path
+    assert (workspace / thread_a_path).exists()
+    assert (workspace / thread_b_path).exists()
+    run(
+        [sys.executable, str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "subagent-start"],
+        workspace,
+        input_text=json.dumps({"session_id": "thread-a", "agent_type": "fundamental-analyst", "task_name": "fundamental thread a"}),
+    )
+    thread_a_state = json.loads((workspace / thread_a_path).read_text(encoding="utf-8"))
+    thread_b_state = json.loads((workspace / thread_b_path).read_text(encoding="utf-8"))
+    assert thread_a_state["pending_tasks"][0]["status"] == "active"
+    assert thread_b_state["pending_tasks"][0]["status"] == "pending"
+    session_state = json.loads((workspace / ".tradingcodex" / "mainagent" / "subagent-session-state.json").read_text(encoding="utf-8"))
+    assert any(record["run_id"] == thread_a["workflow_run_id"] for record in session_state["active"].values())
+
+    artifact = workspace / "trading" / "reports" / "news" / "nvda-news.md"
+    artifact.parent.mkdir(parents=True, exist_ok=True)
+    artifact.write_text(
+        """---
+artifact_id: nvda-news
+artifact_type: news_report
+role: news-analyst
+title: NVDA news
+source_as_of: "2026-06-30"
+readiness_label: ready-for-valuation
+context_summary: News found a material driver.
+reader_summary: Driver may affect valuation assumptions.
+next_action: Ask valuation to assess scenario assumptions.
+handoff_state: accepted
+confidence: medium
+next_recipient: valuation-analyst
+missing_evidence: []
+blocked_actions: [order_execution]
+source_snapshot_ids: [news-source-001]
+follow_up_requests:
+  - trigger: material_driver
+    suggested_role: valuation-analyst
+    question: Assess whether the material driver changes existing scenario assumptions.
+    reason: News artifact found a material driver not yet reflected in valuation work.
+    materiality: high
+    requested_by_role: news-analyst
+    source_artifact_id: nvda-news
+    source_artifact_path: trading/reports/news/nvda-news.md
+    source_artifact_version: 1
+    source_artifact_content_hash: sha256:unit
+    trigger_evidence_refs:
+      - source_snapshot_id: news-source-001
+    required_inputs: [accepted news artifact]
+    suggested_consent_posture: no_consent_expected
+    blocked_actions: [order_execution]
+---
+
+[factual] News source posture is recorded.
+""",
+        encoding="utf-8",
+    )
+    quality = evaluate_artifact_quality(workspace, "trading/reports/news/nvda-news.md", strict=True)
+    assert quality["status"] == "pass"
+    assert quality["frontmatter"]["follow_up_requests"][0]["suggested_role"] == "valuation-analyst"
+
+    loop_preview = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/nvda-news.md"])
+    assert loop_preview["pending_tasks"][0]["role"] == "valuation-analyst"
+    assert loop_preview["pending_tasks"][0]["planner_action"] == "follow_up_existing_team"
+    assert loop_preview["terminal_action"] == "waiting"
+    assert loop_preview["auto_spawn"] is False
+    assert loop_preview["recursive_hook_dispatch"] is False
+
+    cli_loop = json.loads(run(["./tcx", "subagents", "loop", "--request", request, "--artifact", "trading/reports/news/nvda-news.md"], workspace).stdout)
+    assert cli_loop["pending_tasks"][0]["task_type"] == "artifact_follow_up"
+
+    client = Client(REMOTE_ADDR="127.0.0.1")
+    response = client.post(
+        "/api/harness/subagents/loop",
+        data=json.dumps({"original_request": request, "artifact_paths": ["trading/reports/news/nvda-news.md"], "record": False}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    assert response.json()["pending_tasks"][0]["role"] == "valuation-analyst"
+
+    recorded_loop = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/nvda-news.md"], record=True)
+    recorded_state = json.loads((workspace / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").read_text(encoding="utf-8"))
+    assert recorded_loop["pending_tasks"]
+    assert any(task.get("task_type") == "artifact_follow_up" for task in recorded_state["pending_tasks"])
+    assert recorded_state["auto_spawn"] is False
+
+    negated_loop = evaluate_artifact_supervisor_loop(workspace, "NVDA news only. No valuation, no order, no trading.", ["trading/reports/news/nvda-news.md"])
+    assert negated_loop["terminal_action"] == "blocked"
+    assert any(decision["planner_action"] == "blocked" for decision in negated_loop["loop_decisions"])
+
+    challenge_artifact = workspace / "trading" / "reports" / "news" / "challenge-news.md"
+    challenge_artifact.write_text(
+        artifact.read_text(encoding="utf-8")
+        .replace("artifact_id: nvda-news", "artifact_id: challenge-news")
+        .replace("trigger: material_driver", "trigger: contradiction"),
+        encoding="utf-8",
+    )
+    challenge_loop = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/challenge-news.md"])
+    assert challenge_loop["pending_tasks"][0]["planner_action"] == "challenge_conflict"
+    assert challenge_loop["pending_tasks"][0]["role"] == "valuation-analyst"
+
+    blocked_artifact = workspace / "trading" / "reports" / "news" / "blocked-news.md"
+    blocked_artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace("artifact_id: nvda-news", "artifact_id: blocked-news").replace("handoff_state: accepted", "handoff_state: blocked"),
+        encoding="utf-8",
+    )
+    blocked_loop = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/blocked-news.md"])
+    assert blocked_loop["terminal_action"] == "blocked"
+    assert "order_execution" in blocked_loop["blocked_actions"]
+
+    (workspace / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").write_text(
+        json.dumps(
+            {
+                "workflow_run_id": "budget-unit",
+                "lane": "thesis_review",
+                "loop_policy": {"max_loop_subagent_tasks": 0, "max_followups_per_iteration": 1},
+                "selected_team": hook_context["required_subagents"],
+                "allowed_followup_team": hook_context["required_subagents"],
+                "escalation_team": ["portfolio-manager", "risk-manager"],
+                "pending_tasks": [],
+                "blocked_actions": ["order ticket", "approval", "execution"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    budget_loop = evaluate_artifact_supervisor_loop(workspace, "", ["trading/reports/news/nvda-news.md"])
+    assert budget_loop["terminal_action"] == "waiting"
+    assert budget_loop["pending_tasks"] == []
+    assert any((decision.get("detail") or {}).get("budget_exhausted") for decision in budget_loop["loop_decisions"])
+
+    revise_artifact = workspace / "trading" / "reports" / "news" / "revise-news.md"
+    revise_artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace("artifact_id: nvda-news", "artifact_id: revise-news").replace("handoff_state: accepted", "handoff_state: revise"),
+        encoding="utf-8",
+    )
+    revise_loop = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/revise-news.md"])
+    assert revise_loop["pending_tasks"][0]["planner_action"] == "revise_same_role"
+    assert revise_loop["pending_tasks"][0]["role"] == "news-analyst"
+
+    bad_artifact = workspace / "trading" / "reports" / "news" / "bad-followup.md"
+    bad_artifact.write_text(
+        artifact.read_text(encoding="utf-8").replace(
+            "suggested_consent_posture: no_consent_expected",
+            "requires_user_consent: false",
+        ),
+        encoding="utf-8",
+    )
+    bad_quality = evaluate_artifact_quality(workspace, "trading/reports/news/bad-followup.md", strict=True)
+    assert bad_quality["status"] == "fail"
+    assert "follow_up_requests" in bad_quality["required_fields_missing"]
 
 
 def test_workspace_cli_order_policy_and_execution(tmp_path: Path) -> None:

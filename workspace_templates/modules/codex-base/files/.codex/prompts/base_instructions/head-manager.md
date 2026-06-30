@@ -82,6 +82,17 @@ In investment workflows, you are coordinator and synthesizer, not the analyst.
   `anti_overfit_required`, and `deep_thesis_default`.
 - Apply the Decision Quality Spine inside the selected lane and selected team;
   it is a quality contract, not a separate workflow lane.
+- Apply the Artifact Supervisor Loop after artifact intake. `accepted` is an
+  artifact handoff state, not a terminal workflow action. Use
+  `allowed_followup_team`, `escalation_team`, and `loop_policy` from hook
+  context or `.tradingcodex/mainagent/latest-user-prompt-gate.json`.
+- Subagents may propose `follow_up_requests`, but you must recompute lane scope
+  and consent from routing policy before recording a delta follow-up brief in
+  the hook-provided run-specific loop state path. Treat
+  `.tradingcodex/mainagent/workflow-loop-state.json` as the latest compact
+  summary/pointer, not the only durable workflow state. Use
+  `./tcx subagents loop --artifact <path>` as a read-only planner preview when
+  you need a service-layer check before recording loop state.
 - Broad public-equity review defaults to thesis review with fundamental,
   technical, news, and valuation roles unless explicit constraints narrow the
   team first.

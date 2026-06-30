@@ -18,6 +18,33 @@ QUALITY_FILE_ROOTS = RESEARCH_FILE_ROOTS + (
 )
 
 HANDOFF_STATES = {"accepted", "revise", "blocked", "waiting"}
+FOLLOW_UP_TRIGGERS = {
+    "coverage_gap",
+    "freshness_gap",
+    "contradiction",
+    "material_driver",
+    "assumption_change",
+    "method_gap",
+    "scope_boundary",
+    "forecast_gap",
+    "profile_gap",
+}
+FOLLOW_UP_MATERIALITY = {"low", "medium", "high"}
+FOLLOW_UP_CONSENT_POSTURE = {"no_consent_expected", "consent_required", "unknown"}
+FOLLOW_UP_ROLES = {
+    "fundamental-analyst",
+    "technical-analyst",
+    "news-analyst",
+    "macro-analyst",
+    "instrument-analyst",
+    "valuation-analyst",
+    "portfolio-manager",
+    "risk-manager",
+}
+FOLLOW_UP_FORBIDDEN_PATTERN = re.compile(
+    r"\b(secret|api[_ -]?key|raw broker|broker api|approval|approve|execution|execute|submit|policy mutation|policy write|self-approve)\b",
+    re.I,
+)
 CLAIM_TAG_PATTERN = re.compile(r"\[(factual|inference|assumption)\]", re.IGNORECASE)
 STRICT_MARKDOWN_REQUIRED_FIELDS = (
     "artifact_id",
@@ -193,6 +220,7 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
             "current_price_as_of",
             "market_anchor_as_of",
             "investor_profile_gaps",
+            "follow_up_requests",
         )
         if key in frontmatter
     }
@@ -242,6 +270,8 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
         if field in frontmatter and not isinstance(frontmatter.get(field), list):
             result["warnings"].append(f"{field} should be a list")
 
+    _evaluate_follow_up_requests(frontmatter, result, strict=strict)
+
     if handoff_state in {"revise", "blocked"}:
         has_missing = bool(frontmatter.get("missing_evidence"))
         has_blocked = bool(frontmatter.get("blocked_actions"))
@@ -252,6 +282,50 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
                 result["required_fields_missing"].append("missing_evidence_or_blocked_actions")
 
     _evaluate_decision_quality(frontmatter, body, result, strict=strict)
+
+
+def _evaluate_follow_up_requests(frontmatter: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:
+    if "follow_up_requests" not in frontmatter:
+        return
+    requests = frontmatter.get("follow_up_requests")
+    if requests in (None, ""):
+        return
+    if not isinstance(requests, list):
+        _follow_up_issue(result, strict, "follow_up_requests must be a list")
+        return
+    for index, item in enumerate(requests, start=1):
+        if not isinstance(item, dict):
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] must be an object")
+            continue
+        missing = [field for field in ("trigger", "suggested_role", "question", "reason", "materiality") if _is_blank(item.get(field))]
+        if missing:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] missing fields: {', '.join(missing)}")
+        trigger = str(item.get("trigger") or "")
+        if trigger and trigger not in FOLLOW_UP_TRIGGERS:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] trigger must be one of {sorted(FOLLOW_UP_TRIGGERS)}")
+        role = str(item.get("suggested_role") or "")
+        if role and role not in FOLLOW_UP_ROLES:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] suggested_role must be a non-execution fixed role")
+        materiality = str(item.get("materiality") or "")
+        if materiality and materiality not in FOLLOW_UP_MATERIALITY:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] materiality must be low, medium, or high")
+        consent = str(item.get("suggested_consent_posture") or "unknown")
+        if consent not in FOLLOW_UP_CONSENT_POSTURE:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] suggested_consent_posture is advisory and must be no_consent_expected, consent_required, or unknown")
+        if "within_current_lane" in item or "requires_user_consent" in item:
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] must not declare authoritative lane scope or consent fields")
+        for list_field in ("required_inputs", "trigger_evidence_refs", "blocked_actions"):
+            if list_field in item and not isinstance(item.get(list_field), list):
+                _follow_up_issue(result, strict, f"follow_up_requests[{index}] {list_field} must be a list")
+        request_text = " ".join(str(item.get(field) or "") for field in ("question", "reason", "suggested_role"))
+        if FOLLOW_UP_FORBIDDEN_PATTERN.search(request_text):
+            _follow_up_issue(result, strict, f"follow_up_requests[{index}] must not request approval, execution, raw broker access, secrets, or policy mutation")
+
+
+def _follow_up_issue(result: dict[str, Any], strict: bool, message: str) -> None:
+    result["warnings"].append(message)
+    if strict and "follow_up_requests" not in result["required_fields_missing"]:
+        result["required_fields_missing"].append("follow_up_requests")
 
 
 def _evaluate_decision_quality(frontmatter: dict[str, Any], body: str, result: dict[str, Any], *, strict: bool) -> None:

@@ -23,6 +23,7 @@ from tradingcodex_service.application.harness import (
     ROLE_SKILL_MAP,
     build_subagent_starter_prompt,
     build_workflow_intake_summary,
+    evaluate_artifact_supervisor_loop,
 )
 from tradingcodex_service.application.agents import (
     build_projection_state,
@@ -187,6 +188,12 @@ class WorkflowValidationRequest(Schema):
     original_request: str
 
 
+class WorkflowLoopRequest(Schema):
+    original_request: str = ""
+    artifact_paths: list[str]
+    record: bool = False
+
+
 class ResearchArtifactRequest(Schema):
     artifact_id: str | None = None
     artifact_type: str = "research_memo"
@@ -208,6 +215,7 @@ class ResearchArtifactRequest(Schema):
     next_action: str = ""
     blocked_actions: list[Any] | None = None
     source_snapshot_ids: list[str] | None = None
+    follow_up_requests: list[Any] | None = None
     created_by: str = "head-manager"
     export_path: str | None = None
 
@@ -455,6 +463,11 @@ def subagent_optional_skill_archive(request, role: str, name: str):
 def subagent_prompt(request, q: str):
     root = workspace_root()
     return {"prompt": build_subagent_starter_prompt(q, root), "intake_summary": build_workflow_intake_summary(q, root)}
+
+
+@harness_router.post("/subagents/loop")
+def subagent_loop(request, payload: WorkflowLoopRequest):
+    return evaluate_artifact_supervisor_loop(workspace_root(), payload.original_request, payload.artifact_paths, record=payload.record)
 
 
 @policy_router.post("/simulate")
