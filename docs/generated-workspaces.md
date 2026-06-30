@@ -305,6 +305,8 @@ service at `127.0.0.1:48267` while keeping MCP stdio stdout clean.
 If the port is already open, MCP startup verifies that the existing process is
 a TradingCodex service with the same package version and central DB path before
 using it.
+When the existing process is an older TradingCodex service backed by the same
+central DB, MCP autostart may stop it and launch the current package instead.
 
 The autostart path must be:
 
@@ -322,7 +324,7 @@ or performs package refresh on its own. The emitted context uses marker
 `allowed_next_actions`, and `routing_status`.
 
 `head-manager` uses `$tcx-server` for service/MCP doctor checks,
-`./tcx service status`, and `./tcx service ensure`. It tells the user that the
+`./tcx service status`, `./tcx service stop`, and `./tcx service ensure`. It tells the user that the
 local dashboard is available at `http://127.0.0.1:48267/` and opens it only
 when explicitly asked. If project MCP config was created or changed, the user
 must fully quit and restart Codex and start a new thread because Codex may not

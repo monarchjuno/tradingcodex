@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import json
+import signal
 import socket
 import subprocess
 import sys
@@ -28,13 +29,13 @@ def maybe_autostart_service(workspace_root: Path, source_root: Path | None = Non
 
 def ensure_service_up(workspace_root: Path, addr: str = DEFAULT_SERVICE_ADDR, source_root: Path | None = None, timeout: float = 8.0) -> bool:
     host, port = _parse_addr(addr)
-    if _tcp_open(host, port):
-        _assert_compatible_service(host, port)
+    if _tcp_open(host, port) and _compatible_service(host, port):
         return False
     with tradingcodex_file_lock(f"service-{host}-{port}"):
-        if _tcp_open(host, port):
-            _assert_compatible_service(host, port)
+        if _tcp_open(host, port) and _compatible_service(host, port):
             return False
+        if _tcp_open(host, port):
+            _replace_stale_tradingcodex_service_or_raise(host, port, timeout=timeout)
         _start_service(workspace_root, addr, source_root)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -51,6 +52,30 @@ def compatible_service_running(addr: str = DEFAULT_SERVICE_ADDR) -> bool:
         return False
     _assert_compatible_service(host, port)
     return True
+
+
+def stop_service(addr: str = DEFAULT_SERVICE_ADDR, timeout: float = 5.0) -> bool:
+    host, port = _parse_addr(addr)
+    normalized_addr = f"{host}:{port}"
+    if not _tcp_open(host, port):
+        return False
+    health = _service_health(host, port)
+    if not health or health.get("service") != "tradingcodex":
+        raise RuntimeError(f"{normalized_addr} is not a TradingCodex service; stop it outside tcx or choose a free service address.")
+    pids = _service_pids(host, port, health)
+    if not pids:
+        raise RuntimeError(f"Could not find the TradingCodex service process on {normalized_addr}; stop the process using port {port} and retry.")
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _tcp_open(host, port):
+            return True
+        time.sleep(0.2)
+    raise RuntimeError(f"Timed out stopping TradingCodex service on {normalized_addr}.")
 
 
 def service_status(addr: str = DEFAULT_SERVICE_ADDR) -> dict:
@@ -86,7 +111,7 @@ def service_status(addr: str = DEFAULT_SERVICE_ADDR) -> dict:
     })
     if status["version"] != TRADINGCODEX_VERSION:
         status["issue"] = "version_mismatch"
-        status["next_action"] = "Stop the older TradingCodex service or choose a free service address, then restart Codex if MCP uses the default address."
+        status["next_action"] = f"Run `tcx service stop {normalized_addr}` and then restart Codex if MCP uses the default address."
         return status
     if status["db_path"] and status["db_path"] != current_db:
         status["issue"] = "db_mismatch"
@@ -149,6 +174,19 @@ def _compatible_service(host: str, port: int) -> bool:
         return False
 
 
+def _replace_stale_tradingcodex_service_or_raise(host: str, port: int, *, timeout: float) -> None:
+    health = _service_health(host, port)
+    service_db = str(health.get("db_path") or "")
+    if (
+        health.get("service") == "tradingcodex"
+        and health.get("version") != TRADINGCODEX_VERSION
+        and (not service_db or service_db == str(tradingcodex_db_path()))
+    ):
+        stop_service(f"{host}:{port}", timeout=max(1.0, min(timeout, 5.0)))
+        return
+    _assert_compatible_service(host, port)
+
+
 def _assert_compatible_service(host: str, port: int) -> None:
     health = _service_health(host, port)
     addr = f"{host}:{port}"
@@ -160,8 +198,8 @@ def _assert_compatible_service(host: str, port: int) -> None:
     if health.get("version") != TRADINGCODEX_VERSION:
         raise RuntimeError(
             f"TradingCodex service version mismatch: service={health.get('version')} package={TRADINGCODEX_VERSION}. "
-            f"Stop the older TradingCodex service at {service_http_url(addr)} "
-            "or choose a free service address, then fully restart Codex if project MCP uses the default address."
+            f"Run `tcx service stop {addr}` or choose a free service address, "
+            "then fully restart Codex if project MCP uses the default address."
         )
     service_db = str(health.get("db_path") or "")
     current_db = str(tradingcodex_db_path())
@@ -182,3 +220,20 @@ def _service_health(host: str, port: int) -> dict:
         return data if isinstance(data, dict) else {}
     except Exception:
         return {}
+
+
+def _service_pids(host: str, port: int, health: dict) -> list[int]:
+    pid = health.get("pid")
+    pids = {int(pid)} if isinstance(pid, int) and pid > 0 else set()
+    try:
+        result = subprocess.run(
+            ["lsof", f"-tiTCP:{port}", "-sTCP:LISTEN"],
+            text=True,
+            capture_output=True,
+            timeout=1,
+            check=False,
+        )
+        pids.update(int(line) for line in result.stdout.splitlines() if line.strip().isdigit())
+    except Exception:
+        pass
+    return sorted(pids)

@@ -119,6 +119,7 @@ Usage:
   tcx mcp stdio|external
   tcx service runserver [addrport] [django runserver args]
   tcx service ensure [addrport]
+  tcx service stop [addrport]
   tcx service status [addrport] [--json]
 """)
 

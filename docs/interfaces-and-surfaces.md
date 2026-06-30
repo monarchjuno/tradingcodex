@@ -359,6 +359,7 @@ Top-level commands:
 - `tcx mcp stdio`
 - `tcx service runserver`
 - `tcx service ensure`
+- `tcx service stop`
 - `tcx service status [--json]`
 
 Generated workspace wrapper commands:

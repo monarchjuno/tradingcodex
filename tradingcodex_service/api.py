@@ -265,6 +265,7 @@ def health(request):
         "service": "tradingcodex",
         "version": __version__,
         "db_path": str(tradingcodex_db_path()),
+        "pid": os.getpid(),
         "central_local_service": True,
         "process_scope": os.environ.get("TRADINGCODEX_MCP_SCOPE", "local-service"),
     }

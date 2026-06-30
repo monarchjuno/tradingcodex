@@ -166,8 +166,15 @@ def service(argv: list[str]) -> None:
         print(f"TradingCodex service {'started' if started else 'ready'} at {dashboard_url}")
         print(f"Health: {dashboard_url.rstrip('/')}/api/health")
         return
+    if sub == "stop":
+        from tradingcodex_cli.service_autostart import service_http_url, stop_service
+
+        addr = argv[1] if len(argv) > 1 else DEFAULT_SERVICE_ADDR
+        stopped = stop_service(addr)
+        print(f"TradingCodex service {'stopped' if stopped else 'not running'} at {service_http_url(addr)}")
+        return
     if sub != "runserver":
-        raise ValueError(f"Usage: {PROGRAM_NAME} service runserver [addrport] [django runserver args]\n       {PROGRAM_NAME} service ensure [addrport]\n       {PROGRAM_NAME} service status [addrport] [--json]")
+        raise ValueError(f"Usage: {PROGRAM_NAME} service runserver [addrport] [django runserver args]\n       {PROGRAM_NAME} service ensure [addrport]\n       {PROGRAM_NAME} service stop [addrport]\n       {PROGRAM_NAME} service status [addrport] [--json]")
     from django.core.management import execute_from_command_line
     from tradingcodex_cli.service_autostart import compatible_service_running, service_http_url
 

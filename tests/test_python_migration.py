@@ -137,7 +137,7 @@ def test_service_autostart_rejects_version_and_db_mismatch(monkeypatch) -> None:
     )
     with pytest.raises(RuntimeError, match="version mismatch") as version_mismatch:
         service_autostart._assert_compatible_service("127.0.0.1", 48267)
-    assert "Stop the older TradingCodex service" in str(version_mismatch.value)
+    assert "tcx service stop 127.0.0.1:48267" in str(version_mismatch.value)
 
     monkeypatch.setattr(service_autostart, "tradingcodex_db_path", lambda: Path("/tmp/current.sqlite3"))
     monkeypatch.setattr(
@@ -148,6 +148,38 @@ def test_service_autostart_rejects_version_and_db_mismatch(monkeypatch) -> None:
     with pytest.raises(RuntimeError, match="DB mismatch") as db_mismatch:
         service_autostart._assert_compatible_service("127.0.0.1", 48267)
     assert "same central DB" in str(db_mismatch.value)
+
+
+def test_service_autostart_replaces_stale_same_db_service(monkeypatch, tmp_path: Path) -> None:
+    from tradingcodex_cli import service_autostart
+
+    current_db = tmp_path / "current.sqlite3"
+    state = {"open": True, "version": "0.0.1", "stopped": False, "started": False}
+
+    monkeypatch.setattr(service_autostart, "tradingcodex_db_path", lambda: current_db)
+    monkeypatch.setattr(service_autostart, "_tcp_open", lambda host, port: state["open"])
+    monkeypatch.setattr(
+        service_autostart,
+        "_service_health",
+        lambda host, port: {"service": "tradingcodex", "version": state["version"], "db_path": str(current_db)},
+    )
+
+    def stop(addr: str, timeout: float = 5.0) -> bool:
+        state["stopped"] = True
+        state["open"] = False
+        return True
+
+    def start(*args) -> None:
+        state["started"] = True
+        state["open"] = True
+        state["version"] = TRADINGCODEX_VERSION
+
+    monkeypatch.setattr(service_autostart, "stop_service", stop)
+    monkeypatch.setattr(service_autostart, "_start_service", start)
+
+    assert service_autostart.ensure_service_up(tmp_path, timeout=0.05) is True
+    assert state["stopped"] is True
+    assert state["started"] is True
 
 
 def test_service_status_reports_actionable_state(monkeypatch) -> None:
@@ -171,6 +203,7 @@ def test_service_status_reports_actionable_state(monkeypatch) -> None:
     assert mismatch["compatible"] is False
     assert mismatch["issue"] == "version_mismatch"
     assert mismatch["package_version"] == TRADINGCODEX_VERSION
+    assert "tcx service stop 127.0.0.1:48267" in mismatch["next_action"]
 
     monkeypatch.setattr(service_autostart, "tradingcodex_db_path", lambda: Path("/tmp/current.sqlite3"))
     monkeypatch.setattr(
@@ -213,9 +246,11 @@ def test_service_ensure_uses_autostart_helper(monkeypatch, tmp_path: Path, capsy
     from tradingcodex_cli import service_autostart
 
     calls: list[tuple[Path, str]] = []
+    stopped: list[str] = []
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("TRADINGCODEX_WORKSPACE_ROOT", raising=False)
     monkeypatch.setattr(service_autostart, "ensure_service_up", lambda root, addr: calls.append((root, addr)) or True)
+    monkeypatch.setattr(service_autostart, "stop_service", lambda addr: stopped.append(addr) or True)
 
     cli_main.service(["ensure"])
 
@@ -223,6 +258,11 @@ def test_service_ensure_uses_autostart_helper(monkeypatch, tmp_path: Path, capsy
     output = capsys.readouterr().out
     assert "TradingCodex service started at http://127.0.0.1:48267/" in output
     assert "Health: http://127.0.0.1:48267/api/health" in output
+
+    cli_main.service(["stop"])
+
+    assert stopped == ["127.0.0.1:48267"]
+    assert "TradingCodex service stopped at http://127.0.0.1:48267/" in capsys.readouterr().out
 
 
 def test_service_status_cli_supports_plain_and_json(monkeypatch, tmp_path: Path, capsys) -> None:
