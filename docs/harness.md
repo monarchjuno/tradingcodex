@@ -54,7 +54,7 @@ TradingCodex Harness
 | Provenance | Record which workspace and role produced or requested work without making workspaces separate ledgers. |
 | Profiles | Separate paper portfolio/account/strategy state from workspace identity. |
 | Components | Provide the developer-facing maintenance map for implementation surfaces, dependencies, capabilities, tags, and validation. |
-| Context efficiency | Keep subagent briefs compact, pass artifact paths and context summaries before full artifacts, audit long runs with `subagents context-audit` over prompt-gate history, and avoid repeated role manuals or source dumps. |
+| Context efficiency | Keep subagent briefs compact, pass artifact paths and context summaries before full artifacts, audit long runs with `subagents context-audit` over workflow intake history, and avoid repeated role manuals or source dumps. |
 | Responsibility boundaries | Keep role identity, MCP allowlists, permission profiles, hooks, policies, skills, schemas, and service behavior in their own authoritative surfaces. |
 
 ## Components As Maintenance Units
@@ -106,8 +106,8 @@ It is a tag and review lens applied to components.
 - Context efficiency keeps those quality gates usable by passing summaries and
   artifact references first, then opening full evidence only when needed.
 - Context-budget audits make long multi-subagent runs inspectable by checking
-  compact hook context, prompt-gate history, starter prompt size, bounded
-  subagent session state, and `context_summary` coverage across research
+  compact hook intake, intake history, bounded subagent session state,
+  workflow loop state, and `context_summary` coverage across research
   artifacts. Full subagent event history stays in append-only audit JSONL.
 
 Improvement does not authorize execution. A high-quality report still needs the
@@ -120,12 +120,13 @@ Quality Spine remains the cross-lane quality contract inside that loop. Neither
 the loop nor the spine widens role authority, MCP access, approval, execution,
 broker, or secret boundaries.
 
-Runtime loop inspection is file-native and read-first. Hooks write canonical
-per-run state under
-`.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json` and a
-compact latest summary at `.tradingcodex/mainagent/workflow-loop-state.json`;
-`tcx subagents plan` shows the current selected team, allowed follow-up team,
-escalation-only roles, pending tasks, stop reason, and canonical state path.
+Runtime loop inspection is file-native and read-first. `UserPromptSubmit`
+writes compact intake; `$tcx-workflow` records the validated staged plan and
+canonical per-run state under
+`.tradingcodex/mainagent/workflows/<workflow_run_id>/`. A compact latest
+summary stays at `.tradingcodex/mainagent/workflow-loop-state.json`;
+`tcx subagents plan` shows the current staged plan, selected team, pending
+tasks, stop reason, and canonical state path.
 Codex session/thread ids are mapped through
 `.tradingcodex/mainagent/session-workflow-runs.json`, so multiple Codex app
 threads in the same workspace can continue different loops without overwriting

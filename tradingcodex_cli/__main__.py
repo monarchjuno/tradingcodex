@@ -108,7 +108,7 @@ Usage:
   tcx connectors status|connect|scaffold|register|validate
   tcx workspace status|list
   tcx profile status|list|create|select|update
-  tcx workflow plan|run <investment request>
+  tcx workflow intake|validate|record|plan|preview|run ...
   tcx decision list|show|export
   tcx subagents list|status|inspect|diff|project|state|context-audit|plan|skills|prompt
   tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal

@@ -42,12 +42,12 @@ drafting, approval, or execution.
 | [Markowitz, "Portfolio Selection" (1952)](https://ideas.repec.org/a/bla/jfinan/v7y1952i1p77-91.html) | Portfolio roles should treat expected return, variance, covariance, and diversification as analytical lenses, not as automatic trade instructions. |
 | [Fama and French, "Common risk factors in the returns on stocks and bonds" (1993)](https://ideas.repec.org/a/eee/jfinec/v33y1993i1p3-56.html) | Research and portfolio outputs should separate issuer-specific thesis claims from factor, market, maturity, and default-risk exposure. |
 | [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework) | Agentic finance workflows need visible governance, context mapping, measurement, and risk-management checkpoints. |
-| [NIST AI RMF Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/) | Prompt gates, handoff states, quality checks, and audit outputs should map to govern, map, measure, and manage functions. |
+| [NIST AI RMF Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/) | Workflow intake, handoff states, quality checks, and audit outputs should map to govern, map, measure, and manage functions. |
 | [IOSCO AI/ML report for market intermediaries and asset managers](https://www.iosco.org/library/pubdocs/pdf/IOSCOPD684.pdf) | AI-assisted capital-markets features need governance, testing, monitoring, data-quality controls, explainability, and outsourcing/third-party oversight posture. |
 | [SEC Plain English Handbook](https://www.sec.gov/pdf/handbook.pdf) | User-facing screens should start with plain-English workflow meaning before professional evidence, assumptions, caveats, and artifacts. |
 | [Every, "Compound Engineering"](https://every.to/guides/compound-engineering) | Engineering work should teach the system reusable capabilities; TradingCodex applies this by making role outputs preserve compact context, reader summaries, source posture, and missing-evidence notes for future workflows. |
 | [Will Larson, "Learning from Every's Compound Engineering"](https://lethain.com/everyinc-compound-engineering/) | The useful pattern is separating research/planning, work, review, and compounding lessons; TradingCodex mirrors that with starter intake, role artifacts, quality checks, and improvement proposals. |
-| [Addy Osmani, "Loop Engineering"](https://addyosmani.com/blog/loop-engineering/) | A useful agentic loop combines automations, isolated workspaces, skills, connectors, subagents, and durable external memory; TradingCodex maps these to prompt gates, fixed subagents, MCP/service boundaries, artifacts, and generated workspace state. |
+| [Addy Osmani, "Loop Engineering"](https://addyosmani.com/blog/loop-engineering/) | A useful agentic loop combines automations, isolated workspaces, skills, connectors, subagents, and durable external memory; TradingCodex maps these to workflow intake, fixed subagents, MCP/service boundaries, artifacts, and generated workspace state. |
 | [Business Insider, "Forget prompt engineering: Loop engineering is all the rage now"](https://www.businessinsider.com/what-are-loops-ai-engineering-tips-2026-6) | Current loop-engineering discourse emphasizes designing recurring systems that prompt agents, with cost and oversight tradeoffs; TradingCodex exposes loop controls and token/context budgets rather than unlimited autonomy. |
 | [Anthropic Claude Code skills docs](https://docs.anthropic.com/en/docs/claude-code/skills) | Recent agent tooling exposes loops through reusable skills, bundled `/loop`, subagent execution, and dynamic context; TradingCodex mirrors the reusable-skill and fixed-subagent pattern without depending on Claude Code. |
 | [Anthropic Claude Code hooks docs](https://docs.anthropic.com/en/docs/claude-code/hooks-guide) | Agent hooks can verify conditions before allowing a workflow to continue; TradingCodex maps this to hook gates, context-audit, quality-check, and handoff states. |
@@ -140,7 +140,7 @@ strategy authoring path, not as a side effect of analysis.
 - Recent loop-engineering frameworks converge on recurring agent triggers,
   reusable procedures, subagent decomposition, verification hooks, connectors,
   and durable memory. TradingCodex should stay framework-agnostic: use these
-  ideas through its own Codex-native prompt gates, skills, MCP/service boundary,
+  ideas through its own Codex-native workflow intake, skills, MCP/service boundary,
   context-audit, role artifacts, and explicit human approval gates.
 - The verifier is the bottleneck in a useful loop. TradingCodex therefore keeps
   loop controls tied to source freshness, artifact quality, profile gaps, and

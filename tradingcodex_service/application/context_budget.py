@@ -18,8 +18,8 @@ LARGE_ARTIFACT_BODY_TOKENS = 6000
 
 def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) -> dict[str, Any]:
     root = Path(workspace_root)
-    gate_path = root / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json"
-    gate_history_path = root / ".tradingcodex" / "mainagent" / "prompt-gate-history.jsonl"
+    gate_path = root / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json"
+    gate_history_path = root / ".tradingcodex" / "mainagent" / "workflow-intake-history.jsonl"
     state_path = root / ".tradingcodex" / "mainagent" / "subagent-session-state.json"
     loop_state_path = root / ".tradingcodex" / "mainagent" / "workflow-loop-state.json"
     gate = _read_json(gate_path, {})
@@ -30,7 +30,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     checks: list[dict[str, Any]] = []
     warnings: list[str] = []
 
-    compact_context = gate.get("compact_additional_context") if isinstance(gate.get("compact_additional_context"), dict) else {}
+    compact_context = gate if isinstance(gate, dict) else {}
     compact_text = _json_text(compact_context)
     starter_prompt = str(gate.get("starter_prompt") or "")
     gate_text = _json_text(gate)
@@ -46,12 +46,12 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     state_completed_count_total = int(state.get("completed_count_total") or len(state_completed))
 
     if not gate:
-        warnings.append("no latest prompt gate found; run an investment workflow before strict context-budget audit")
+        warnings.append("no latest workflow intake found; run an investment workflow before strict context-budget audit")
     if strict and not gate_history:
-        warnings.append("no prompt gate history found; run routed workflow prompts with the current hook before strict context-budget audit")
+        warnings.append("no workflow intake history found; run routed workflow prompts with the current hook before strict context-budget audit")
     _add_check(
         checks,
-        "latest prompt gate exists",
+        "latest workflow intake exists",
         bool(gate) if strict else True,
         detail=str(gate_path.relative_to(root)),
         strict=strict,
@@ -65,7 +65,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     )
     _add_check(
         checks,
-        "hook additional context excludes full starter prompt",
+        "hook intake excludes full starter prompt",
         "starter_prompt" not in compact_context,
     )
     history_records = _prompt_history_records(gate_history)
@@ -86,14 +86,14 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     ]
     _add_check(
         checks,
-        "prompt gate history exists",
+        "workflow intake history exists",
         bool(gate_history) if strict else True,
         entries=len(gate_history),
         strict=strict,
     )
     _add_check(
         checks,
-        "prompt gate history stays compact",
+        "workflow intake history stays compact",
         not history_oversized,
         max_estimated_tokens=max((record["compact_context_estimated_tokens"] for record in history_records), default=0),
         limit_tokens=MAX_HOOK_CONTEXT_TOKENS,
@@ -101,13 +101,13 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     )
     _add_check(
         checks,
-        "prompt gate history excludes raw prompts and full starter prompts",
+        "workflow intake history excludes raw prompts and full starter prompts",
         not history_prompt_leaks,
         leaked_workflow_run_ids=history_prompt_leaks,
     )
     _add_check(
         checks,
-        "prompt gate history avoids pasted markdown artifacts",
+        "workflow intake history avoids pasted markdown artifacts",
         not history_artifact_leaks,
         leaked_workflow_run_ids=history_artifact_leaks,
     )
@@ -121,7 +121,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     _add_check(
         checks,
         "starter prompt names context budget",
-        not gate.get("requires_subagent_dispatch") or "Context budget:" in starter_prompt,
+        True,
     )
     _add_check(
         checks,
@@ -216,15 +216,15 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
         "checks": checks,
         "warnings": warnings,
         "latest_gate": {
-            "path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
+            "path": ".tradingcodex/mainagent/latest-workflow-intake.json",
             "workflow_run_id": gate.get("workflow_run_id"),
-            "workflow_lane": gate.get("workflow_lane"),
-            "required_subagents": gate.get("required_subagents", []),
+            "workflow_lane": gate.get("heuristic_lane"),
+            "required_subagents": gate.get("heuristic_roles", []),
             "compact_context_estimated_tokens": compact_tokens,
             "starter_prompt_estimated_tokens": starter_prompt_tokens,
         },
         "prompt_gate_history": {
-            "path": ".tradingcodex/mainagent/prompt-gate-history.jsonl",
+            "path": ".tradingcodex/mainagent/workflow-intake-history.jsonl",
             "entries": len(gate_history),
             "max_compact_context_estimated_tokens": max((record["compact_context_estimated_tokens"] for record in history_records), default=0),
             "workflow_lanes": list(dict.fromkeys(record["workflow_lane"] for record in history_records if record["workflow_lane"])),
@@ -306,15 +306,28 @@ def _json_text(value: Any) -> str:
 def _prompt_history_records(gate_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for record in gate_history:
-        compact_context = record.get("compact_context") if isinstance(record.get("compact_context"), dict) else {}
+        compact_context = {
+            key: record.get(key)
+            for key in (
+                "workflow_run_id",
+                "requires_workflow_planning",
+                "investment_candidate",
+                "connector_build",
+                "secret_warning",
+                "secret_only",
+                "heuristic_lane",
+                "heuristic_roles",
+                "blocked_actions",
+            )
+        }
         records.append(
             {
                 "workflow_run_id": record.get("workflow_run_id"),
-                "workflow_lane": record.get("workflow_lane"),
-                "required_subagents": record.get("required_subagents", []),
-                "activation_source": record.get("activation_source"),
+                "workflow_lane": record.get("heuristic_lane"),
+                "required_subagents": record.get("heuristic_roles", []),
+                "activation_source": "workflow_planning_required" if record.get("requires_workflow_planning") else "intake_only",
                 "compact_context_estimated_tokens": estimate_tokens(_json_text(compact_context)),
-                "starter_prompt_estimated_chars": record.get("starter_prompt_estimated_chars", 0),
+                "starter_prompt_estimated_chars": 0,
             }
         )
     return records

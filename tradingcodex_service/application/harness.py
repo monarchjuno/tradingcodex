@@ -1600,17 +1600,17 @@ def build_subagent_starter_prompt(request: str, workspace_root: Path | str | Non
             f"Blocked actions: {', '.join(plan['blockedActions'])}",
         ])
     lines = [
-        "Use this workspace's fixed-role subagent workflow.",
-        "Explicitly use Codex subagents.",
+        "Use this workspace's fixed-role subagent workflow through $tcx-workflow.",
+        "Draft, validate, and record a staged workflow plan before dispatch.",
         f'Original user request (verbatim): "{request}"',
         f"Research artifact language: {artifact_language}",
         f"Investment universe: {investment_universe_label(plan['universe'])}",
         f"Workflow lane: {plan['lane']}",
         f"Workflow stage order: {stage_order}",
-        f"Spawn these fixed role subagents in parallel: {spawn_line}",
-        "This selected team is binding for the current lane; do not spawn roles outside this exact list unless the user later asks for a broader lane.",
+        f"Deterministic preview roles likely needed: {spawn_line}",
+        "This preview is not the final workflow contract; validate and record a staged workflow plan before spawning roles.",
         "For `research_only`, do not add valuation, portfolio, risk, approval, or execution roles.",
-        "When calling `spawn_agent` for a fixed role, use `agent_type` and a compact `message`; do not set `fork_context` to true.",
+        "When calling `spawn_agent` for a recorded fixed role stage, use `agent_type` and a compact `message`; do not set `fork_context` to true.",
         "Use each role's exact `.codex/agents/*.toml` name as the runtime label.",
         "Preserve the original user request and explicit constraints in every subagent brief.",
         "Context budget: use artifact paths, context_summary, source/as-of metadata, and short deltas; do not paste full prior artifacts, source dumps, or unrelated chat history.",
@@ -1622,7 +1622,7 @@ def build_subagent_starter_prompt(request: str, workspace_root: Path | str | Non
         "Artifact Supervisor Loop: evaluate artifacts first; accepted is a handoff state, not terminal action.",
         "Loop roles: follow-up=" + (", ".join(plan.get("allowedFollowupTeam") or []) or "none") + "; escalation-only roles stay proposal-only in loop state.",
         "Follow-ups: subagents may propose `follow_up_requests`; recompute lane/consent before recording deltas.",
-        "Loop state: keep compact tasks, decisions, escalations, blocks, and stop reason in " + str(plan.get("loopStatePath") or LOOP_STATE_PATH) + "; no recursive dispatch.",
+        "Loop state: record the validated plan first, then keep compact tasks, decisions, escalations, blocks, and stop reason under `.tradingcodex/mainagent/workflows/<workflow_run_id>/`; no recursive dispatch.",
         "Judgment controls: fixed rules and selected strategy context are read-only; do not change strategy, policy, role authority, approval, execution, or MCP gates; lane controls: " + format_judgment_controls_compact(plan),
         "Challenge review: before final synthesis, name contrary evidence, alternatives, stale or missing data, profile gaps, and policy/strategy conflicts; use revise, blocked, or waiting if material.",
         "Method lenses for this lane: " + format_method_lenses(plan) + "; guardrails: separate facts, inferences, and assumptions; check portfolio fit before action advice.",
@@ -1631,7 +1631,7 @@ def build_subagent_starter_prompt(request: str, workspace_root: Path | str | Non
         "Require each role handoff to include artifact path, reader summary, next action, handoff state, source/as-of posture, confidence, missing evidence, readiness/support gaps, next eligible recipient, and blocked actions.",
         "Use handoff states: accepted, revise, blocked, waiting.",
         "Do not let downstream roles redo missing upstream work; request revision from the owning role or stop with waiting/blocked status.",
-        "Wait for all selected subagents, then synthesize their outputs with artifact paths, handoff states, disagreements, missing evidence, and next allowed action.",
+        "Wait for all recorded-plan stages, then synthesize accepted outputs with artifact paths, handoff states, disagreements, missing evidence, and next allowed action.",
         f"Blocked actions before artifacts: {', '.join(plan['blockedActions'])}",
     ]
     if flags.get("forecast_contract_required"):
@@ -1695,6 +1695,8 @@ def build_compact_dispatch_context(request: str, workspace_root: Path | str | No
         loop_contract["allowed_followup_team"] = allowed_followup_team
     context = {
         "context_mode": "compact_workflow_gate",
+        "deterministic_preview": True,
+        "requires_workflow_planning": has_subagents or plan["lane"] in {"connector_build", "head_manager_connector_operations"},
         "workflow_lane": plan["lane"],
         "required_subagents": plan["subagents"],
         "loop_contract": loop_contract,
@@ -1708,12 +1710,12 @@ def build_compact_dispatch_context(request: str, workspace_root: Path | str | No
             PROFILE_COMPACT_KEYS.get(PROFILE_FIELD_KEYS.get(field, field), field)
             for field in profile_status["missing_fields"]
         ],
-        "selected_team_binding": has_subagents,
-        "starter_prompt_path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
+        "selected_team_binding": False,
+        "starter_prompt_path": ".tradingcodex/mainagent/latest-workflow-intake.json",
         "dispatch_rules": (
             [
-                "dispatch_or_reuse_selected_subagents_before_substantive_analysis",
-                "selected_team_closed_for_current_lane",
+                "draft_validate_record_staged_plan_before_dispatch",
+                "hook_hints_are_not_final_workflow_decisions",
                 "waiting_if_exact_role_routing_unavailable",
                 "no_downstream_repair_of_missing_upstream_work",
             ]

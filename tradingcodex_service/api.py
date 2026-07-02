@@ -25,6 +25,13 @@ from tradingcodex_service.application.harness import (
     build_workflow_intake_summary,
     evaluate_artifact_supervisor_loop,
 )
+from tradingcodex_service.application.workflow_planner import (
+    build_deterministic_workflow_plan,
+    read_workflow_intake,
+    record_workflow_intake,
+    record_workflow_plan,
+    validate_workflow_plan,
+)
 from tradingcodex_service.application.agents import (
     build_projection_state,
     create_or_update_optional_skill,
@@ -185,7 +192,12 @@ class OrderTicketApprovalRequest(Schema):
 
 
 class WorkflowValidationRequest(Schema):
-    original_request: str
+    original_request: str = ""
+    plan: dict[str, Any] | None = None
+
+
+class WorkflowRecordRequest(Schema):
+    plan: dict[str, Any]
 
 
 class WorkflowLoopRequest(Schema):
@@ -562,6 +574,18 @@ def audit_events(request):
         return []
 
 
+@workflows_router.post("/intake")
+def workflow_intake(request, payload: WorkflowValidationRequest):
+    return record_workflow_intake(workspace_root(), payload.original_request)
+
+
+@workflows_router.post("/record")
+def workflow_record(request, payload: WorkflowRecordRequest):
+    plan = payload.plan
+    intake = read_workflow_intake(workspace_root(), str(plan.get("workflow_run_id") or ""))
+    return record_workflow_plan(workspace_root(), plan, intake=intake)
+
+
 @workflows_router.get("/{workflow_id}")
 def workflow_detail(request, workflow_id: str):
     return {"workflow_id": workflow_id, "artifacts": list_workflow_artifacts(workspace_root())["artifacts"]}
@@ -569,10 +593,14 @@ def workflow_detail(request, workflow_id: str):
 
 @workflows_router.post("/{workflow_id}/validate")
 def workflow_validate(request, workflow_id: str, payload: WorkflowValidationRequest):
+    if payload.plan:
+        intake = read_workflow_intake(workspace_root(), str(payload.plan.get("workflow_run_id") or workflow_id))
+        return validate_workflow_plan(payload.plan, intake=intake)
     return {
         "workflow_id": workflow_id,
         "starter_prompt": build_subagent_starter_prompt(payload.original_request, workspace_root()),
         "intake_summary": build_workflow_intake_summary(payload.original_request, workspace_root()),
+        "deterministic_preview": build_deterministic_workflow_plan(workspace_root(), payload.original_request),
     }
 
 

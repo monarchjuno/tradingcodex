@@ -1,6 +1,6 @@
 interface:
   display_name: "TCX Workflow"
-  short_description: "Coordinate operate-plane investment workflows"
-  default_prompt: "Use $tcx-workflow to route this TradingCodex workflow through the compact lane and selected team."
+  short_description: "Draft, validate, and run staged investment workflow plans"
+  default_prompt: "Use $tcx-workflow to draft, validate, record, and run a staged TradingCodex workflow plan."
 policy:
   allow_implicit_invocation: true

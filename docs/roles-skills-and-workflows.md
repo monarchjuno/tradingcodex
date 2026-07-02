@@ -98,23 +98,24 @@ they are not required before `head-manager` routes the work.
 
 | Trigger | Handling |
 | --- | --- |
-| General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` injects compact auto-dispatch context with lane, selected team, blocked actions, and the persisted prompt-gate path; `head-manager` dispatches or reuses selected subagents before analysis. |
-| Explicit `$tcx-workflow` request | The workflow skill becomes the primary manual-control orchestrator and dispatches selected subagents. |
+| General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` records compact workflow intake hints; `head-manager` uses `$tcx-workflow` to draft, validate, record, and then dispatch from a staged workflow plan before analysis. |
+| Explicit `$tcx-workflow` request | The workflow skill becomes the primary orchestrator, records a validated staged plan, and dispatches selected stages. |
 | Broker/provider build request, such as "connect this broker" | Route to the `connector_build` lane and `$tcx-build`; connect/scaffold/register/validate provider metadata without investment dispatch or live submission. |
 | Runtime/server request, such as "open dashboard" or "check TradingCodex status" | Route to `$tcx-server`; report service/MCP/update posture and use CLI recovery commands without changing execution authority. |
-| Explicit subagent/parallel/delegated request | `UserPromptSubmit` records the explicit activation source; the skill checks existing subagent state before creating/reusing sessions. |
+| Explicit subagent/parallel/delegated request | `UserPromptSubmit` records intake hints; the skill checks existing subagent state and validates the staged plan before creating/reusing sessions. |
 | Strategy authoring request, such as "Create a quality income strategy" | Do not auto-dispatch investment subagents. Route through `strategy-creator`, CLI, API, or service-layer flows so the strategy skill is created and projected as a root/head-manager strategy entry. Django web previews strategies read-only. |
 | Non-investment repository, docs, or harness administration request | No investment dispatch is required; `head-manager` follows normal Codex coding-agent behavior while preserving execution and secret guardrails. |
 | Same run/role subagent is active | Wait or follow up instead of creating duplicates. |
 | Same role artifact has passed quality gates | Reuse the artifact instead of duplicating work. |
 | Codex `spawn_agent` schema cannot select exact fixed role | Treat role routing as `routing-unverified`; provide `waiting_for_subagent_dispatch` and task briefs only. |
 
-The selected role team from compact hook context or the persisted starter
-prompt is binding for the current lane. `head-manager` must not add roles
-outside that team merely because they might be useful. For `research_only`, do
-not add valuation, portfolio, risk, approval, or execution roles unless the
-user later asks for valuation, decision support, portfolio fit, sizing, order
-drafting, approval, or execution.
+Hook-selected roles are deterministic hints, not the final contract. The
+recorded validated staged workflow plan is binding for the current run.
+`head-manager` must not add roles outside that plan merely because they might
+be useful. For `research_only`, do not add valuation, portfolio, risk,
+approval, or execution roles unless the user later asks for valuation,
+decision support, portfolio fit, sizing, order drafting, approval, or
+execution and a new validated plan permits it.
 
 Negated scope terms are binding. Phrases such as "no valuation", "no order", or
 "no trading" remove those actions or roles from routing instead of triggering
@@ -353,13 +354,11 @@ posture, or core skill behavior.
   summary with total counters and a recent-event window. Full subagent event
   history belongs in `trading/audit/subagent-session-events.jsonl`.
 - `.tradingcodex/mainagent/workflow-loop-state.json` is the compact latest
-  assisted-loop summary and pointer. The canonical loop state for a routed
-  prompt lives under
-  `.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json`, with
-  the matching prompt gate beside it. It contains selected team, allowed
-  follow-up team, escalation-only roles, pending tasks, planner decisions,
-  blocked actions, and stop reason. It is inspectable state, not an automatic
-  recursive dispatch mechanism.
+  assisted-loop summary and pointer. The canonical run folder contains
+  `intake.json`, `workflow-plan.json`, and `loop-state.json`. It contains
+  validated stages, selected team, allowed follow-up team, pending tasks,
+  planner decisions, blocked actions, and stop reason. It is inspectable
+  state, not an automatic recursive dispatch mechanism.
 - `.tradingcodex/mainagent/session-workflow-runs.json` maps Codex session or
   thread keys to workflow run ids. Subagent start/stop records use run id,
   role, and subagent session id so a reused role session can continue the right
@@ -398,7 +397,7 @@ TradingCodex MCP allowlists, and service-layer policy.
 
 ## Hooks Are Guidance
 
-- `UserPromptSubmit` handles prompt classification, secret warnings, direct-answer prevention context, and duplicate marker management.
+- `UserPromptSubmit` handles prompt classification, secret warnings, compact workflow intake hints, direct-answer prevention context, and duplicate marker management. It does not choose the final staged workflow plan.
 - `SessionStart` writes compact TradingCodex mode, permission, update, server/MCP, and routing diagnostics for `head-manager`; incompatible service details such as version mismatch, DB mismatch, and occupied ports must survive into compact context so `head-manager` can mention the startup notice before claiming dashboard readiness. Startup recovery and dashboard URL guidance stay in `$tcx-server`, while self-update and connector implementation stay in `$tcx-build`.
 - Official `UserPromptSubmit` matchers are ignored, so classification happens inside the hook script.
 - Hooks use command type only and do not rely on ordering or concurrency between hooks.

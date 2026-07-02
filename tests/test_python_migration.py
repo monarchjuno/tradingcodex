@@ -49,6 +49,12 @@ from tradingcodex_service.application.decision_packages import (
     get_decision_package,
     list_decision_packages,
 )
+from tradingcodex_service.application.workflow_planner import (
+    build_deterministic_workflow_plan,
+    build_workflow_intake,
+    record_workflow_plan,
+    validate_workflow_plan,
+)
 from tradingcodex_service.application.brokers import BrokerAdapterProvider, register_broker_adapter_provider
 from tradingcodex_service.application.orders import validate_order_ticket_payload
 from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_context_payload
@@ -680,59 +686,51 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     )
     direct_output = json.loads(direct_hook.stdout)
     direct_gate = json.loads(direct_output["hookSpecificOutput"]["additionalContext"])
-    assert direct_gate["workflow_lane"] == "thesis_review"
-    assert direct_gate["required_subagents"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
+    assert direct_gate["requires_workflow_planning"] is True
+    assert direct_gate["heuristic_lane"] == "thesis_review"
+    assert direct_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
 
     gate = run_user_prompt_hook(workspace, "Analyze Apple stock")
     assert gate
-    assert gate["activation_source"] == "auto_routed_investment_request"
-    assert gate["auto_dispatch_allowed"] is True
-    assert gate["confirmation_required"] is False
-    assert gate["requires_subagent_dispatch"] is True
-    assert gate["workflow_lane"] == "thesis_review"
-    assert gate["required_subagents"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
-    assert gate["deep_thesis_default"] is True
-    assert gate["decision_quality_required"] is True
-    assert gate["context_mode"] == "compact_workflow_gate"
-    assert gate["starter_prompt_path"] == ".tradingcodex/mainagent/latest-user-prompt-gate.json"
+    assert gate["marker"] == "tradingcodex-workflow-intake"
+    assert gate["requires_workflow_planning"] is True
+    assert gate["investment_candidate"] is True
+    assert gate["heuristic_lane"] == "thesis_review"
+    assert gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
+    assert gate["deterministic_hint"]["quality_flags"]["deep_thesis_default"] is True
+    assert gate["deterministic_hint"]["quality_flags"]["decision_quality_required"] is True
+    assert gate["intake_path"].endswith("/intake.json")
     assert "starter_prompt" not in gate
-    assert "dispatch_or_reuse_selected_subagents_before_substantive_analysis" in gate["dispatch_rules"]
-    persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
-    assert "This selected team is binding for the current lane" in persisted_gate["starter_prompt"]
-    assert "Deep thesis default" in persisted_gate["starter_prompt"]
-    assert persisted_gate["compact_additional_context"]["context_mode"] == "compact_workflow_gate"
+    persisted_intake = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json").read_text(encoding="utf-8"))
+    assert persisted_intake["prompt_sha256"]
+    assert "Analyze Apple stock" not in json.dumps(persisted_intake, ensure_ascii=False)
 
     negated_scope_gate = run_user_prompt_hook(
         workspace,
         "Routing smoke test for NVDA. No order, no trading, no valuation. Use selected subagents only.",
     )
     assert negated_scope_gate
-    assert negated_scope_gate["workflow_lane"] == "research_only"
-    assert negated_scope_gate["required_subagents"] == ["fundamental-analyst", "technical-analyst", "news-analyst"]
-    negated_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
-    negated_spawn_line = next(line for line in negated_persisted_gate["starter_prompt"].splitlines() if line.startswith("Spawn these fixed role subagents"))
-    assert "valuation-analyst" not in negated_spawn_line
+    assert negated_scope_gate["heuristic_lane"] == "research_only"
+    assert negated_scope_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst"]
+    assert "valuation" in negated_scope_gate["explicit_negations"]
 
     explicit_gate = run_user_prompt_hook(workspace, "$tcx-workflow analyze Apple stock")
     assert explicit_gate
-    assert explicit_gate["activation_source"] == "explicit_subagent"
-    assert explicit_gate["auto_dispatch_allowed"] is True
+    assert explicit_gate["requires_workflow_planning"] is True
 
     secret_gate = run_user_prompt_hook(workspace, "Please inspect the .env file")
     assert secret_gate
-    assert secret_gate["activation_source"] == "secret_warning_only"
     assert secret_gate["secret_warning"] is True
-    assert secret_gate["requires_subagent_dispatch"] is False
-    assert secret_gate["required_subagents"] == []
+    assert secret_gate["requires_workflow_planning"] is False
+    assert secret_gate["heuristic_roles"] == []
 
     broker_secret_gate = run_user_prompt_hook(workspace, "Here is my broker API key secret, save it to .env")
     assert broker_secret_gate
-    assert broker_secret_gate["activation_source"] == "secret_warning_only"
-    assert broker_secret_gate["workflow_lane"] == "secret_warning"
-    assert broker_secret_gate["requires_subagent_dispatch"] is False
+    assert broker_secret_gate["heuristic_lane"] == "secret_warning"
+    assert broker_secret_gate["requires_workflow_planning"] is False
     assert "starter_prompt" not in broker_secret_gate
-    broker_secret_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
-    assert broker_secret_persisted_gate["starter_prompt"] == ""
+    broker_secret_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json").read_text(encoding="utf-8"))
+    assert "broker API key secret" not in json.dumps(broker_secret_persisted_gate, ensure_ascii=False)
     assert is_secret_only_request("Here is my broker API key secret, save it to .env") is True
     assert is_investment_workflow_request("Here is my broker API key secret, save it to .env") is False
     assert is_secret_only_request("Use my broker API key to execute an AAPL order") is False
@@ -751,13 +749,10 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     ], workspace)
     profile_aware_gate = run_user_prompt_hook(workspace, "TSLA fair value and whether it fits my portfolio, no order")
     assert profile_aware_gate
-    assert profile_aware_gate["workflow_lane"] == "thesis_review_then_portfolio_risk_review"
-    assert profile_aware_gate["profile_known"] == ["obj", "hor", "risk"]
+    assert profile_aware_gate["heuristic_lane"] == "thesis_review_then_portfolio_risk_review"
     assert len(json.dumps(profile_aware_gate, ensure_ascii=False)) < 1600
-    profile_aware_persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
-    assert "Known investor profile context from the active profile" in profile_aware_persisted_gate["starter_prompt"]
-    assert "medium-term quality compounder" in profile_aware_persisted_gate["starter_prompt"]
-    assert "What outcome are you trying to achieve with this idea?" not in profile_aware_persisted_gate["starter_prompt"]
+    profile_aware_persisted_intake = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json").read_text(encoding="utf-8"))
+    assert profile_aware_persisted_intake["heuristic_lane"] == "thesis_review_then_portfolio_risk_review"
 
     subagent_brief_gate = run_user_prompt_hook(
         workspace,
@@ -1005,9 +1000,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     workflow_guidance = (workspace / ".agents" / "skills" / "tcx-workflow" / "SKILL.md").read_text(encoding="utf-8")
     server_guidance = (workspace / ".agents" / "skills" / "tcx-server" / "SKILL.md").read_text(encoding="utf-8")
     build_guidance = (workspace / ".agents" / "skills" / "tcx-build" / "SKILL.md").read_text(encoding="utf-8")
-    assert "compact hook context" in workflow_guidance
-    assert "selected fixed-role subagents" in workflow_guidance
-    assert "Do not widen the selected team" in workflow_guidance
+    assert "validated workflow plan" in workflow_guidance
+    assert "hook hints as binding final workflow decisions" in workflow_guidance
+    assert "Do not dispatch before a validated workflow plan is recorded" in workflow_guidance
     assert "tcx update" in server_guidance
     assert "Do not scaffold or edit connector code in operate mode" in server_guidance
     assert "Build mode may create live-capable providers" in build_guidance
@@ -1654,7 +1649,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     blocked_wording = build_subagent_starter_prompt("rates and oil impact on my NVDA position, no order. Do not place trades. Even with blocked action wording like execute, submit, approve, or order, verify portfolio_risk_review routing and no execution-operator.")
     assert "Workflow lane: portfolio_risk_review" in blocked_wording
     assert "macro-analyst" in blocked_wording
-    blocked_spawn_line = next(line for line in blocked_wording.splitlines() if line.startswith("Spawn these fixed role subagents"))
+    blocked_spawn_line = next(line for line in blocked_wording.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "execution-operator" not in blocked_spawn_line
     earnings = build_subagent_starter_prompt("NVDA earnings preview and catalyst review, no order and no trading")
     assert "Workflow lane: thesis_review" in earnings
@@ -1664,7 +1659,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "execution-operator" not in earnings
     earnings_no_valuation = build_subagent_starter_prompt("NVDA earnings preview and catalyst review, no valuation, no order and no trading")
     assert "Workflow lane: thesis_review" in earnings_no_valuation
-    earnings_no_valuation_spawn_line = next(line for line in earnings_no_valuation.splitlines() if line.startswith("Spawn these fixed role subagents"))
+    earnings_no_valuation_spawn_line = next(line for line in earnings_no_valuation.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "valuation-analyst" not in earnings_no_valuation_spawn_line
     fair_value_portfolio = build_subagent_starter_prompt("TSLA fair value and whether it fits my portfolio, no order")
     assert "Workflow lane: thesis_review_then_portfolio_risk_review" in fair_value_portfolio
@@ -1759,8 +1754,8 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "execution-operator" not in crypto
     crypto_research = build_subagent_starter_prompt("BTC feels strong but I do not want to trade. Just research trend and risks.")
     assert "Workflow lane: research_only" in crypto_research
-    assert "Spawn these fixed role subagents in parallel: technical-analyst, instrument-analyst" in crypto_research
-    assert "portfolio-manager" not in next(line for line in crypto_research.splitlines() if line.startswith("Spawn these fixed role subagents"))
+    assert "Deterministic preview roles likely needed: technical-analyst, instrument-analyst" in crypto_research
+    assert "portfolio-manager" not in next(line for line in crypto_research.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "execution-operator" not in crypto_research
     connector_only_request = "Configure a reviewed test or sandbox broker connector only. No order, no approval, no execution, do not read secrets."
     assert is_investment_workflow_request(connector_only_request) is False
@@ -1807,13 +1802,13 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     ]
     broad = build_subagent_starter_prompt("Analyze NVDA for me. No order and no trading.")
     assert "Workflow lane: thesis_review" in broad
-    assert "Spawn these fixed role subagents in parallel: fundamental-analyst, technical-analyst, news-analyst, valuation-analyst" in broad
-    assert "This selected team is binding for the current lane" in broad
+    assert "Deterministic preview roles likely needed: fundamental-analyst, technical-analyst, news-analyst, valuation-analyst" in broad
+    assert "This preview is not the final workflow contract" in broad
     assert "Deep thesis default" in broad
     assert "do not set `fork_context` to true" in broad
     analyze_no_valuation = build_subagent_starter_prompt("Analyze NVDA. No valuation.")
     assert "Workflow lane: thesis_review" in analyze_no_valuation
-    analyze_no_valuation_spawn = next(line for line in analyze_no_valuation.splitlines() if line.startswith("Spawn these fixed role subagents"))
+    analyze_no_valuation_spawn = next(line for line in analyze_no_valuation.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "valuation-analyst" not in analyze_no_valuation_spawn
     profile_only = classify_starter_request("Analyze NVDA. Company facts only.")
     assert profile_only["lane"] == "research_only"
@@ -1839,7 +1834,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert chart_intent.technical_only is True
     no_valuation = build_subagent_starter_prompt("Routing smoke test for NVDA. No order, no trading, no valuation. Use selected subagents only.")
     assert "Workflow lane: research_only" in no_valuation
-    no_valuation_spawn_line = next(line for line in no_valuation.splitlines() if line.startswith("Spawn these fixed role subagents"))
+    no_valuation_spawn_line = next(line for line in no_valuation.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "valuation-analyst" not in no_valuation_spawn_line
 
 
@@ -1852,7 +1847,9 @@ def test_decision_workflow_plan_and_package_are_codex_native(tmp_path: Path) -> 
     assert {"valuation-analyst", "portfolio-manager", "risk-manager"} <= set(plan["selected_roles"])
     assert "risk tolerance and loss capacity" in plan["missing_profile"]
     assert "execution" in plan["blocked_actions"]
-    assert "Explicitly use Codex subagents." in plan["starter_prompt"]
+    assert "Draft, validate, and record a staged workflow plan before dispatch." in plan["starter_prompt"]
+    assert plan["dynamic_plan_required"] is True
+    assert plan["staged_plan"]["stages"]
 
     ensure_runtime_database(workspace)
     from apps.orders.models import OrderTicket
@@ -1878,6 +1875,57 @@ def test_decision_workflow_plan_and_package_are_codex_native(tmp_path: Path) -> 
     assert list_decision_packages(workspace)["packages"][0]["decision_id"] == package["decision_id"]
 
 
+def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    preview = build_deterministic_workflow_plan(workspace, "Analyze NVDA. No order, no trading, no valuation.")
+    preview["stages"] = [stage for stage in preview["stages"] if "valuation-analyst" not in stage["roles"]]
+
+    validation = validate_workflow_plan(preview)
+    assert validation["ok"] is True
+    result = record_workflow_plan(workspace, preview)
+    assert result["status"] == "recorded"
+    assert (workspace / result["plan_path"]).exists()
+    loop_state = json.loads((workspace / result["loop_state_path"]).read_text(encoding="utf-8"))
+    assert loop_state["state_mode"] == "validated_dynamic_workflow_plan"
+    assert loop_state["pending_tasks"][0]["status"] == "pending"
+
+    invalid = {
+        **preview,
+        "stages": [
+            {
+                "stage_id": "bad",
+                "roles": ["execution-operator", "unknown-role"],
+                "depends_on": ["later"],
+                "dispatch_mode": "parallel",
+                "purpose": "Bad escalation",
+                "exit_criteria": [],
+            }
+        ],
+        "blocked_actions": [],
+    }
+    rejected = validate_workflow_plan(invalid)
+    assert rejected["ok"] is False
+    assert any("unknown role" in error for error in rejected["errors"])
+    assert any("depends on unknown or later stage" in error for error in rejected["errors"])
+    negated_intake = build_workflow_intake("Analyze NVDA. No valuation.", workspace, workflow_run_id=preview["workflow_run_id"])
+    negated_bad_plan = {
+        **preview,
+        "stages": [
+            {
+                "stage_id": "valuation",
+                "roles": ["valuation-analyst"],
+                "depends_on": [],
+                "dispatch_mode": "sequential",
+                "purpose": "Bad valuation",
+                "exit_criteria": [],
+            }
+        ],
+    }
+    negated_rejected = validate_workflow_plan(negated_bad_plan, intake=negated_intake)
+    assert negated_rejected["ok"] is False
+    assert any("negated valuation" in error for error in negated_rejected["errors"])
+
+
 def test_workflow_and_decision_cli_surfaces(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
 
@@ -1885,6 +1933,17 @@ def test_workflow_and_decision_cli_surfaces(tmp_path: Path) -> None:
     assert plan["lane"] == "thesis_review_then_portfolio_risk_review"
     assert "execution" in plan["blocked_actions"]
     assert plan["missing_profile"]
+    intake = json.loads(run(["./tcx", "workflow", "intake", "Analyze NVDA. No order, no trading, no valuation."], workspace).stdout)
+    assert intake["requires_workflow_planning"] is True
+    assert intake["heuristic_lane"] == "thesis_review"
+    preview = json.loads(run(["./tcx", "workflow", "preview", "Analyze NVDA. No order, no trading, no valuation."], workspace).stdout)
+    assert preview["stages"]
+    plan_path = workspace / "tmp-workflow-plan.json"
+    plan_path.write_text(json.dumps(preview, indent=2) + "\n", encoding="utf-8")
+    validated = json.loads(run(["./tcx", "workflow", "validate", "--plan", "tmp-workflow-plan.json"], workspace).stdout)
+    assert validated["ok"] is True
+    recorded = json.loads(run(["./tcx", "workflow", "record", "--plan", "tmp-workflow-plan.json"], workspace).stdout)
+    assert recorded["status"] == "recorded"
 
     package = json.loads(run(["./tcx", "workflow", "run", "Connect Upbit broker. No order, no execution."], workspace).stdout)
     assert package["plan"]["lane"] == "connector_build"
@@ -2147,31 +2206,42 @@ def test_artifact_supervisor_loop_contract(monkeypatch, tmp_path: Path) -> None:
 
     hook_context = run_user_prompt_hook(workspace, request)
     assert hook_context
-    assert hook_context["loop_contract"]["state_path"].startswith(".tradingcodex/mainagent/workflows/")
-    assert hook_context["loop_contract"]["state_path"].endswith("/loop-state.json")
+    assert hook_context["requires_workflow_planning"] is True
+    assert hook_context["intake_path"].endswith("/intake.json")
+    dynamic_plan = build_deterministic_workflow_plan(workspace, request, workflow_run_id=hook_context["workflow_run_id"])
+    recorded = record_workflow_plan(workspace, dynamic_plan)
+    assert recorded["status"] == "recorded"
     latest_loop_state = json.loads((workspace / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").read_text(encoding="utf-8"))
-    assert latest_loop_state["state_path"] == hook_context["loop_contract"]["state_path"]
-    loop_state = json.loads((workspace / hook_context["loop_contract"]["state_path"]).read_text(encoding="utf-8"))
+    assert latest_loop_state["state_path"] == recorded["loop_state_path"]
+    loop_state = json.loads((workspace / recorded["loop_state_path"]).read_text(encoding="utf-8"))
     assert loop_state["workflow_run_id"] == hook_context["workflow_run_id"]
-    assert loop_state["state_path"] == hook_context["loop_contract"]["state_path"]
-    assert loop_state["selected_team"] == hook_context["required_subagents"]
-    assert loop_state["allowed_followup_team"] == hook_context["required_subagents"]
-    assert loop_state["state_mode"] == "inspectable_assisted_loop"
+    assert loop_state["state_path"] == recorded["loop_state_path"]
+    assert loop_state["selected_team"] == dynamic_plan["heuristic_roles"]
+    assert loop_state["allowed_followup_team"] == dynamic_plan["heuristic_roles"]
+    assert loop_state["state_mode"] == "validated_dynamic_workflow_plan"
     assert loop_state["auto_spawn"] is False
     assert loop_state["pending_tasks"][0]["status"] == "pending"
 
     plan_cli = json.loads(run(["./tcx", "subagents", "plan", request], workspace).stdout)
     assert plan_cli["workflow_lane"] == "thesis_review"
-    assert plan_cli["initial_dispatch"] == hook_context["required_subagents"]
-    assert plan_cli["allowed_followup_team"] == hook_context["required_subagents"]
+    assert plan_cli["initial_dispatch"] == dynamic_plan["heuristic_roles"]
+    assert plan_cli["allowed_followup_team"] == dynamic_plan["heuristic_roles"]
     assert plan_cli["workflow_loop_state_path"] == ".tradingcodex/mainagent/workflow-loop-state.json"
     assert plan_cli["pending_tasks"]
 
     thread_a = run_user_prompt_hook(workspace, "Analyze MSFT. No order, no trading.", {"session_id": "thread-a"})
     thread_b = run_user_prompt_hook(workspace, "Analyze AAPL. No order, no trading.", {"session_id": "thread-b"})
     assert thread_a and thread_b
-    thread_a_path = thread_a["loop_contract"]["state_path"]
-    thread_b_path = thread_b["loop_contract"]["state_path"]
+    thread_a_recorded = record_workflow_plan(
+        workspace,
+        build_deterministic_workflow_plan(workspace, "Analyze MSFT. No order, no trading.", workflow_run_id=thread_a["workflow_run_id"]),
+    )
+    thread_b_recorded = record_workflow_plan(
+        workspace,
+        build_deterministic_workflow_plan(workspace, "Analyze AAPL. No order, no trading.", workflow_run_id=thread_b["workflow_run_id"]),
+    )
+    thread_a_path = thread_a_recorded["loop_state_path"]
+    thread_b_path = thread_b_recorded["loop_state_path"]
     assert thread_a_path != thread_b_path
     assert (workspace / thread_a_path).exists()
     assert (workspace / thread_b_path).exists()
@@ -2287,8 +2357,8 @@ follow_up_requests:
                 "workflow_run_id": "budget-unit",
                 "lane": "thesis_review",
                 "loop_policy": {"max_loop_subagent_tasks": 0, "max_followups_per_iteration": 1},
-                "selected_team": hook_context["required_subagents"],
-                "allowed_followup_team": hook_context["required_subagents"],
+                "selected_team": dynamic_plan["heuristic_roles"],
+                "allowed_followup_team": dynamic_plan["heuristic_roles"],
                 "escalation_team": ["portfolio-manager", "risk-manager"],
                 "pending_tasks": [],
                 "blocked_actions": ["order ticket", "approval", "execution"],

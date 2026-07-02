@@ -51,7 +51,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="investment-request-routing",
         label="Investment Request Routing",
-        summary="Classifies user intent and activates the fixed-role workflow.",
+        summary="Classifies user intent into compact workflow intake hints before validated staged planning.",
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality"),
         surfaces={

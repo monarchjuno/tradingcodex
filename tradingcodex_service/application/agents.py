@@ -354,7 +354,7 @@ ROLE_FORBIDDEN_ACTIONS: dict[str, tuple[str, ...]] = {
 ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
     "head-manager": {
         "receives": "User request, accepted role artifacts, workflow/service state.",
-        "returns": "Lane, selected team, compact briefs, accepted artifacts, conflicts, and next allowed action.",
+        "returns": "Validated staged plan, compact briefs, accepted artifacts, conflicts, and next allowed action.",
         "quality_gate": "Marks handoffs accepted, revise, blocked, or waiting before moving the workflow forward.",
         "overlap_rule": "Coordinates and synthesizes; does not replace specialist role analysis.",
     },

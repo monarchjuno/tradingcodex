@@ -10,6 +10,7 @@ from tradingcodex_service.application.common import safe_workspace_path, sanitiz
 from tradingcodex_service.application.harness import build_subagent_starter_prompt, build_workflow_intake_summary
 from tradingcodex_service.application.markdown_preview import split_markdown_frontmatter
 from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_context_payload
+from tradingcodex_service.application.workflow_planner import build_deterministic_workflow_plan
 
 DECISION_ROOT = Path("trading/decisions")
 WORKFLOW_RUN_ROOT = Path("trading/workflows/runs")
@@ -19,11 +20,14 @@ def build_workflow_plan(workspace_root: Path | str, prompt: str) -> dict[str, An
     if not prompt.strip():
         raise ValueError("prompt is required")
     summary = build_workflow_intake_summary(prompt, workspace_root)
+    staged_plan = build_deterministic_workflow_plan(workspace_root, prompt)
     return {
         "lane": summary["workflow_lane"],
         "universe": summary["investment_universe"],
         "universe_label": summary["investment_universe_label"],
         "selected_roles": [item["role"] for item in summary.get("subagents") or []],
+        "staged_plan": staged_plan,
+        "dynamic_plan_required": True,
         "missing_profile": summary.get("investor_profile_inputs") or [],
         "blocked_actions": summary.get("blocked_actions") or [],
         "routing_flags": summary.get("routing_flags") or {},

@@ -99,7 +99,9 @@ Generated workspaces contain:
 - Codex-style operating style in the root `head-manager` prompt: scoped `AGENTS.md` handling, concise preambles, selective planning, `rg`-first search, `apply_patch` edits, focused validation, dirty-worktree respect, and concise final handoffs
 - instruction/skill separation: root `head-manager` instructions own identity, durable safety boundaries, fail-closed dispatch, role boundaries, skill routing, optional-skill management, and approved action boundaries; fixed subagent TOML files own standing role identity, MCP/tool config, artifact walls, and always-on prohibitions; repo skills are dependency-light capability procedures for workflow maps, compact assignment-envelope templates, optional skill file management, quality gates, synthesis, and postmortems, without declaring role ownership or direct inter-skill call chains
 - no-overlap handoff contract: each role owns its specialist question, downstream roles consume accepted artifacts, and missing/stale/weak upstream work returns `revise`, `blocked`, or `waiting` instead of being silently redone by another role
-- closed selected team: hook/starter-prompt selected roles are binding for the current lane; research-only prompts do not add portfolio, risk, approval, or execution roles for precautionary coverage
+- validated staged workflow plan: hook intake hints are not binding; `$tcx-workflow`
+  drafts, validates, records, and dispatches from a staged plan before
+  substantive investment analysis
 - negated scope routing: phrases such as "no valuation", "no order", and "no trading" remove those actions or roles from dispatch selection
 - broad public-equity prompts such as "Analyze NVDA" default to deep thesis
   review with fundamental, technical, news, and valuation roles unless explicit
@@ -114,7 +116,7 @@ Generated workspaces contain:
   before opening full markdown; `reader_summary` and `next_action` keep the
   first-read experience clear for non-expert users
 - context-budget audit: `./tcx subagents context-audit --strict` inspects the
-  latest prompt gate, prompt-gate history, compact hook context, subagent
+  latest workflow intake, intake history, compact hook context, subagent
   session state, workflow loop state, and research artifacts after long multi-subagent runs; it
   fails strict mode when handoff artifacts lack `context_summary`, compact gate
   history grows beyond budget, or gate/state/history payloads look like pasted
@@ -126,9 +128,9 @@ Generated workspaces contain:
 - compact workflow loop state: `.tradingcodex/mainagent/workflow-loop-state.json`
   is the latest summary and pointer; the canonical state for each routed prompt
   lives under `.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json`
-  with the matching prompt gate beside it. The state records selected team,
-  allowed follow-up team, escalation-only roles, loop policy, pending tasks,
-  planner decisions, escalation proposals, blocked actions, and stop reason
+  with `intake.json` and `workflow-plan.json` beside it. The state records
+  validated stages, selected team, allowed follow-up team, loop policy, pending
+  tasks, planner decisions, escalation proposals, blocked actions, and stop reason
   without spawning subagents recursively
 - Codex session/thread routing map:
   `.tradingcodex/mainagent/session-workflow-runs.json` maps a Codex app session
@@ -387,17 +389,15 @@ enforcement.
 
 - prompt classification
 - secret warnings
-- natural-language investment workflow auto-routing context
+- natural-language investment workflow intake context and deterministic hints
 - direct-answer prevention context
 - duplicate marker management
-- prompt-gate audit metadata with prompt hash and workflow lane, without raw
+- workflow-intake audit metadata with prompt hash and heuristic lane, without raw
   prompt text in the audit ledger
-- compact hook `additionalContext`; the full generated starter prompt remains
-  in `.tradingcodex/mainagent/latest-user-prompt-gate.json` and is loaded only
-  when the compact gate is insufficient
-- compact Artifact Supervisor Loop metadata in hook context for
-  `allowed_followup_team`, `escalation_team`, `loop_policy`, the latest loop
-  summary, and the canonical run-specific loop-state path
+- compact hook `additionalContext`; full staged workflow contracts are recorded
+  by `$tcx-workflow` under `.tradingcodex/mainagent/workflows/<workflow_run_id>/`
+- compact Artifact Supervisor Loop metadata in recorded `workflow-plan.json`
+  and `loop-state.json`, not as final hook-selected teams
 - assisted loop planner previews through `./tcx subagents loop --artifact
   <path>`, with optional `--record` limited to file-native pending tasks,
   planner decisions, escalation proposals, blocked actions, and stop reason

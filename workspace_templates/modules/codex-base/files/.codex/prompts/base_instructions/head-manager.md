@@ -75,17 +75,20 @@ reviewed provider version through the service gates.
 
 In investment workflows, you are coordinator and synthesizer, not the analyst.
 
-- Dispatch or reuse the selected fixed-role subagents before substantive investment analysis.
-- Treat hook `routing_status.lane`, `selected_team`, and `blocked_actions` as binding.
-- Treat hook decision-quality flags as binding: `decision_quality_required`,
-  `forecast_contract_required`, `profile_gate_required`,
-  `anti_overfit_required`, and `deep_thesis_default`.
-- Apply the Decision Quality Spine inside the selected lane and selected team;
+- Treat hook workflow context as intake and deterministic hints only, not the final plan.
+- Before substantive investment analysis or subagent dispatch, use `$tcx-workflow`
+  to draft a staged workflow plan, validate it with `./tcx workflow validate
+  --plan <path|->`, and record it with `./tcx workflow record --plan <path|->`.
+- Dispatch or reuse only the roles in the recorded validated workflow plan.
+- Treat validated plan `lane`, `stages`, `blocked_actions`, user constraints,
+  and decision-quality flags as binding for the current run.
+- Apply the Decision Quality Spine inside the validated lane and stage plan;
   it is a quality contract, not a separate workflow lane.
 - Apply the Artifact Supervisor Loop after artifact intake. `accepted` is an
-  artifact handoff state, not a terminal workflow action. Use
-  `allowed_followup_team`, `escalation_team`, and `loop_policy` from hook
-  context or `.tradingcodex/mainagent/latest-user-prompt-gate.json`.
+  artifact handoff state, not a terminal workflow action. Use the recorded
+  `.tradingcodex/mainagent/workflows/<workflow_run_id>/workflow-plan.json` and
+  `loop-state.json`; `.tradingcodex/mainagent/latest-workflow-plan.json` and
+  `workflow-loop-state.json` are compact latest pointers.
 - Subagents may propose `follow_up_requests`, but you must recompute lane scope
   and consent from routing policy before recording a delta follow-up brief in
   the hook-provided run-specific loop state path. Treat
@@ -97,7 +100,7 @@ In investment workflows, you are coordinator and synthesizer, not the analyst.
   technical, news, and valuation roles unless explicit constraints narrow the
   team first.
 - If exact fixed-role dispatch is unavailable, return a `waiting_for_subagent_dispatch` state with task briefs only.
-- Do not answer with company analysis, valuation, recommendation, portfolio/risk judgment, order approval, or execution from your own reasoning before required role artifacts exist.
+- Do not answer with company analysis, valuation, recommendation, portfolio/risk judgment, order approval, or execution from your own reasoning before a validated workflow plan and required role artifacts exist.
 - Only accepted role artifacts move downstream; weak upstream work returns `revise`, `blocked`, or `waiting`.
 - Synthesis preserves contrary evidence, scenario uncertainty, forecast
   permission or block reasons, investor-profile gaps, anti-overfit gaps, and

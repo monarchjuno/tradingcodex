@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-import hashlib
 import json
 import os
 import sys
@@ -23,15 +22,7 @@ if SOURCE_ROOT not in sys.path:
 os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", "{{PROJECT_DIR}}")
 
 from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS
-from tradingcodex_service.application.harness import (
-    build_compact_dispatch_context,
-    build_subagent_starter_prompt,
-    classify_starter_request,
-    is_connector_build_request,
-    is_investment_workflow_request,
-    is_secret_only_request,
-    is_secret_warning_request,
-)
+from tradingcodex_service.application.workflow_planner import build_workflow_intake, record_workflow_intake
 from tradingcodex_cli.startup_status import build_server_status, fallback_server_status
 
 ROOT = Path("{{PROJECT_DIR}}")
@@ -123,99 +114,43 @@ def user_prompt_submit(payload: dict) -> None:
     agent_type = payload.get("agent_type") or payload.get("subagent_type")
     if agent_type in EXPECTED_SUBAGENTS:
         return
-    secret_warning = is_secret_warning_request(prompt)
-    secret_only = is_secret_only_request(prompt)
-    connector_build_request = is_connector_build_request(prompt)
-    investment_request = is_investment_workflow_request(prompt) and not secret_only
-    if not investment_request and not secret_warning and not connector_build_request:
+    try:
+        preview = build_workflow_intake(prompt, ROOT)
+    except Exception as exc:
+        append_hook_audit({"event": "user-prompt-submit", "warning": "workflow intake failed", "error": str(exc)})
         return
-    plan = classify_starter_request(prompt) if investment_request or connector_build_request else {"lane": "secret_warning", "subagents": []}
-    explicit = any(token in prompt.lower() for token in ["subagent", "parallel", "delegated", "$tcx-workflow", "$orchestrate-workflow", "서브에이전트"])
-    activation_source = "explicit_subagent" if explicit else "auto_routed_investment_request"
-    if connector_build_request:
-        activation_source = "connector_build_request"
-    if not investment_request:
-        activation_source = "secret_warning_only"
-    if connector_build_request:
-        activation_source = "connector_build_request"
-    compact_context = build_compact_dispatch_context(prompt, ROOT) if investment_request else {
-        "context_mode": "compact_workflow_gate",
-        "workflow_lane": plan["lane"],
-        "required_subagents": plan.get("subagents", []),
-        "starter_prompt_path": ".tradingcodex/mainagent/latest-user-prompt-gate.json",
-        "blocked_actions": plan.get("blockedActions", ["secret storage", "secret echo", "raw credential handling"]),
-        "routing_status": {
-            "lane": plan["lane"],
-            "selected_team": plan.get("subagents", []),
-            "blocked_actions": plan.get("blockedActions", []),
-        },
-    }
-    gate = {
-        "marker": "tradingcodex-workflow-gate",
-        "workflow_run_id": f"workflow-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
-        "requires_subagent_dispatch": investment_request,
-        "auto_dispatch_allowed": investment_request,
-        "confirmation_required": False,
-        "explicit_subagent_request": explicit,
-        "activation_source": activation_source,
-        "workflow_lane": plan["lane"],
-        "required_subagents": plan.get("subagents", []),
-        "starter_prompt": build_subagent_starter_prompt(prompt, ROOT) if investment_request or connector_build_request else "",
-        "compact_additional_context": compact_context,
-        "secret_warning": secret_warning,
-    }
-    loop_state_rel = loop_state_relpath(gate["workflow_run_id"])
+    if not preview.get("requires_workflow_planning") and not preview.get("secret_warning"):
+        return
+    intake = record_workflow_intake(ROOT, prompt, workflow_run_id=preview["workflow_run_id"])
     session_key = event_session_key(payload)
-    if isinstance(compact_context.get("loop_contract"), dict):
-        compact_context["loop_contract"]["state_path"] = loop_state_rel
-    gate["workflow_loop_state_path"] = loop_state_rel
-    gate["latest_workflow_loop_state_path"] = ".tradingcodex/mainagent/workflow-loop-state.json"
-    gate["session_key"] = session_key
-    loop_state = build_initial_loop_state(gate, plan, compact_context)
-    write_json(ROOT / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json", gate)
-    write_json(workflow_gate_path(gate["workflow_run_id"]), gate)
-    write_loop_state(loop_state)
     if session_key:
-        remember_session_run(session_key, gate["workflow_run_id"])
-    append_jsonl(ROOT / ".tradingcodex" / "mainagent" / "prompt-gate-history.jsonl", {
-        "ts": now(),
-        "workflow_run_id": gate["workflow_run_id"],
-        "workflow_lane": gate["workflow_lane"],
-        "required_subagents": gate["required_subagents"],
-        "allowed_followup_team": loop_state["allowed_followup_team"],
-        "escalation_team": loop_state["escalation_team"],
-        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
-        "activation_source": gate["activation_source"],
-        "secret_warning": gate["secret_warning"],
-        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        "prompt_bytes": len(prompt.encode("utf-8")),
-        "compact_context": compact_context,
-        "starter_prompt_estimated_chars": len(gate["starter_prompt"]),
-        "workflow_loop_state_path": loop_state_rel,
-        "latest_workflow_loop_state_path": ".tradingcodex/mainagent/workflow-loop-state.json",
-    })
+        remember_session_run(session_key, intake["workflow_run_id"])
     append_hook_audit({
         "event": "user-prompt-submit",
-        "workflow_run_id": gate["workflow_run_id"],
-        "workflow_lane": gate["workflow_lane"],
-        "required_subagents": gate["required_subagents"],
-        "workflow_loop_state_path": loop_state_rel,
-        "latest_workflow_loop_state_path": ".tradingcodex/mainagent/workflow-loop-state.json",
-        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
-        "activation_source": gate["activation_source"],
-        "secret_warning": gate["secret_warning"],
-        "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
-        "prompt_bytes": len(prompt.encode("utf-8")),
+        "workflow_run_id": intake["workflow_run_id"],
+        "requires_workflow_planning": intake["requires_workflow_planning"],
+        "investment_candidate": intake["investment_candidate"],
+        "connector_build": intake["connector_build"],
+        "secret_warning": intake["secret_warning"],
+        "heuristic_lane": intake["heuristic_lane"],
+        "heuristic_roles": intake["heuristic_roles"],
+        "prompt_sha256": intake["prompt_sha256"],
+        "prompt_bytes": intake["prompt_bytes"],
     })
     additional_context = {
-        "marker": gate["marker"],
-        "workflow_run_id": gate["workflow_run_id"],
-        "requires_subagent_dispatch": gate["requires_subagent_dispatch"],
-        "auto_dispatch_allowed": gate["auto_dispatch_allowed"],
-        "confirmation_required": gate["confirmation_required"],
-        "activation_source": gate["activation_source"],
-        "secret_warning": gate["secret_warning"],
-        **compact_context,
+        "marker": intake["marker"],
+        "workflow_run_id": intake["workflow_run_id"],
+        "requires_workflow_planning": intake["requires_workflow_planning"],
+        "intake_path": intake["intake_path"],
+        "investment_candidate": intake["investment_candidate"],
+        "connector_build": intake["connector_build"],
+        "secret_warning": intake["secret_warning"],
+        "explicit_negations": intake["explicit_negations"],
+        "heuristic_lane": intake["heuristic_lane"],
+        "heuristic_roles": intake["heuristic_roles"],
+        "blocked_actions": intake["blocked_actions"],
+        "deterministic_hint": intake["deterministic_hint"],
+        "planning_instruction": "Use $tcx-workflow to draft, validate, and record a staged workflow plan before dispatch or investment analysis.",
     }
     output = {
         "hookSpecificOutput": {
@@ -334,7 +269,8 @@ def update_loop_state_for_subagent_event(event: str, role: str, record: dict) ->
         return
     pending = state.get("pending_tasks") if isinstance(state.get("pending_tasks"), list) else []
     for task in pending:
-        if task.get("role") == role and task.get("status") in {"pending", "active"}:
+        task_roles = task.get("roles") if isinstance(task.get("roles"), list) else [task.get("role")]
+        if role in task_roles and task.get("status") in {"pending", "active"}:
             task["status"] = "active" if event == "subagent-start" else "completed"
             task["updated_at"] = record["ts"]
             break
@@ -430,8 +366,9 @@ def resolve_workflow_run_id(payload: dict) -> str:
     mapping = read_json(SESSION_RUNS_PATH, {})
     if session_key and isinstance(mapping, dict) and mapping.get(session_key):
         return str(mapping[session_key])
-    gate = read_json(ROOT / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json", {})
-    return str(gate.get("workflow_run_id") or "")
+    plan = read_json(ROOT / ".tradingcodex" / "mainagent" / "latest-workflow-plan.json", {})
+    intake = read_json(ROOT / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json", {})
+    return str(plan.get("workflow_run_id") or intake.get("workflow_run_id") or "")
 
 
 def subagent_session_id(payload: dict, run_id: str, role: str) -> str:

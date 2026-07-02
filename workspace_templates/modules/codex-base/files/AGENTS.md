@@ -24,9 +24,9 @@ Repository expectations:
   behavior in role TOML, and generated indexes under `.tradingcodex/generated/`.
 - Keep handoffs context-efficient: pass artifact paths, `context_summary`,
   source/as-of metadata, and source snapshot IDs before pasting full artifacts.
-- Treat hook `additionalContext` as compact dispatch guidance. Read
-  `.tradingcodex/mainagent/latest-user-prompt-gate.json` only when the full
-  starter prompt is needed.
+- Treat hook `additionalContext` as compact intake guidance. Read
+  `.tradingcodex/mainagent/latest-workflow-intake.json` for intake hints and
+  `.tradingcodex/mainagent/latest-workflow-plan.json` for the validated plan.
 - Keep skill document metadata in `SKILL.md` frontmatter and keep markdown
   bodies focused on the skill's own procedure.
 - Keep user-owned standalone strategy skills under `.agents/skills/strategy-*`.

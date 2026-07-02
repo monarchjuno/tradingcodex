@@ -233,14 +233,14 @@ Scenarios should include:
   answered, and complete active-profile investor context
 - starter-prompt web profile-answer forms persist answers to the active profile
   and the refreshed preview removes those questions
-- Codex `UserPromptSubmit` generated hooks reuse answered active-profile
-  investor context in the persisted starter prompt while keeping compact
-  `additionalContext` under budget
+- Codex `UserPromptSubmit` generated hooks keep compact intake hints under
+  budget; `$tcx-workflow` reuses answered active-profile investor context when
+  drafting the validated staged plan
 - unavailable or unverified subagent routing fails closed
 - completed role artifacts are reused when quality gates pass
 - downstream roles return `revise`, `blocked`, or `waiting` instead of filling missing upstream role work
-- hook `additionalContext` stays compact and points to the persisted prompt gate
-  instead of injecting the full starter prompt into every routed turn
+- hook `additionalContext` stays compact and points to persisted workflow
+  intake instead of injecting a full starter prompt into every routed turn
 - starter prompts and generated guidance expose the no-overlap handoff contract
 - starter prompts and generated guidance tell subagents to write reader-facing
   research artifacts in the user's language unless explicitly overridden
@@ -255,13 +255,12 @@ Scenarios should include:
   budget so agents pass artifact paths, context summaries, source snapshot IDs,
   and short deltas instead of full artifacts or repeated role manuals
 - multi-round subagent smokes run `tcx subagents context-audit --strict` after
-  several prompt gates, subagent start/stop events, and large research
+  several workflow intakes, subagent start/stop events, and large research
   artifacts across research-only, thesis, portfolio/risk, order-draft,
   approval/execution, crypto, ETF/index, and options/instrument lanes; the
-  audit must show compact hook context, bounded starter prompts, compact prompt
-  gate history, compact session state with total counters plus retained recent
-  events, no pasted markdown artifacts in
-  gate/history/state, no research artifacts missing `context_summary`, and
+  audit must show compact hook intake, compact intake history, compact session
+  state with total counters plus retained recent events, no pasted markdown artifacts in
+  intake/history/state, no research artifacts missing `context_summary`, and
   warnings for artifacts missing reader-first `reader_summary` or `next_action`
 - repo skill boundary tests fail when role identifiers leak into generic skills
   outside necessary command principal examples or policy/artifact contracts

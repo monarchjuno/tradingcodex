@@ -78,7 +78,7 @@ def test_generated_workspace_connects_mock_broker(tmp_path: Path) -> None:
     tcx(workspace, env_extra, "mode", "set", "build", "--reason", "mock broker connector smoke")
     gate = hook_context(workspace, "Connect mock-json broker. No order, no trading, do not read secrets.", env_extra)
     assert gate is not None
-    assert gate["workflow_lane"] == "connector_build"
+    assert gate["heuristic_lane"] == "connector_build"
 
     write_mock_provider(
         workspace,
@@ -218,24 +218,16 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     for index, (prompt, lane, roles, secret_warning) in enumerate(prompt_cases):
         gate = hook_context(workspace, prompt, env_extra, via_hooks_json=index == 0)
         assert gate is not None, prompt
-        assert gate["workflow_lane"] == lane
-        assert gate["required_subagents"] == roles
+        assert gate["heuristic_lane"] == lane
+        assert gate["heuristic_roles"] == roles
         assert gate["secret_warning"] is secret_warning
-        assert gate["confirmation_required"] is False
-        assert gate["context_mode"] == "compact_workflow_gate"
-        assert gate["starter_prompt_path"] == ".tradingcodex/mainagent/latest-user-prompt-gate.json"
+        assert gate["intake_path"].endswith("/intake.json")
         assert "starter_prompt" not in gate
         assert len(json.dumps(gate, ensure_ascii=False)) < 1800
-        if roles:
-            persisted_gate = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8"))
-            starter = persisted_gate["starter_prompt"]
-            assert "This selected team is binding for the current lane" in starter
-            assert "Research artifact language:" in starter
-            assert "Use handoff states: accepted, revise, blocked, waiting." in starter
-            assert "source/as-of posture" in starter
-            assert "Context budget:" in starter
-            assert "context_summary" in starter
-            assert "Blocked actions before artifacts:" in starter
+        persisted_intake = json.loads((workspace / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json").read_text(encoding="utf-8"))
+        assert persisted_intake["heuristic_lane"] == lane
+        assert "prompt_sha256" in persisted_intake
+        assert prompt not in json.dumps(persisted_intake, ensure_ascii=False)
 
     hook_audit_path = workspace / "trading" / "audit" / "codex-hooks.jsonl"
     assert hook_audit_path.exists()
@@ -476,16 +468,15 @@ def test_long_multi_subagent_context_budget_audit(tmp_path: Path) -> None:
     for round_index, (prompt, expected_lane) in enumerate(scenarios, start=1):
         context = hook_context(workspace, prompt, env_extra)
         assert context is not None
-        assert context["workflow_lane"] == expected_lane
+        assert context["heuristic_lane"] == expected_lane
         assert "starter_prompt" not in context
         assert len(json.dumps(context, ensure_ascii=False)) < 1600
 
-        persisted_gate = (workspace / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json").read_text(encoding="utf-8")
-        assert sentinel not in persisted_gate
-        assert "Context budget:" in persisted_gate
-        assert "context_summary" in persisted_gate
+        persisted_intake = (workspace / ".tradingcodex" / "mainagent" / "latest-workflow-intake.json").read_text(encoding="utf-8")
+        assert sentinel not in persisted_intake
+        assert "prompt_sha256" in persisted_intake
 
-        for role in context["required_subagents"]:
+        for role in context["heuristic_roles"]:
             artifact_id = f"long-{round_index}-{role}"
             hook_event(workspace, "subagent-start", {"agent_type": role, "task_name": f"{role} round {round_index}"}, env_extra)
             markdown = (

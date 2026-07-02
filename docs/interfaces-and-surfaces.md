@@ -203,7 +203,9 @@ Django Ninja provides local/staff typed control APIs:
 - `GET|PATCH|DELETE /api/subagents/{role}/optional-skills/{name}`
 - `POST /api/subagents/{role}/optional-skills/{name}/activate|archive`
 - `GET /api/workflows/{id}`
-- `POST /api/workflows/{id}/validate`
+- `POST /api/workflows/intake` records compact workflow intake hints without raw prompt storage
+- `POST /api/workflows/{id}/validate` validates an agent-authored staged workflow plan, or returns a deterministic preview for compatibility
+- `POST /api/workflows/record` records a validated staged workflow plan and initializes loop state
 - `POST /api/policy/simulate`
 - `GET|POST /api/orders/tickets`; list responses are scoped to the active
   profile (`portfolio_id`, `account_id`, `strategy_id`)
