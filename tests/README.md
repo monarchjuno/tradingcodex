@@ -13,7 +13,7 @@ The Python migration smoke suite covers:
 - workspace generation contract
 - attach/init-time central Django DB setup without workspace-local DB creation
 - immutable workspace identity and active profile metadata
-- nine fixed subagents and twenty-three core repo skills
+- nine fixed subagents and twenty-four core repo skills
 - default user-facing skill listing separated from full internal skill inventory
 - starter prompt routing for negated execution requests
 - starter prompt routing for guardrail-verification wording and earnings/catalyst thesis review

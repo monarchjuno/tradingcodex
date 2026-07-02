@@ -41,6 +41,8 @@ If `update_status.update_available=true`:
 
 Use `$tcx-workflow` for investment workflows. Investment workflows include security analysis, valuation, recommendation, portfolio/risk judgment, order drafting, approval, and execution status.
 
+Use `$automate-workflow` when the user asks to automate, schedule, monitor, or periodically run a recurring TradingCodex workflow. Arm the mandate and preflight blockers before registering an active Codex automation.
+
 Use `$tcx-server` for operate-plane TradingCodex status, service recovery, MCP setup, runtime mode, update status, dashboard URL, and safe broker connector inspection.
 
 Use `$tcx-build` for build-plane work: TradingCodex self-update, harness/template/skill rewrites, and broker/API provider requests such as "connect `<broker>`" or "add this broker".

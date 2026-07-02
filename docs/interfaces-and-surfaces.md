@@ -397,8 +397,8 @@ provider, then registration stores only provider metadata and `credential_ref`.
 - `./tcx research create|append|get|list|search|export`
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
-direct user entrypoints: `tcx-workflow`, `tcx-server`, `tcx-build`,
-`strategy-creator`, `postmortem`, and active `strategy-*` skills. Full
+direct user entrypoints: `tcx-workflow`, `automate-workflow`, `tcx-server`,
+`tcx-build`, `strategy-creator`, `postmortem`, and active `strategy-*` skills. Full
 inspection is available through
 `./tcx skills list --all` and role-specific `./tcx subagents skills <role>`.
 

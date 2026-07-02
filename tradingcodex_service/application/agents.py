@@ -68,6 +68,7 @@ ANTI_OVERFIT_VALIDATION_ROLES = (
 
 HEAD_MANAGER_SKILLS = (
     "tcx-workflow",
+    "automate-workflow",
     "tcx-server",
     "tcx-build",
     "strategy-creator",
@@ -417,6 +418,7 @@ ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
 
 SKILL_SPECS: dict[str, SkillSpec] = {
     "tcx-workflow": SkillSpec("tcx-workflow", "TCX Workflow", ("head-manager",), user_visible=True),
+    "automate-workflow": SkillSpec("automate-workflow", "Automate Workflow", ("head-manager",), user_visible=True),
     "tcx-server": SkillSpec("tcx-server", "TCX Server", ("head-manager",), user_visible=True),
     "tcx-build": SkillSpec("tcx-build", "TCX Build", ("head-manager",), user_visible=True),
     "external-data-source-gate": SkillSpec("external-data-source-gate", "External Data Source Gate", RESEARCH_ROLES, scope="subagent_shared"),

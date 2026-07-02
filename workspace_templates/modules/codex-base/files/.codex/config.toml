@@ -18,6 +18,10 @@ path = "{{PROJECT_DIR}}/.agents/skills/tcx-workflow/SKILL.md"
 enabled = true
 
 [[skills.config]]
+path = "{{PROJECT_DIR}}/.agents/skills/automate-workflow/SKILL.md"
+enabled = true
+
+[[skills.config]]
 path = "{{PROJECT_DIR}}/.agents/skills/tcx-server/SKILL.md"
 enabled = true
 

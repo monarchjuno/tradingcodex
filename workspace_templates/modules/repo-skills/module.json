@@ -11,6 +11,7 @@
     "capabilities": [
       "skill.collect_evidence",
       "skill.external_data_source_gate",
+      "skill.workflow.automation",
       "skill.workflow.orchestrate",
       "skill.workflow.investment_map",
       "skill.workflow.scenario_quality_gates",

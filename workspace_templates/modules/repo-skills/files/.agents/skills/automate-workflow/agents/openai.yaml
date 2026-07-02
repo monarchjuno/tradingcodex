@@ -1,0 +1,6 @@
+interface:
+  display_name: "Automate Workflow"
+  short_description: "Arm recurring workflow automations"
+  default_prompt: "Use $automate-workflow to arm and register a safe recurring TradingCodex workflow automation."
+policy:
+  allow_implicit_invocation: true

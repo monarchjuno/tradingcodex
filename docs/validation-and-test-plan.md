@@ -85,7 +85,7 @@ Smoke coverage should verify:
 - generated workspace contains `.tradingcodex/workspace.json`
 - generated workspace contains `.tradingcodex/generated/component-index.json`
 - generated workspace contains no `package.json` or Node MCP/runtime files
-- generated workspace contains nine fixed subagents and twenty-three core repo skills
+- generated workspace contains nine fixed subagents and twenty-four core repo skills
 - two generated workspaces have different workspace ids
 - two generated workspaces keep separate research markdown/source-snapshot files while sharing non-research MCP ledger rows through the central DB
 - profile selection controls paper portfolio separation

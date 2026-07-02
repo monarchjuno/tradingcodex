@@ -39,7 +39,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         tags=("guardrail.guidance", "guardrail.information_barrier", "improvement.workflow_quality"),
         surfaces={
             "instructions": ("head-manager", "AGENTS"),
-            "skills": ("tcx-workflow",),
+            "skills": ("tcx-workflow", "automate-workflow"),
             "services": ("harness",),
             "templates": ("codex-base", "fixed-subagents", "repo-skills"),
             "tests": ("generated-workspace", "subagent-roster"),
@@ -56,7 +56,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         tags=("guardrail.guidance", "improvement.workflow_quality"),
         surfaces={
             "instructions": ("head-manager", "AGENTS"),
-            "skills": ("tcx-workflow",),
+            "skills": ("tcx-workflow", "automate-workflow"),
             "hooks": ("UserPromptSubmit",),
             "services": ("harness",),
             "templates": ("codex-base", "repo-skills"),
@@ -73,7 +73,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality"),
         surfaces={
-            "skills": ("tcx-workflow",),
+            "skills": ("tcx-workflow", "automate-workflow"),
             "services": ("harness",),
             "templates": ("repo-skills",),
             "tests": ("quality-scenarios", "routing"),

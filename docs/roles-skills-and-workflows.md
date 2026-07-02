@@ -100,6 +100,7 @@ they are not required before `head-manager` routes the work.
 | --- | --- |
 | General investment request, such as "Analyze Apple stock" | `UserPromptSubmit` records compact workflow intake hints; `head-manager` uses `$tcx-workflow` to draft, validate, record, and then dispatch from a staged workflow plan before analysis. |
 | Explicit `$tcx-workflow` request | The workflow skill becomes the primary orchestrator, records a validated staged plan, and dispatches selected stages. |
+| Recurring automation request, such as "run this before market open every day" | Route through `$automate-workflow`; ask only for missing arming fields, preflight blockers, and register an active Codex automation only after the mandate is armed. |
 | Broker/provider build request, such as "connect this broker" | Route to the `connector_build` lane and `$tcx-build`; connect/scaffold/register/validate provider metadata without investment dispatch or live submission. |
 | Runtime/server request, such as "open dashboard" or "check TradingCodex status" | Route to `$tcx-server`; report service/MCP/update posture and use CLI recovery commands without changing execution authority. |
 | Explicit subagent/parallel/delegated request | `UserPromptSubmit` records intake hints; the skill checks existing subagent state and validates the staged plan before creating/reusing sessions. |
@@ -176,7 +177,7 @@ Instruction/skill separation:
 | Surface | Owns | Must not own |
 | --- | --- | --- |
 | `head-manager` base instructions | durable identity, safety invariants, dispatch fail-closed rule, role boundaries, approved action boundary, skill routing | workflow templates, scenario tables, long checklists, subagent message bodies |
-| Head-manager skills | compact repeatable procedures for workflow routing, server/runtime recovery, build-mode work, strategy creation, and postmortems | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
+| Head-manager skills | compact repeatable procedures for workflow routing, automation arming, server/runtime recovery, build-mode work, strategy creation, and postmortems | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
 | Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, single-item display nickname candidates, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
 | Role-owned skills | capability procedure, artifact expectations, quality checks, and local output rules | role eligibility, work for other roles, self-approval, execution outside MCP |
 | Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
@@ -208,6 +209,7 @@ User-visible skill lists are not the same as enabled or installed skills. The
 main-agent user surface should show only direct user entrypoints by default:
 
 - `tcx-workflow`
+- `automate-workflow`
 - `tcx-server`
 - `tcx-build`
 - `strategy-creator`
@@ -240,6 +242,7 @@ Head-manager skill responsibilities:
 | Skill | Responsibility |
 | --- | --- |
 | `tcx-workflow` | compact workflow routing, selected-team dispatch/reuse, Artifact Supervisor Loop planning, handoff quality states, bounded follow-up/escalation proposals, and synthesis after accepted artifacts |
+| `automate-workflow` | user Q&A, mandate drafting, preflight checks, arming status, and Codex automation registration for recurring TradingCodex workflows without granting execution authority |
 | `tcx-server` | startup health, local dashboard URL guidance, explicit user-requested dashboard opening, Codex restart guidance, TradingCodex MCP setup, update-status explanation, read-only broker/status inspection, and service troubleshooting without granting execution authority |
 | `tcx-build` | full-access plus TCX-build-mode gated self-update, template/harness edits, broker/API provider connect/scaffold/register/validate flows, credential-ref handling, and live-submit blocking outside service gates |
 | `external-data-source-gate` | read-only external evidence-source constraints and External MCP Gate honesty |
