@@ -6,22 +6,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
+from tradingcodex_service.application.agents import AGENT_SPECS
 
-RESEARCH_ROLES = {
-    "head-manager",
-    "fundamental-analyst",
-    "technical-analyst",
-    "news-analyst",
-    "macro-analyst",
-    "instrument-analyst",
-    "valuation-analyst",
-    "portfolio-manager",
-    "risk-manager",
-}
-POLICY_ROLES = {"head-manager", "portfolio-manager", "risk-manager", "execution-operator"}
-PORTFOLIO_ROLES = {"head-manager", "portfolio-manager", "risk-manager", "execution-operator"}
-APPROVAL_ROLES = {"risk-manager"}
-EXECUTION_ROLES = {"execution-operator"}
+
 SAFE_HOME_TOOL_NAMES = frozenset({
     "get_tradingcodex_status",
     "get_runtime_mode",
@@ -40,6 +27,10 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "list_research_artifacts",
     "search_research_artifacts",
 })
+
+
+def roles_with_mcp_tool(tool_name: str) -> frozenset[str]:
+    return frozenset(role for role, spec in AGENT_SPECS.items() if tool_name in spec.mcp_allowlist)
 
 
 @dataclass(frozen=True)
@@ -184,7 +175,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return TradingCodex service, DB, workspace, and active profile status.",
         category="harness",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_tradingcodex_status"),
         handler_name="get_tradingcodex_status",
         input_schema=object_schema(),
     ),
@@ -193,7 +184,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return TradingCodex operate/build mode status without changing permissions or mode.",
         category="harness",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_runtime_mode"),
         handler_name="get_runtime_mode",
         input_schema=object_schema(),
     ),
@@ -202,7 +193,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return TradingCodex package/workspace update status and self-update gate metadata without running an update.",
         category="harness",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_update_status"),
         handler_name="get_update_status",
         input_schema=object_schema(),
     ),
@@ -211,7 +202,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Evaluate TradingCodex policy for a proposed action without bypassing service-layer checks.",
         category="policy",
         risk_level="read",
-        allowed_roles=frozenset(POLICY_ROLES),
+        allowed_roles=roles_with_mcp_tool("simulate_policy"),
         handler_name="simulate_policy",
         input_schema=object_schema({
             "principal_id": {"type": "string"},
@@ -226,7 +217,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Validate that an approval receipt is valid, unexpired, and matches its order ticket payload.",
         category="orders",
         risk_level="write",
-        allowed_roles=frozenset({"risk-manager", "execution-operator"}),
+        allowed_roles=roles_with_mcp_tool("validate_approval_receipt"),
         handler_name="validate_approval_receipt",
         input_schema=object_schema(
             {
@@ -245,7 +236,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Experimental: submit an approved order ticket through the service boundary after approval, duplicate-request, policy, connection, and live-confirmation gates.",
         category="execution",
         risk_level="execution",
-        allowed_roles=frozenset(EXECUTION_ROLES),
+        allowed_roles=roles_with_mcp_tool("submit_approved_order"),
         handler_name="submit_approved_order",
         input_schema=object_schema(
             {
@@ -267,7 +258,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Experimental: cancel through provider cancel when supported, otherwise mark cancelable local validation/paper broker orders as canceled.",
         category="execution",
         risk_level="execution",
-        allowed_roles=frozenset(EXECUTION_ROLES),
+        allowed_roles=roles_with_mcp_tool("cancel_approved_order"),
         handler_name="cancel_approved_order",
         input_schema=object_schema(
             {
@@ -287,7 +278,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Experimental: return local order and broker-order status information without submitting or canceling orders.",
         category="execution",
         risk_level="read",
-        allowed_roles=frozenset(EXECUTION_ROLES | {"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_order_status"),
         handler_name="get_order_status",
         input_schema=object_schema({"order_id": {"type": "string"}, "ticket_id": {"type": "string"}, "broker_order_id": {"type": "string"}}, additional_properties=False),
         experimental=True,
@@ -297,7 +288,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return paper portfolio positions and cash state.",
         category="portfolio",
         risk_level="read",
-        allowed_roles=frozenset(PORTFOLIO_ROLES),
+        allowed_roles=roles_with_mcp_tool("get_positions"),
         handler_name="list_positions",
         input_schema=object_schema(),
     ),
@@ -306,7 +297,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return portfolio snapshot for portfolio, risk, and execution checks.",
         category="portfolio",
         risk_level="read",
-        allowed_roles=frozenset(PORTFOLIO_ROLES),
+        allowed_roles=roles_with_mcp_tool("get_portfolio_snapshot"),
         handler_name="list_positions",
         input_schema=object_schema(),
     ),
@@ -315,7 +306,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List local broker connections, read scopes, trading lock state, accounts, and sync status.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset(PORTFOLIO_ROLES | {"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("list_broker_connections"),
         handler_name="list_broker_connections",
         input_schema=object_schema(),
     ),
@@ -324,7 +315,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return one broker connection health, credential reference, capabilities, and trading lock state.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset(PORTFOLIO_ROLES | {"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_broker_connection_status"),
         handler_name="get_broker_connection_status",
         input_schema=object_schema({"broker_id": {"type": "string"}, "broker_connection_id": {"type": "string"}}),
     ),
@@ -333,7 +324,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List installed TradingCodex broker adapter providers. Core ships paper only; broker-specific live providers are added by build work.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("list_broker_adapter_providers"),
         handler_name="list_broker_adapter_providers",
         input_schema=object_schema(
             {
@@ -349,7 +340,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Agentic broker onboarding: scaffold/register/validate a provider-backed connector with credential_ref only and no live submission.",
         category="brokers",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("connect_broker_connector"),
         handler_name="connect_broker_connector",
         input_schema=object_schema(
             {
@@ -371,7 +362,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Register or update a native broker connector profile using a credential_ref, without exposing raw broker tools or secrets.",
         category="brokers",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("register_broker_connector"),
         handler_name="register_broker_connector",
         input_schema=object_schema(
             {
@@ -396,7 +387,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Create provider-driven connector scaffold files. Unknown providers produce a provider-development-required scaffold instead of enabling execution.",
         category="brokers",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("scaffold_broker_connector"),
         handler_name="scaffold_broker_connector",
         input_schema=object_schema(
             {
@@ -421,7 +412,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Validate provider-driven connector scaffold/registration metadata without enabling live order submission.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("validate_broker_connector_build"),
         handler_name="validate_broker_connector_build",
         input_schema=object_schema({"broker_id": {"type": "string", "maxLength": 120}, "broker_connection_id": {"type": "string", "maxLength": 120}}, additional_properties=False),
     ),
@@ -430,7 +421,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return the normalized BrokerCapabilityProfile stored on a native broker connector.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager", "portfolio-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_broker_capability_profile"),
         handler_name="get_broker_capability_profile",
         input_schema=object_schema({"broker_id": {"type": "string"}, "broker_connection_id": {"type": "string"}}, additional_properties=False),
     ),
@@ -439,7 +430,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return normalized instrument/order constraints for a broker, asset class, product, and symbol.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager", "instrument-analyst", "portfolio-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_broker_instrument_constraints"),
         handler_name="get_broker_instrument_constraints",
         input_schema=object_schema(
             {
@@ -460,7 +451,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Preview canonical_order translation for a broker connector without submission, cancellation, or approval authority.",
         category="orders",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager", "portfolio-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("preview_order_translation"),
         handler_name="preview_order_translation",
         input_schema=object_schema(ORDER_TICKET_SCHEMA["properties"], additional_properties=True),
         capability_required="broker_order.preview",
@@ -470,7 +461,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Return connector scaffold metadata created by TradingCodex build mode without enabling live execution.",
         category="brokers",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_connector_build_status"),
         handler_name="get_connector_build_status",
         input_schema=object_schema(),
     ),
@@ -479,7 +470,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Run a read-only broker account sync through the TradingCodex connection registry and materialize the local portfolio snapshot.",
         category="brokers",
         risk_level="write",
-        allowed_roles=frozenset({"portfolio-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("sync_broker_account"),
         handler_name="sync_broker_account",
         input_schema=object_schema(
             {
@@ -496,7 +487,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List broker/local reconciliation summaries created by portfolio sync.",
         category="portfolio",
         risk_level="read",
-        allowed_roles=frozenset(PORTFOLIO_ROLES | {"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("list_reconciliation_runs"),
         handler_name="list_reconciliation_runs",
         input_schema=object_schema({"broker_id": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
     ),
@@ -505,7 +496,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Create a draft-only canonical order ticket from explicit fields or natural language without broker submission.",
         category="orders",
         risk_level="write",
-        allowed_roles=frozenset({"portfolio-manager"}),
+        allowed_roles=roles_with_mcp_tool("create_order_ticket"),
         handler_name="create_order_ticket",
         input_schema=object_schema(ORDER_TICKET_SCHEMA["properties"], additional_properties=True),
         capability_required="order_ticket.create",
@@ -515,7 +506,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Run schema, policy, restricted symbol, cash/position, broker validation, market, and risk readiness checks for an order ticket.",
         category="orders",
         risk_level="write",
-        allowed_roles=frozenset({"portfolio-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("run_order_checks"),
         handler_name="run_order_checks",
         input_schema=object_schema({"ticket_id": {"type": "string"}, "order_ticket_id": {"type": "string"}}, additional_properties=False),
         capability_required="order_ticket.check",
@@ -525,7 +516,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Create an approval receipt for a checked order ticket, binding the approval to the exact order payload hash and broker/account scope.",
         category="approvals",
         risk_level="approval",
-        allowed_roles=frozenset(APPROVAL_ROLES),
+        allowed_roles=roles_with_mcp_tool("request_order_approval"),
         handler_name="request_order_approval",
         input_schema=object_schema(
             {
@@ -544,7 +535,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Fetch a canonical order ticket, checks, fills, broker order records, and event timeline.",
         category="orders",
         risk_level="read",
-        allowed_roles=frozenset({"portfolio-manager", "risk-manager", "execution-operator", "head-manager"}),
+        allowed_roles=roles_with_mcp_tool("get_order_ticket"),
         handler_name="get_order_ticket",
         input_schema=object_schema({"ticket_id": {"type": "string"}, "order_ticket_id": {"type": "string"}, "order_id": {"type": "string"}}),
     ),
@@ -553,7 +544,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List canonical order tickets and approval readiness state.",
         category="orders",
         risk_level="read",
-        allowed_roles=frozenset({"portfolio-manager", "risk-manager", "execution-operator", "head-manager"}),
+        allowed_roles=roles_with_mcp_tool("list_order_tickets"),
         handler_name="list_order_tickets",
         input_schema=object_schema({"state": {"type": "string"}, "status": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
     ),
@@ -562,7 +553,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Record reviewed external MCP broker tool mappings and keep execution mappings disabled unless gated by a TradingCodex service connection.",
         category="brokers",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager", "risk-manager"}),
+        allowed_roles=roles_with_mcp_tool("record_broker_mapping_review"),
         handler_name="record_broker_mapping_review",
         input_schema=object_schema({"broker_id": {"type": "string"}, "broker_connection_id": {"type": "string"}}, additional_properties=True),
         capability_required="broker_mapping.review",
@@ -572,7 +563,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List managed External MCP Gate connections, review state, and discovered tools without exposing broker MCP directly to Codex.",
         category="external_mcp",
         risk_level="read",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("list_external_mcp_connections"),
         handler_name="list_external_mcp_connections",
         input_schema=object_schema({"name": {"type": "string"}, "enabled": {"type": "boolean"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
     ),
@@ -581,7 +572,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Register or update a broker/data MCP connection inside TradingCodex External MCP Gate; this does not add raw broker tools to Codex TOML.",
         category="external_mcp",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("register_external_mcp_connection"),
         handler_name="register_external_mcp_connection",
         input_schema=object_schema(
             {
@@ -605,7 +596,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Check a managed external MCP connection lifecycle without importing tool metadata when the connection is disabled or unhealthy.",
         category="external_mcp",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("check_external_mcp_connection"),
         handler_name="check_external_mcp_connection",
         input_schema=object_schema({"router_id": {"type": "integer"}, "name": {"type": "string"}, "router_name": {"type": "string"}, "timeout": {"type": "number"}}, additional_properties=False),
         capability_required="external_mcp.check",
@@ -615,7 +606,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Run initialize/tools-list/resources-list/prompts-list discovery for a managed external MCP connection and store schema hashes for review.",
         category="external_mcp",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("discover_external_mcp_connection"),
         handler_name="discover_external_mcp_connection",
         input_schema=object_schema({"router_id": {"type": "integer"}, "name": {"type": "string"}, "router_name": {"type": "string"}, "timeout": {"type": "number"}}, additional_properties=False),
         capability_required="external_mcp.discover",
@@ -625,7 +616,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Review a discovered external MCP tool. Read-only/account-read tools may be enabled; execution-like tools are kept adapter-mapping-required.",
         category="external_mcp",
         risk_level="write",
-        allowed_roles=frozenset({"head-manager"}),
+        allowed_roles=roles_with_mcp_tool("review_external_mcp_tool"),
         handler_name="review_external_mcp_tool",
         input_schema=object_schema(
             {
@@ -652,7 +643,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Refresh local broker order status through the TradingCodex connection registry without bypassing the service path.",
         category="execution",
         risk_level="execution",
-        allowed_roles=frozenset(EXECUTION_ROLES),
+        allowed_roles=roles_with_mcp_tool("refresh_broker_order_status"),
         handler_name="refresh_broker_order_status",
         input_schema=object_schema({"ticket_id": {"type": "string"}, "broker_order_id": {"type": "string"}}, additional_properties=False),
         capability_required="mcp.tradingcodex.refresh_broker_order_status",
@@ -663,7 +654,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List workflow artifacts from workspace paths and file-native research memory.",
         category="workflows",
         risk_level="read",
-        allowed_roles=frozenset(RESEARCH_ROLES | {"execution-operator"}),
+        allowed_roles=roles_with_mcp_tool("list_workflow_artifacts"),
         handler_name="list_workflow_artifacts",
         input_schema=object_schema(),
     ),
@@ -672,7 +663,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Store markdown research as a workspace-native file through the service layer.",
         category="research",
         risk_level="write",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("create_research_artifact"),
         handler_name="create_research_artifact",
         input_schema=object_schema({
             "artifact_id": {"type": "string"},
@@ -693,7 +684,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Append a workspace-file version for an existing research artifact.",
         category="research",
         risk_level="write",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("append_research_artifact_version"),
         handler_name="append_research_artifact_version",
         input_schema=object_schema({
             "artifact_id": {"type": "string"},
@@ -710,7 +701,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Fetch a workspace-native research artifact by artifact_id.",
         category="research",
         risk_level="read",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("get_research_artifact"),
         handler_name="get_research_artifact",
         input_schema=object_schema({"artifact_id": {"type": "string"}, "include_markdown": {"type": "boolean"}}, ["artifact_id"]),
     ),
@@ -719,7 +710,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="List workspace-native research artifacts and metadata.",
         category="research",
         risk_level="read",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("list_research_artifacts"),
         handler_name="list_research_artifacts",
         input_schema=object_schema({"artifact_type": {"type": "string"}, "universe": {"type": "string"}, "symbol": {"type": "string"}, "limit": {"type": "integer"}}),
     ),
@@ -728,7 +719,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Search workspace-native markdown research artifacts with lexical file search.",
         category="research",
         risk_level="read",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("search_research_artifacts"),
         handler_name="search_research_artifacts",
         input_schema=object_schema({"query": {"type": "string"}, "limit": {"type": "integer"}}, ["query"]),
     ),
@@ -737,7 +728,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Export or copy a workspace-native research artifact markdown file.",
         category="research",
         risk_level="write",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("export_research_artifact_md"),
         handler_name="export_research_artifact_md",
         input_schema=object_schema({"artifact_id": {"type": "string"}, "export_path": {"type": "string"}}, ["artifact_id"]),
         capability_required="research_artifact.export",
@@ -747,7 +738,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Record provider/as-of/retrieved metadata and warnings as a workspace source-snapshot JSON file.",
         category="research",
         risk_level="write",
-        allowed_roles=frozenset(RESEARCH_ROLES),
+        allowed_roles=roles_with_mcp_tool("record_source_snapshot"),
         handler_name="record_source_snapshot",
         input_schema=object_schema({"provider": {"type": "string"}, "source_category": {"type": "string"}, "as_of": {"type": "string"}, "artifact_id": {"type": "string"}, "warnings": {"type": "array"}, "payload": {"type": "object"}}),
         capability_required="source_snapshot.record",
@@ -757,7 +748,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description="Append an explicit audit event through the TradingCodex audit ledger.",
         category="audit",
         risk_level="write",
-        allowed_roles=frozenset(RESEARCH_ROLES | {"execution-operator"}),
+        allowed_roles=roles_with_mcp_tool("record_audit_event"),
         handler_name="record_audit_event",
         input_schema=object_schema({"event": {"type": "object"}, "principal_id": {"type": "string"}}),
         capability_required="audit_event.record",

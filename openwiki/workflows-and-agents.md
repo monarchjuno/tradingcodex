@@ -4,7 +4,7 @@ Use this page before changing `head-manager`, fixed subagents, skills, hooks, ro
 
 ## Fixed Team
 
-TradingCodex uses one root `head-manager` plus nine fixed subagents.
+TradingCodex uses one root `head-manager` plus ten fixed subagents, including an independent `judgment-reviewer` gate.
 
 | Role | Owns | Never allowed |
 | --- | --- | --- |
@@ -23,7 +23,9 @@ TradingCodex uses one root `head-manager` plus nine fixed subagents.
 
 Natural-language investment requests activate workflow routing. `head-manager` should draft, validate, record, and dispatch from a staged plan before substantive investment analysis. If dispatch is unavailable or role routing is unverified, the workflow waits.
 
-Negated scope is binding. `no order`, `no trading`, and `no valuation` remove those actions or roles from the plan. Broad public-equity prompts such as `Analyze NVDA` default to thesis review unless the user narrows scope first.
+Negated scope is binding. `no order`, `no trading`, and `no valuation` remove those actions or roles from the plan. Broad public-equity prompts such as `Analyze NVDA` default to thesis review unless the user narrows scope first. Narrow fact-only and technical-only prompts stay on the selected producer roles without `judgment-reviewer` unless broader judgment is requested.
+
+Execution-only approved-action lanes use ticket, approval, policy, duplicate-request, connection, and audit gates. They do not dispatch `judgment-reviewer` unless the prompt first routes through research or decision support.
 
 Key files:
 
@@ -48,12 +50,21 @@ Downstream roles consume accepted upstream artifacts. They do not repair missing
 ## Skill And Projection Boundaries
 
 Head-manager and strategy skills live under `.agents/skills/*`. Role-owned subagent skills live under `.tradingcodex/subagents/skills/*`. Fixed subagent TOML projects only that role's allowed skill source list.
+It does not include root or strategy skill files as disabled subagent entries.
 
 `tradingcodex_service/application/agents.py` owns role metadata, built-in skills, permission profiles, MCP allowlists, forbidden skill tags, and projection behavior. Skill bodies should describe procedures, not grant durable role authority.
 
+Shared subagent quality skills include `forecasting-discipline`,
+`thesis-scenario-tree`, `numeric-data-qc`, and `anti-overfit-validation`.
+`agent-judgment-review` is role-owned by `judgment-reviewer` so the challenge
+gate is independent from producing analysts and downstream reviewers. These are
+review procedures, not role authority.
+
 Default user-visible root skills:
 
+- `plan-workflow`
 - `tcx-workflow`
+- `automate-workflow`
 - `tcx-server`
 - `tcx-build`
 - `strategy-creator`

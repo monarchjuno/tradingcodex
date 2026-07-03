@@ -16,6 +16,8 @@ from tradingcodex_service.application.harness import (
     build_subagent_starter_prompt,
     build_workflow_intake_summary,
     evaluate_artifact_supervisor_loop,
+)
+from tradingcodex_service.application.workflow_routing import (
     is_connector_build_request,
     is_investment_workflow_request,
 )

@@ -88,6 +88,8 @@ def text_check(root: Path, layer: str, name: str, rel: str, pattern: str, codex_
 def classify_artifact_path(rel: str) -> str:
     if rel.startswith("trading/forecasts/"):
         return "forecast_ledger"
+    if rel.startswith("trading/decisions/"):
+        return "decision_package"
     if rel.startswith("trading/research/"):
         return "evidence_pack"
     if "order_ticket" in rel:

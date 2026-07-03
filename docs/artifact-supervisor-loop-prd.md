@@ -45,8 +45,9 @@ context discipline, approval gates, execution boundaries, and user scope.
   postmortems.
 - Keep all follow-up briefs compact: artifact path, context summary,
   trigger, delta question, constraints, and blocked actions.
-- Preserve Decision Quality Spine expectations inside the loop rather than
-  keeping them as a separate monolithic PRD.
+- Preserve Decision Quality Spine expectations, including source trust and
+  agent judgment review, inside the loop rather than keeping them as a separate
+  monolithic PRD.
 - Add tests and smoke checks that prove loops improve quality without widening
   authority.
 
@@ -337,8 +338,11 @@ Add file-native loop state records:
 
 ```text
 .tradingcodex/mainagent/workflow-loop-state.json                    # latest compact summary / pointer
+.tradingcodex/mainagent/latest-workflow-intake.json                 # latest compact intake hint
+.tradingcodex/mainagent/latest-workflow-plan.json                   # latest validated staged plan
+.tradingcodex/mainagent/workflows/<workflow_run_id>/intake.json
+.tradingcodex/mainagent/workflows/<workflow_run_id>/workflow-plan.json
 .tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json # canonical run state
-.tradingcodex/mainagent/workflows/<workflow_run_id>/prompt-gate.json
 .tradingcodex/mainagent/session-workflow-runs.json                  # Codex session/thread -> workflow_run_id map
 ```
 
@@ -530,7 +534,8 @@ follow-up is needed.
   synthesize using a closed action set.
 - Loop state is visible in workspace files and audit trails.
 - Context stays compact across iterations.
-- Decision Quality Spine fields still apply inside selected lanes.
+- Decision Quality Spine fields, source trust notes, and judgment-review fields
+  still apply inside selected lanes.
 - Approval, execution, broker, secret, and policy boundaries are unchanged.
 - Generated workspace validation catches loop drift, unauthorized expansion,
   malformed follow-up requests, and unsupported synthesis.

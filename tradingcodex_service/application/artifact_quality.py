@@ -12,6 +12,7 @@ from tradingcodex_service.application.research import RESEARCH_FILE_ROOTS
 FORECAST_FILE_ROOTS = (Path("trading/forecasts"),)
 QUALITY_FILE_ROOTS = RESEARCH_FILE_ROOTS + (
     *FORECAST_FILE_ROOTS,
+    Path("trading/decisions"),
     Path("trading/orders"),
     Path("trading/approvals"),
     Path("trading/audit"),
@@ -67,10 +68,16 @@ READER_UX_RECOMMENDED_FIELDS = (
     "reader_summary",
     "next_action",
 )
+JUDGMENT_REVIEW_FIELDS = (
+    "contrary_evidence",
+    "update_triggers",
+    "invalidation_conditions",
+    "source_trust_notes",
+)
 
 
 def evaluate_artifact_quality(workspace_root: Path | str, artifact_path: str, *, strict: bool = False) -> dict[str, Any]:
-    root = Path(workspace_root)
+    root = Path(workspace_root).expanduser().resolve(strict=False)
     result: dict[str, Any] = {
         "path": artifact_path,
         "exists": False,
@@ -213,10 +220,12 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
             "missing_base_rate_note",
             "evidence_ids",
             "contrary_evidence",
+            "source_trust_notes",
             "resolution_source",
             "review_date",
             "update_triggers",
             "invalidation_conditions",
+            "thesis_lifecycle",
             "current_price_as_of",
             "market_anchor_as_of",
             "investor_profile_gaps",
@@ -346,7 +355,7 @@ def _evaluate_decision_quality(frontmatter: dict[str, Any], body: str, result: d
         checks.append("forecast_contract")
         if _truthy(frontmatter.get("forecast_allowed")):
             _require_any(result, strict, frontmatter, ("probability", "probability_range"), "probability_or_range")
-            _require_fields(result, strict, frontmatter, ("forecast_target", "forecast_horizon", "base_rate", "evidence_ids", "contrary_evidence", "resolution_source", "review_date", "update_triggers"))
+            _require_fields(result, strict, frontmatter, ("forecast_target", "forecast_horizon", "base_rate", "evidence_ids", "contrary_evidence", "resolution_source", "review_date", "update_triggers", "invalidation_conditions"))
         else:
             _require_fields(result, strict, frontmatter, ("forecast_allowed", "forecast_block_reason"))
             _require_any(result, strict, frontmatter, ("base_rate", "missing_base_rate_note"), "base_rate_or_missing_base_rate_note")
@@ -375,16 +384,18 @@ def _evaluate_decision_quality(frontmatter: dict[str, Any], body: str, result: d
 
     accepted_thesis_or_decision = str(frontmatter.get("handoff_state") or "") == "accepted" and (
         lane in {"thesis_review", "thesis_review_then_portfolio_risk_review"}
-        or artifact_type in {"thesis", "decision", "valuation"}
+        or artifact_type in {"thesis", "decision", "decision_package", "valuation"}
     )
+    decision_quality_required = _truthy(frontmatter.get("decision_quality_required"))
+    if decision_quality_required or accepted_thesis_or_decision:
+        checks.append("agent_judgment_review")
+        _require_fields(result, strict, frontmatter, JUDGMENT_REVIEW_FIELDS)
+        if decision_quality_required or artifact_type in {"decision", "decision_package"}:
+            _require_fields(result, strict, frontmatter, ("thesis_lifecycle",))
+
     if accepted_thesis_or_decision:
         checks.append("accepted_decision_fields")
-        _require_fields(
-            result,
-            strict,
-            frontmatter,
-            ("contrary_evidence", "update_triggers", "invalidation_conditions", "forecast_allowed"),
-        )
+        _require_fields(result, strict, frontmatter, ("forecast_allowed",))
         _require_any(result, strict, frontmatter, ("scenario_cases", "scenario_summary"), "scenario_cases")
 
     result["decision_quality"] = {
@@ -403,6 +414,7 @@ def _forecast_record_errors(record: dict[str, Any], line: int) -> list[str]:
         "horizon",
         "evidence_ids",
         "contrary_evidence",
+        "invalidation_conditions",
         "resolution_source",
         "review_date",
         "status",
@@ -426,7 +438,7 @@ def _forecast_record_errors(record: dict[str, Any], line: int) -> list[str]:
     range_error = _probability_range_error(record)
     if range_error:
         errors.append(f"line {line} {range_error}")
-    for field in ("evidence_ids", "contrary_evidence"):
+    for field in ("evidence_ids", "contrary_evidence", "invalidation_conditions"):
         if field in record and not isinstance(record.get(field), list):
             errors.append(f"line {line} {field} must be a list")
     return errors
@@ -533,6 +545,8 @@ def estimate_tokens(text: str) -> int:
 def classify_artifact_path(rel: str) -> str:
     if rel.startswith("trading/forecasts/"):
         return "forecast_ledger"
+    if rel.startswith("trading/decisions/"):
+        return "decision_package"
     if rel.startswith("trading/research/"):
         return "evidence_pack"
     if "order_ticket" in rel:

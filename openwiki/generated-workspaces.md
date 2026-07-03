@@ -40,7 +40,7 @@ Generated workspaces should contain:
 - `trading/*`
 - `./tcx`
 
-Clean generated workspaces must not contain `package.json`, Node MCP runtime files, workspace-local canonical investment DBs, broker credentials, or raw secrets.
+Clean generated workspaces must not contain `package.json`, Node MCP runtime files, workspace-local canonical investment DBs, broker credentials, raw secrets, legacy `.tradingcodex/mainagent/*.yaml` role registries, or policy-local `role_owned_skills` roster copies. Role skill sources are projected from `tradingcodex_service/application/agents.py` into `.codex/agents/*.toml`.
 
 ## Projection Outputs
 

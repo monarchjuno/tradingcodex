@@ -56,7 +56,7 @@ comes only from installed, reviewed providers and explicit live gates.
 
 | Feature | Description |
 | --- | --- |
-| Codex-native harness | Generates a Codex workspace with `head-manager`, nine fixed subagents, role prompts, skills, hooks, project MCP config, and a local `./tcx` wrapper. |
+| Codex-native harness | Generates a Codex workspace with `head-manager`, ten fixed subagents, role prompts, skills, hooks, project MCP config, and a local `./tcx` wrapper. |
 | Django service plane | Web, Admin, API, CLI, MCP, and generated hooks call shared application services for policy, orders, approvals, portfolio, audit, integrations, and research indexing. |
 | File-native research memory | Research markdown, role reports, source snapshots, versions, readiness labels, and handoff metadata stay readable in workspace files. |
 | Decision Workflow Alpha | Turn a natural-language investment idea into a Codex-native workflow plan and Decision Package under `trading/decisions/`. |
@@ -135,7 +135,7 @@ boundaries rather than on black-box automation.
   policy exports, and generated indexes remain ordinary workspace files.
 - Service-layer canonical: Web, Admin, API, CLI, MCP, and hooks do not fork
   policy, order, approval, execution, portfolio, research, or audit behavior.
-- Strong role model: one `head-manager` coordinates nine fixed specialist
+- Strong role model: one `head-manager` coordinates ten fixed specialist
   subagents and consumes accepted artifacts instead of silently redoing roles.
 - Deterministic executable boundary: every executable path follows
   a fixed requester, permission, policy, payload, approval, duplicate-request,

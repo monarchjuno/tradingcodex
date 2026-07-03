@@ -1,0 +1,6 @@
+interface:
+  display_name: "Agent Judgment Review"
+  short_description: "Independently challenge accepted investment artifacts"
+  default_prompt: "Use $agent-judgment-review to independently challenge accepted artifacts before downstream use."
+policy:
+  allow_implicit_invocation: true

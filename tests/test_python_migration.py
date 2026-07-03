@@ -33,6 +33,7 @@ from tradingcodex_service.application.components import (
 from tradingcodex_service.application.artifact_quality import estimate_tokens, evaluate_artifact_quality, evaluate_decision_quality
 from tradingcodex_service.application.harness import (
     build_compact_dispatch_context,
+    get_harness_health,
     build_subagent_starter_prompt,
     build_workflow_intake_summary,
     classify_starter_request,
@@ -54,6 +55,11 @@ from tradingcodex_service.application.workflow_planner import (
     build_workflow_intake,
     record_workflow_plan,
     validate_workflow_plan,
+)
+from tradingcodex_service.application.workflow_routing import (
+    build_loop_exit_criteria,
+    selected_workflow_roles,
+    workflow_plan_has_role,
 )
 from tradingcodex_service.application.brokers import BrokerAdapterProvider, register_broker_adapter_provider
 from tradingcodex_service.application.orders import validate_order_ticket_payload
@@ -550,13 +556,23 @@ def test_workspace_template_module_contracts(tmp_path: Path) -> None:
         "tcx",
     ]:
         assert (workspace / rel).exists(), rel
-    assert "future_role_change_requires" in (workspace / ".tradingcodex" / "policies" / "information-barriers.yaml").read_text(encoding="utf-8")
-    assert "context-efficiency-contract" in {component["id"] for component in list_harness_components()}
     import yaml
+
+    information_barriers = yaml.safe_load((workspace / ".tradingcodex" / "policies" / "information-barriers.yaml").read_text(encoding="utf-8"))
+    assert "future_role_change_requires" in information_barriers["ownership_contract"]
+    for boundary in information_barriers["role_boundaries"].values():
+        assert "role_owned_skills" not in boundary
+    assert "context-efficiency-contract" in {component["id"] for component in list_harness_components()}
 
     workspace_config = yaml.safe_load((workspace / ".tradingcodex" / "config.yaml").read_text(encoding="utf-8"))
     assert workspace_config["execution"]["enabled_adapters"] == ["stub-execution", "paper-trading"]
     assert workspace_config["execution"]["enabled_execution_postures"] == ["paper_only", "broker_validation_only"]
+    assert workspace_config["subagents"]["primary_workflow_skill"] == "tcx-workflow"
+    template_agent_dir = templates_dir() / "modules" / "fixed-subagents" / "files" / ".codex" / "agents"
+    for template_agent in template_agent_dir.glob("*.toml"):
+        assert "[[skills.config]]" not in template_agent.read_text(encoding="utf-8")
+    assert not (workspace / ".tradingcodex" / "mainagent" / "head-manager.yaml").exists()
+    assert not (workspace / ".tradingcodex" / "mainagent" / "subagent-registry.yaml").exists()
     access_policy_text = (workspace / ".tradingcodex" / "policies" / "access-policies.yaml").read_text(encoding="utf-8")
     assert 'order.execution_posture in ["paper_only", "broker_validation_only"]' in access_policy_text
     reusable_agent_surfaces = "\n".join(
@@ -653,17 +669,24 @@ def test_harness_component_registry_contract() -> None:
     assert tag_counts["improvement"] > 0
 
 
+def test_harness_health_uses_current_fixed_roster_count(tmp_path: Path) -> None:
+    health = get_harness_health(make_workspace(tmp_path))
+    roster = next(check for check in health["checks"] if check["label"] == "Fixed subagent roster")
+    assert roster["value"] == f"{len(EXPECTED_SUBAGENTS)} of {len(EXPECTED_SUBAGENTS)}"
+
+
 def test_file_native_agent_skill_registry_contract() -> None:
     assert "head-manager" in AGENT_SPECS
-    assert len(EXPECTED_SUBAGENTS) == 9
-    assert len(AGENT_SPECS) == 10
-    assert len(EXPECTED_SKILLS) == 25
+    assert len(EXPECTED_SUBAGENTS) == 10
+    assert len(AGENT_SPECS) == 11
+    assert len(EXPECTED_SKILLS) == 26
     assert "strategy-creator" in EXPECTED_SKILLS
     assert "plan-workflow" in EXPECTED_SKILLS
     assert "automate-workflow" in EXPECTED_SKILLS
     assert "tcx-workflow" in EXPECTED_SKILLS
     assert "tcx-server" in EXPECTED_SKILLS
     assert "tcx-build" in EXPECTED_SKILLS
+    assert "agent-judgment-review" in EXPECTED_SKILLS
     assert set(EXPECTED_SKILLS) == set(SKILL_SPECS)
     for role in AGENT_SPECS:
         assert ROLE_PURPOSES[role]
@@ -692,7 +715,7 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     direct_gate = json.loads(direct_output["hookSpecificOutput"]["additionalContext"])
     assert direct_gate["requires_workflow_planning"] is True
     assert direct_gate["heuristic_lane"] == "thesis_review"
-    assert direct_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
+    assert direct_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "judgment-reviewer"]
 
     gate = run_user_prompt_hook(workspace, "Analyze Apple stock")
     assert gate
@@ -700,7 +723,7 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     assert gate["requires_workflow_planning"] is True
     assert gate["investment_candidate"] is True
     assert gate["heuristic_lane"] == "thesis_review"
-    assert gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"]
+    assert gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "judgment-reviewer"]
     assert gate["deterministic_hint"]["quality_flags"]["deep_thesis_default"] is True
     assert gate["deterministic_hint"]["quality_flags"]["decision_quality_required"] is True
     assert gate["intake_path"].endswith("/intake.json")
@@ -715,8 +738,17 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     )
     assert negated_scope_gate
     assert negated_scope_gate["heuristic_lane"] == "research_only"
-    assert negated_scope_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst"]
+    assert negated_scope_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "news-analyst", "judgment-reviewer"]
     assert "valuation" in negated_scope_gate["explicit_negations"]
+
+    no_news_gate = run_user_prompt_hook(workspace, "Analyze NVDA. No news.")
+    assert no_news_gate
+    assert no_news_gate["heuristic_roles"] == ["fundamental-analyst", "technical-analyst", "valuation-analyst", "judgment-reviewer"]
+    assert "news" in no_news_gate["explicit_negations"]
+    assert "news analysis" in no_news_gate["blocked_actions"]
+    no_technical_intake = build_workflow_intake("Analyze NVDA. No technical analysis.", workspace)
+    assert "technical" in no_technical_intake["explicit_negations"]
+    assert "technical analysis" in no_technical_intake["blocked_actions"]
 
     explicit_gate = run_user_prompt_hook(workspace, "$tcx-workflow analyze Apple stock")
     assert explicit_gate
@@ -739,6 +771,26 @@ def test_user_prompt_hook_auto_routes_plain_investment_requests(tmp_path: Path) 
     assert is_investment_workflow_request("Here is my broker API key secret, save it to .env") is False
     assert is_secret_only_request("Use my broker API key to execute an AAPL order") is False
     assert is_investment_workflow_request("Use my broker API key to execute an AAPL order") is True
+
+    workflow_plan_command = (
+        "cat > .tradingcodex/mainagent/workflows/workflow-test/head-manager-authored-plan.json <<'JSON'\n"
+        '{"blocked_actions":["direct broker API"]}\n'
+        "JSON\n"
+        "./tcx workflow validate --plan .tradingcodex/mainagent/workflows/workflow-test/head-manager-authored-plan.json\n"
+        "./tcx workflow record --plan .tradingcodex/mainagent/workflows/workflow-test/head-manager-authored-plan.json"
+    )
+    allowed_plan_write = run(
+        [str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "pre-tool-use"],
+        workspace,
+        input_text=json.dumps({"tool_input": {"command": workflow_plan_command}}),
+    )
+    assert allowed_plan_write.stdout.strip() == ""
+    blocked_plan_write = run(
+        [str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "pre-tool-use"],
+        workspace,
+        input_text=json.dumps({"tool_input": {"command": workflow_plan_command + "\n# api_key=SECRET"}}),
+    )
+    assert json.loads(blocked_plan_write.stdout)["decision"] == "block"
 
     run([
         "./tcx",
@@ -874,6 +926,7 @@ def test_repo_skill_templates_keep_instruction_boundary() -> None:
         "valuation-analyst",
         "portfolio-manager",
         "risk-manager",
+        "judgment-reviewer",
         "execution-operator",
     }
     policy_principal_mentions = {
@@ -984,8 +1037,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert skill_index["source"] == "workspace-files"
     assert projection_manifest["source"] == "file-native-agent-skill-projection"
     assert agent_index["projection_hash"] == skill_index["projection_hash"] == projection_manifest["projection_hash"]
-    assert len(agent_index["agents"]) == 10
-    assert len(skill_index["skills"]) == 25
+    assert len(agent_index["agents"]) == 11
+    assert len(skill_index["skills"]) == 26
     assert skill_index["skills"]["plan-workflow"]["source"] == "core"
     assert skill_index["skills"]["automate-workflow"]["source"] == "core"
     assert skill_index["skills"]["plan-workflow"]["installed"] is True
@@ -1016,11 +1069,14 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "official regulator or exchange disclosure sources" in generated_text
     assert "./tradingcodex" not in generated_text
     workflow_guidance = (workspace / ".agents" / "skills" / "tcx-workflow" / "SKILL.md").read_text(encoding="utf-8")
+    decision_spine = (workspace / ".agents" / "skills" / "tcx-workflow" / "references" / "decision-quality-spine.md").read_text(encoding="utf-8")
     server_guidance = (workspace / ".agents" / "skills" / "tcx-server" / "SKILL.md").read_text(encoding="utf-8")
     build_guidance = (workspace / ".agents" / "skills" / "tcx-build" / "SKILL.md").read_text(encoding="utf-8")
     assert "validated workflow plan" in workflow_guidance
     assert "hook hints as binding final workflow decisions" in workflow_guidance
     assert "Do not dispatch before a validated workflow plan is recorded" in workflow_guidance
+    assert "recorded workflow plan" in decision_spine
+    assert "persisted prompt gate" not in decision_spine
     assert "tcx update" in server_guidance
     assert "Do not scaffold or edit connector code in operate mode" in server_guidance
     assert "Build mode may create live-capable providers" in build_guidance
@@ -1029,6 +1085,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     hook_text = (workspace / ".codex" / "hooks" / "tradingcodex_hook.py").read_text(encoding="utf-8")
     assert 'payload.get("agent_type")' in hook_text
     assert "server-status.json" in hook_text
+    assert "latest-user-prompt-gate" not in hook_text
+    assert "prompt-gate.json" not in hook_text
+    assert "build_initial_loop_state" not in hook_text
     initial_server_status = json.loads((workspace / ".tradingcodex" / "mainagent" / "server-status.json").read_text(encoding="utf-8"))
     assert initial_server_status["service_addr"] == "127.0.0.1:48267"
     assert initial_server_status["mcp_config_present"] is True
@@ -1067,9 +1126,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     db_path = run(["./tcx", "db", "path"], workspace).stdout.strip()
     assert db_path != str((workspace / ".tradingcodex" / "state" / "tradingcodex.sqlite3").resolve())
     status = json.loads(run(["./tcx", "subagents", "status"], workspace).stdout)
-    assert status["installed_count"] == 9
+    assert status["installed_count"] == 10
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 25
+    assert status["skills_installed"] == 26
     execution_status = next(agent for agent in status["agents"] if agent["name"] == "execution-operator")
     assert execution_status["description"] == "Request approved execution through the workspace service boundary only."
     assert "MCP execution boundary" not in execution_status["description"]
@@ -1082,6 +1141,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         "forecasting-discipline",
         "fundamental-analysis",
     ]
+    judgment_inspect = json.loads(run(["./tcx", "subagents", "inspect", "judgment-reviewer"], workspace).stdout)
+    assert judgment_inspect["effective_skills"] == ["agent-judgment-review"]
     execution_inspect = json.loads(run(["./tcx", "subagents", "inspect", "execution-operator"], workspace).stdout)
     assert execution_inspect["effective_skills"] == ["execute-paper-order"]
     diff = json.loads(run(["./tcx", "subagents", "diff", "fundamental-analyst"], workspace).stdout)
@@ -1092,7 +1153,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     mainagent_metadata = list((workspace / ".agents" / "skills").glob("*/agents/openai.yaml"))
     subagent_metadata = list((workspace / ".tradingcodex" / "subagents" / "skills").glob("*/*/agents/openai.yaml"))
     assert len(mainagent_metadata) >= 5
-    assert len(subagent_metadata) + len(skill_index["skills"]) >= 25
+    assert len(subagent_metadata) + len(skill_index["skills"]) >= 26
     assert not (workspace / ".tradingcodex" / "user" / "profile.md").exists()
     assert not (workspace / ".tradingcodex" / "mainagent" / "head-manager-interview.md").exists()
     assert not (workspace / ".agents" / "skills" / "head-manager-interview").exists()
@@ -1136,8 +1197,16 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "tcx service ensure [addrport]" in service_usage.stderr
     assert "tcx service status [addrport] [--json]" in service_usage.stderr
     agent_files = sorted((workspace / ".codex" / "agents").glob("*.toml"))
-    assert len(agent_files) == 9
-    actual_mcp_tools = {tool["name"] for tool in static_mcp_tools()}
+    assert len(agent_files) == 10
+    mcp_tool_defs = {tool["name"]: tool for tool in static_mcp_tools()}
+    actual_mcp_tools = set(mcp_tool_defs)
+    runtime_role_tools = {role: set() for role in AGENT_SPECS}
+    for tool_name, tool in mcp_tool_defs.items():
+        for role in tool["annotations"]["allowed_roles"]:
+            if role in runtime_role_tools:
+                runtime_role_tools[role].add(tool_name)
+    for role, spec in AGENT_SPECS.items():
+        assert runtime_role_tools[role] == set(spec.mcp_allowlist), role
     stale_mcp_tool_names = {"evaluate_policy", "get_positions_snapshot", "write_audit_event"}
     root_config = tomllib.loads((workspace / ".codex" / "config.toml").read_text(encoding="utf-8"))
     assert root_config["default_permissions"] == "tradingcodex"
@@ -1166,6 +1235,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "Only accepted role artifacts move downstream" in head_manager_instructions
     assert "apply_patch" in head_manager_instructions
     assert "Build mode allows product/code/template/provider changes" in head_manager_instructions
+    fixed_roles_section = head_manager_instructions.split("Fixed investment roles are:", 1)[1].split("# Execution Boundary", 1)[0]
+    assert re.findall(r"- `([^`]+)`", fixed_roles_section) == EXPECTED_SUBAGENTS
     workspace_agents = (workspace / "AGENTS.md").read_text(encoding="utf-8")
     assert "generated workspace guide" in workspace_agents
     assert "Follow every applicable `AGENTS.md`" in workspace_agents
@@ -1196,6 +1267,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         "tradingcodex-valuation",
         "tradingcodex-portfolio",
         "tradingcodex-risk",
+        "tradingcodex-judgment",
         "tradingcodex-execution",
     ]:
         filesystem_rules = root_config["permissions"][profile_name]["filesystem"][":workspace_roots"]
@@ -1205,6 +1277,17 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         assert filesystem_rules[".agents/skills/tcx-workflow/**"] == "deny"
         assert filesystem_rules[".agents/skills/automate-workflow/**"] == "deny"
         assert filesystem_rules[".agents/skills/strategy-creator/**"] == "deny"
+        role = next(role for role, spec in AGENT_SPECS.items() if spec.permission_profile == profile_name)
+        for other_role in EXPECTED_SUBAGENTS:
+            if other_role != role:
+                assert filesystem_rules[f".tradingcodex/subagents/skills/{other_role}/**"] == "deny"
+        assigned = set(AGENT_SPECS[role].builtin_skills)
+        for skill, spec in SKILL_SPECS.items():
+            if spec.scope == "subagent_shared" and skill not in assigned:
+                assert filesystem_rules[f".tradingcodex/subagents/skills/shared/{skill}/**"] == "deny"
+            if spec.scope == "subagent_role" and role not in spec.owner_roles:
+                for owner_role in spec.owner_roles:
+                    assert filesystem_rules[f".tradingcodex/subagents/skills/{owner_role}/{skill}/**"] == "deny"
     expected_tcx_mcp_args = ["--refresh", "--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
     root_mcp = root_config["mcp_servers"]["tradingcodex"]
     assert root_mcp["command"] == "uvx"
@@ -1215,6 +1298,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert root_mcp["env"]["TRADINGCODEX_WORKSPACE_ROOT"] == str(workspace)
     assert set(root_mcp["enabled_tools"]).issubset(actual_mcp_tools)
     assert stale_mcp_tool_names.isdisjoint(root_mcp["enabled_tools"])
+    for tool_name in root_mcp["enabled_tools"]:
+        assert "head-manager" in mcp_tool_defs[tool_name]["annotations"]["allowed_roles"], tool_name
     assert "simulate_policy" in root_mcp["enabled_tools"]
     assert "get_tradingcodex_status" in root_mcp["enabled_tools"]
     assert "get_runtime_mode" in root_mcp["enabled_tools"]
@@ -1245,6 +1330,10 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         assert "request revision from the owning role" in agent_toml["developer_instructions"]
         assert 'model = "gpt-5.5"' in agent_config
         assert 'model_reasoning_effort = "high"' in agent_config
+        skill_blocks = agent_toml.get("skills", {}).get("config", [])
+        assert skill_blocks, agent_file
+        assert all(block.get("enabled") is True for block in skill_blocks), agent_file
+        assert not any(".agents/skills/" in str(block.get("path", "")) for block in skill_blocks), agent_file
         agent_mcp = agent_toml["mcp_servers"]["tradingcodex"]
         assert agent_mcp["command"] == "uvx"
         assert agent_mcp["args"] == expected_tcx_mcp_args
@@ -1253,6 +1342,8 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         configured_tools = set(agent_mcp.get("enabled_tools", [])) | set(agent_mcp.get("disabled_tools", []))
         assert configured_tools.issubset(actual_mcp_tools), agent_file
         assert stale_mcp_tool_names.isdisjoint(configured_tools), agent_file
+        for tool_name in agent_mcp.get("enabled_tools", []):
+            assert agent_file.stem in mcp_tool_defs[tool_name]["annotations"]["allowed_roles"], (agent_file.stem, tool_name)
         if agent_file.stem == "risk-manager":
             assert "request_order_approval" in agent_mcp["enabled_tools"]
             assert "submit_approved_order" in agent_mcp["disabled_tools"]
@@ -1273,7 +1364,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         "strategy-creator",
         "postmortem",
     ]
-    assert len(run(["./tcx", "skills", "list", "--all"], workspace).stdout.splitlines()) == 25
+    assert len(run(["./tcx", "skills", "list", "--all"], workspace).stdout.splitlines()) == 26
 
 
 def test_runtime_mode_update_and_connector_build_cli(tmp_path: Path) -> None:
@@ -1445,14 +1536,7 @@ def test_strategy_skills_are_root_visible_but_not_subagent_projected(tmp_path: P
     assert "# BEGIN TradingCodex strategy skills" in root_config_text
     assert f".agents/skills/{strategy_name}/SKILL.md" in root_config_text
     for agent_file in sorted((workspace / ".codex" / "agents").glob("*.toml")):
-        agent_toml = tomllib.loads(agent_file.read_text(encoding="utf-8"))
-        strategy_entries = [
-            block
-            for block in agent_toml.get("skills", {}).get("config", [])
-            if str(block.get("path", "")).endswith(f".agents/skills/{strategy_name}/SKILL.md")
-        ]
-        assert strategy_entries
-        assert all(block.get("enabled") is False for block in strategy_entries)
+        assert f".agents/skills/{strategy_name}/SKILL.md" not in agent_file.read_text(encoding="utf-8")
 
     assert strategy_name in run(["./tcx", "skills", "list"], workspace).stdout.splitlines()
     assert strategy_name in run(["./tcx", "skills", "list", "--all"], workspace).stdout.splitlines()
@@ -1655,7 +1739,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "Workflow lane: portfolio_risk_review" in macro
     assert "macro-analyst" in macro
     assert "execution-operator" not in macro
-    assert "Research artifact language: same language as the original user request unless explicitly overridden" in macro
+    assert "Artifact language: same language as the original user request unless explicitly overridden" in macro
     assert "Use handoff states: accepted, revise, blocked, waiting." in macro
     assert "Context budget:" in macro
     assert "context_summary" in macro
@@ -1664,9 +1748,12 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "Artifact memory:" in macro
     assert "improvement proposals for reuse" in macro
     assert "Do not let downstream roles redo missing upstream work" in macro
-    assert "Artifact memory: write artifacts in the research artifact language" in macro
+    assert "Artifact memory: write artifacts in the requested artifact language" in macro
+    assert "Decision Quality Spine:" in macro
+    assert "Portfolio/risk discipline:" in macro
+    assert "for non-valuation thesis review" not in macro
     language_neutral = build_subagent_starter_prompt("Analyze Samsung Electronics. No order.")
-    assert "Research artifact language: same language as the original user request unless explicitly overridden" in language_neutral
+    assert "Artifact language: same language as the original user request unless explicitly overridden" in language_neutral
     meta_macro = build_subagent_starter_prompt("rates oil impact on my NVDA position, no order. Verify routing and blocked order/approval/execution actions.")
     assert "Workflow lane: portfolio_risk_review" in meta_macro
     assert "macro-analyst" in meta_macro
@@ -1676,6 +1763,57 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "macro-analyst" in blocked_wording
     blocked_spawn_line = next(line for line in blocked_wording.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "execution-operator" not in blocked_spawn_line
+    portfolio_only = build_workflow_intake_summary("Review my portfolio risk, no order")
+    assert [stage["key"] for stage in portfolio_only["workflow_stages"]] == [
+        "intake",
+        "portfolio_fit",
+        "risk_review",
+        "judgment_review",
+        "synthesis",
+    ]
+    approved_action = build_workflow_intake_summary("Submit approved paper order for NVDA using the existing approval receipt.")
+    assert approved_action["selected_team"] == ["portfolio-manager", "risk-manager", "execution-operator"]
+    assert [stage["key"] for stage in approved_action["workflow_stages"]] == [
+        "intake",
+        "portfolio_fit",
+        "risk_review",
+        "execution_boundary",
+        "synthesis",
+    ]
+    assert [item["label"] for item in approved_action["judgment_controls"]] == [
+        "Fixed service baseline",
+        "Service gate verification",
+    ]
+    assert approved_action["review_highlights"][0]["label"] == "Service gate"
+    assert approved_action["investor_profile_inputs"] == []
+    assert approved_action["routing_flags"]["profile_gate_required"] is False
+    assert "Submission stays blocked unless ticket" in approved_action["review_highlights"][-1]["detail"]
+    draft_summary = build_workflow_intake_summary("Draft an NVDA order ticket, no risk review.")
+    assert "Draft-order readiness is incomplete" in draft_summary["review_highlights"][1]["detail"]
+    assert "Stop after draft-order readiness" in draft_summary["review_highlights"][-1]["detail"]
+    draft_prompt = build_subagent_starter_prompt("Draft an NVDA order ticket, no risk review.")
+    assert "Draft-order discipline:" in draft_prompt
+    assert "blocked risk-review status" in draft_prompt
+    assert "blocked approval/execution status" in draft_prompt
+    assert "risk checks" not in draft_prompt
+    assert "for non-valuation thesis review" not in draft_prompt
+    approved_prompt = build_subagent_starter_prompt("Submit approved paper order for NVDA using the existing approval receipt.")
+    assert "do not dispatch `judgment-reviewer`" in approved_prompt
+    assert "Judgment gate: do not move accepted artifacts downstream" not in approved_prompt
+    assert "For `research_only`" not in approved_prompt
+    assert "Approved action discipline: verify the existing ticket" in approved_prompt
+    assert "Evidence discipline: keep this narrow research artifact" not in approved_prompt
+    assert "Approved Action Spine:" in approved_prompt
+    assert "source snapshots" not in approved_prompt
+    assert "missing-evidence notes" not in approved_prompt
+    assert "source/as-of posture" not in approved_prompt
+    assert "source freshness" not in approved_prompt
+    assert "source trust" not in approved_prompt
+    assert "duplicate-request status" in approved_prompt
+    assert "Investor profile gaps" not in approved_prompt
+    assert "Investor profile questions" not in approved_prompt
+    assert "check portfolio fit before action advice" not in approved_prompt
+    assert "verify approved artifacts and service gates" in approved_prompt
     earnings = build_subagent_starter_prompt("NVDA earnings preview and catalyst review, no order and no trading")
     assert "Workflow lane: thesis_review" in earnings
     assert "fundamental-analyst" in earnings
@@ -1684,11 +1822,13 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "execution-operator" not in earnings
     earnings_no_valuation = build_subagent_starter_prompt("NVDA earnings preview and catalyst review, no valuation, no order and no trading")
     assert "Workflow lane: thesis_review" in earnings_no_valuation
+    assert "For `research_only`" not in earnings_no_valuation
+    assert "do not infer portfolio fit or action advice" in earnings_no_valuation
     earnings_no_valuation_spawn_line = next(line for line in earnings_no_valuation.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "valuation-analyst" not in earnings_no_valuation_spawn_line
     fair_value_portfolio = build_subagent_starter_prompt("TSLA fair value and whether it fits my portfolio, no order")
     assert "Workflow lane: thesis_review_then_portfolio_risk_review" in fair_value_portfolio
-    assert "Workflow stage order: Intake -> Evidence -> Valuation -> Portfolio fit -> Risk review -> Challenge review -> Synthesis" in fair_value_portfolio
+    assert "Workflow stage order: Intake -> Evidence -> Valuation -> Judgment review -> Portfolio fit -> Risk review -> Synthesis" in fair_value_portfolio
     assert "valuation-analyst" in fair_value_portfolio
     assert "portfolio-manager" in fair_value_portfolio
     assert "risk-manager" in fair_value_portfolio
@@ -1699,7 +1839,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "lane controls: Decision loop:" in fair_value_portfolio
     assert "Stop condition: Stop at decision support" in fair_value_portfolio
     assert "Judgment controls:" in fair_value_portfolio
-    assert "Challenge review: before final synthesis" in fair_value_portfolio
+    assert "Judgment gate: do not move accepted artifacts downstream" in fair_value_portfolio
     assert "Strategy baseline: Strategy library not inspected" in fair_value_portfolio
     assert "What outcome are you trying to achieve with this idea?" in fair_value_portfolio
     assert "risk tolerance and loss capacity" in fair_value_portfolio
@@ -1730,20 +1870,21 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
         "intake",
         "evidence",
         "valuation",
+        "judgment_review",
         "portfolio_fit",
         "risk_review",
-        "challenge_review",
         "synthesis",
     ]
     assert "source/as-of posture recorded" in fair_value_summary["workflow_stages"][1]["exit_criteria"]
-    assert fair_value_summary["workflow_stages"][-2]["label"] == "Challenge review"
-    assert "counterarguments named" in fair_value_summary["workflow_stages"][-2]["exit_criteria"]
+    judgment_stage = next(stage for stage in fair_value_summary["workflow_stages"] if stage["key"] == "judgment_review")
+    assert judgment_stage["label"] == "Judgment review"
+    assert "source trust and contrary evidence named" in judgment_stage["exit_criteria"]
     assert [item["label"] for item in fair_value_summary["judgment_controls"]] == [
         "Fixed rule baseline",
-        "Challenge review",
+        "Independent judgment review",
     ]
     assert [item["label"] for item in fair_value_summary["review_highlights"]] == [
-        "Pressure test",
+        "Independent review",
         "Profile gap",
         "Stop before action",
     ]
@@ -1759,6 +1900,12 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert fair_value_summary["questions_to_answer"][0]["question"] == "What outcome are you trying to achieve with this idea?"
     assert "objective before risk" in fair_value_summary["questions_to_answer"][0]["why_required"]
     assert "business, financial drivers" in fair_value_summary["subagents"][0]["why_selected"]
+    connector_summary = build_workflow_intake_summary("Connect Binance provider. No order, no execution.")
+    assert connector_summary["review_highlights"][0]["label"] == "Challenge review"
+    assert "Stop before secrets" in connector_summary["review_highlights"][-1]["detail"]
+    strategy_summary = build_workflow_intake_summary("Create a quality strategy for dividend stocks")
+    assert strategy_summary["review_highlights"][0]["label"] == "Challenge review"
+    assert "do not turn it into ticker analysis" in strategy_summary["review_highlights"][-1]["detail"]
     assert {agent["role"] for agent in fair_value_summary["subagents"]} >= {"valuation-analyst", "portfolio-manager", "risk-manager"}
     assert is_investment_workflow_request("TSLA feels interesting, no order") is True
     idea_summary = build_workflow_intake_summary("TSLA feels interesting, no order")
@@ -1780,6 +1927,17 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     crypto_research = build_subagent_starter_prompt("BTC feels strong but I do not want to trade. Just research trend and risks.")
     assert "Workflow lane: research_only" in crypto_research
     assert "Deterministic preview roles likely needed: technical-analyst, instrument-analyst" in crypto_research
+    assert "judgment-reviewer" not in next(line for line in crypto_research.splitlines() if line.startswith("Deterministic preview roles likely needed"))
+    assert "Evidence check: no independent judgment reviewer is needed" in crypto_research
+    assert "Evidence gate: do not widen this lane" in crypto_research
+    assert "Evidence discipline: keep this narrow research artifact source-aware" in crypto_research
+    assert "Evidence Quality Floor:" in crypto_research
+    assert "Decision Quality Spine:" not in crypto_research
+    assert "decision_readiness" not in crypto_research
+    assert "for non-valuation thesis review" not in crypto_research
+    assert "Approved action gate:" not in crypto_research
+    assert "check portfolio fit before action advice" not in crypto_research
+    assert "do not add portfolio fit or action advice" in crypto_research
     assert "portfolio-manager" not in next(line for line in crypto_research.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "execution-operator" not in crypto_research
     connector_only_request = "Configure a reviewed test or sandbox broker connector only. No order, no approval, no execution, do not read secrets."
@@ -1789,6 +1947,11 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "No fixed-role subagent dispatch is required" in connector_only
     assert "$tcx-build" in connector_only
     assert "execution-operator" not in connector_only
+    assert "secret-free posture" in connector_only
+    assert "source freshness" not in connector_only
+    strategy_prompt = build_subagent_starter_prompt("Create a quality strategy for dividend stocks")
+    assert "required strategy sections" in strategy_prompt
+    assert "source freshness" not in strategy_prompt
     connector_build_request = "binance. No order, no approval, no execution, do not read secrets."
     assert is_connector_build_request(connector_build_request) is True
     assert is_investment_workflow_request(connector_build_request) is False
@@ -1818,6 +1981,8 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "$tcx-server" not in strategy_authoring
     assert "Blocked actions: ticker analysis, order ticket, approval, execution, direct broker API, secret read" in strategy_authoring
     strategy_context = build_compact_dispatch_context(strategy_authoring_request)
+    assert strategy_context["context_mode"] == "compact_workflow_intake"
+    assert strategy_context["workflow_intake_path"] == ".tradingcodex/mainagent/latest-workflow-intake.json"
     assert strategy_context["selected_team_binding"] is False
     assert strategy_context["required_subagents"] == []
     assert strategy_context["dispatch_rules"] == [
@@ -1827,7 +1992,7 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     ]
     broad = build_subagent_starter_prompt("Analyze NVDA for me. No order and no trading.")
     assert "Workflow lane: thesis_review" in broad
-    assert "Deterministic preview roles likely needed: fundamental-analyst, technical-analyst, news-analyst, valuation-analyst" in broad
+    assert "Deterministic preview roles likely needed: fundamental-analyst, technical-analyst, news-analyst, valuation-analyst, judgment-reviewer" in broad
     assert "This preview is not the final workflow contract" in broad
     assert "Deep thesis default" in broad
     assert "do not set `fork_context` to true" in broad
@@ -1835,18 +2000,63 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert "Workflow lane: thesis_review" in analyze_no_valuation
     analyze_no_valuation_spawn = next(line for line in analyze_no_valuation.splitlines() if line.startswith("Deterministic preview roles likely needed"))
     assert "valuation-analyst" not in analyze_no_valuation_spawn
+    assert "valuation artifacts" not in analyze_no_valuation
+    assert "valuation context" not in analyze_no_valuation
+    no_valuation_summary = build_workflow_intake_summary("Analyze NVDA. No valuation.")
+    assert no_valuation_summary["summary"] == "Review business, technical, and news context without valuation or portfolio action."
+    assert "non-valuation evidence" in no_valuation_summary["primary_question"]
+    assert not any("valuation artifacts" in item for item in no_valuation_summary["exit_criteria"])
+    assert "non-valuation thesis scope" in no_valuation_summary["next_allowed_actions"][0]["detail"]
+    assert no_valuation_summary["method_lenses"][0]["reference"] == "Scenario analysis practice"
+    assert "thesis assumptions" in no_valuation_summary["loop_controls"][0]["detail"]
+    assert "valuation assumptions" not in no_valuation_summary["loop_controls"][0]["detail"]
+    assert "valuation" in no_valuation_summary["blocked_actions"]
+    no_news_summary = build_workflow_intake_summary("Analyze NVDA. No news.")
+    assert no_news_summary["selected_team"] == ["fundamental-analyst", "technical-analyst", "valuation-analyst", "judgment-reviewer"]
+    assert no_news_summary["summary"] == "Review business, technical, and valuation context without moving into portfolio action."
+    assert "news context" not in no_news_summary["summary"]
+    assert "news" not in no_news_summary["next_allowed_actions"][0]["detail"]
+    assert "news analysis" in no_news_summary["blocked_actions"]
+    no_technical_summary = build_workflow_intake_summary("Analyze NVDA. No technical analysis.")
+    assert no_technical_summary["selected_team"] == ["fundamental-analyst", "news-analyst", "valuation-analyst", "judgment-reviewer"]
+    assert no_technical_summary["summary"] == "Review business, news, and valuation context without moving into portfolio action."
+    assert "technical context" not in no_technical_summary["summary"]
+    assert "technical" not in no_technical_summary["next_allowed_actions"][0]["detail"]
+    assert "technical analysis" in no_technical_summary["blocked_actions"]
+    no_portfolio_decision = build_workflow_intake_summary("NVDA should I buy? No portfolio review.")
+    assert no_portfolio_decision["workflow_lane"] == "thesis_review"
+    assert "portfolio-manager" not in no_portfolio_decision["selected_team"]
+    assert "risk-manager" not in no_portfolio_decision["selected_team"]
+    assert "portfolio review" in no_portfolio_decision["blocked_actions"]
+    assert "recommendation" in no_portfolio_decision["blocked_actions"]
+    no_risk_draft = build_workflow_intake_summary("Draft an NVDA order ticket, no risk review.")
+    assert no_risk_draft["workflow_lane"] == "order_ticket_draft_gate"
+    assert "portfolio-manager" in no_risk_draft["selected_team"]
+    assert "risk-manager" not in no_risk_draft["selected_team"]
+    assert "risk review" in no_risk_draft["blocked_actions"]
+    assert "risk review" not in no_risk_draft["next_allowed_actions"][0]["detail"]
+    no_portfolio_draft = build_workflow_intake_summary("Draft an NVDA order ticket, no portfolio review.")
+    assert no_portfolio_draft["workflow_lane"] == "thesis_review"
+    assert "portfolio-manager" not in no_portfolio_draft["selected_team"]
+    assert "valuation-analyst" not in no_portfolio_draft["selected_team"]
+    assert "order ticket" in no_portfolio_draft["blocked_actions"]
+    assert "portfolio review" in no_portfolio_draft["blocked_actions"]
+    no_portfolio_fair_value_draft = build_workflow_intake_summary("Draft an NVDA fair value order ticket, no portfolio review.")
+    assert "valuation-analyst" in no_portfolio_fair_value_draft["selected_team"]
     profile_only = classify_starter_request("Analyze NVDA. Company facts only.")
     assert profile_only["lane"] == "research_only"
     assert profile_only["subagents"] == ["fundamental-analyst"]
+    assert profile_only["routingFlags"]["decision_quality_required"] is False
     chart_only = classify_starter_request("NVDA chart only. No trading.")
     assert chart_only["lane"] == "research_only"
     assert chart_only["subagents"] == ["technical-analyst"]
+    assert chart_only["routingFlags"]["decision_quality_required"] is False
     technical_news = classify_starter_request("NVDA technical and news review no trading")
     assert technical_news["lane"] == "research_only"
-    assert technical_news["subagents"] == ["technical-analyst", "news-analyst"]
+    assert technical_news["subagents"] == ["technical-analyst", "news-analyst", "judgment-reviewer"]
     chart_fundamentals = classify_starter_request("NVDA chart plus fundamentals no trading")
     assert chart_fundamentals["lane"] == "research_only"
-    assert chart_fundamentals["subagents"] == ["fundamental-analyst", "technical-analyst"]
+    assert chart_fundamentals["subagents"] == ["fundamental-analyst", "technical-analyst", "judgment-reviewer"]
     profile_question = classify_starter_request("What does NVDA do?")
     assert is_investment_workflow_request("What does NVDA do?") is True
     assert profile_question["lane"] == "research_only"
@@ -1855,6 +2065,11 @@ def test_starter_prompt_keeps_negated_actions_out_of_execution() -> None:
     assert is_investment_workflow_request("NVDA facts") is True
     assert facts_question["lane"] == "research_only"
     assert facts_question["subagents"] == ["fundamental-analyst"]
+    facts_summary = build_workflow_intake_summary("NVDA facts")
+    assert facts_summary["judgment_controls"][1]["label"] == "Evidence check"
+    assert facts_summary["review_highlights"][0]["label"] == "Evidence check"
+    assert "independent judgment review" not in " ".join(facts_summary["exit_criteria"])
+    assert "independent judgment review" not in " ".join(build_loop_exit_criteria("research_only", ["technical-analyst"]))
     chart_intent = normalize_investment_intent("NVDA chart only. No trading.")
     assert chart_intent.technical_only is True
     no_valuation = build_subagent_starter_prompt("Routing smoke test for NVDA. No order, no trading, no valuation. Use selected subagents only.")
@@ -1884,6 +2099,8 @@ def test_decision_workflow_plan_and_package_are_codex_native(tmp_path: Path) -> 
     package = create_decision_package(workspace, "NVDA earnings after results, prepare order draft only, no execution")
 
     assert package["status"] == "planned"
+    assert package["plan"]["workflow_run_id"] == package["run_id"]
+    assert package["plan"]["staged_plan"]["workflow_run_id"] == package["run_id"]
     assert package["plan"]["lane"] == "order_ticket_draft_gate"
     assert "execution" in package["plan"]["blocked_actions"]
     assert OrderTicket.objects.count() == before_tickets
@@ -1895,8 +2112,13 @@ def test_decision_workflow_plan_and_package_are_codex_native(tmp_path: Path) -> 
     assert stored["handoff_state"] == "waiting"
     assert stored["readiness_label"] == "waiting"
     assert "accepted role artifacts" in stored["missing_evidence"]
+    assert stored["source_trust_notes"] == ["pending accepted role artifacts"]
+    assert stored["thesis_lifecycle"]["owner_role"] == "head-manager"
     assert "## Codex Starter Prompt" in stored["markdown"]
+    assert "## Thesis Lifecycle" in stored["markdown"]
     assert "Source/as-of posture: pending accepted artifacts" in stored["markdown"]
+    assert "Source trust notes: pending accepted role artifacts" in stored["markdown"]
+    assert evaluate_artifact_quality(workspace, package["decision_package_path"], strict=True)["status"] == "pass"
     assert list_decision_packages(workspace)["packages"][0]["decision_id"] == package["decision_id"]
 
 
@@ -1904,6 +2126,9 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     preview = build_deterministic_workflow_plan(workspace, "Analyze NVDA. No order, no trading, no valuation.")
     preview["stages"] = [stage for stage in preview["stages"] if "valuation-analyst" not in stage["roles"]]
+    assert "fundamental-analyst" in selected_workflow_roles(preview)
+    assert workflow_plan_has_role(preview, "judgment-reviewer")
+    assert not workflow_plan_has_role(preview, "valuation-analyst")
 
     validation = validate_workflow_plan(preview)
     assert validation["ok"] is True
@@ -1913,6 +2138,28 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
     loop_state = json.loads((workspace / result["loop_state_path"]).read_text(encoding="utf-8"))
     assert loop_state["state_mode"] == "validated_dynamic_workflow_plan"
     assert loop_state["pending_tasks"][0]["status"] == "pending"
+    latest_loop_state = json.loads((workspace / ".tradingcodex/mainagent/workflow-loop-state.json").read_text(encoding="utf-8"))
+    assert latest_loop_state["selected_team"] == loop_state["selected_team"]
+    assert latest_loop_state["allowed_followup_team"] == loop_state["allowed_followup_team"]
+    dict_role_plan = {
+        **preview,
+        "workflow_run_id": preview["workflow_run_id"] + "-dict-role",
+        "stages": [
+            {
+                "stage_id": "evidence",
+                "roles": [{"role": "fundamental-analyst", "label": "Fundamental Analyst"}],
+                "depends_on": [],
+                "dispatch_mode": "sequential",
+                "purpose": "Accept role objects from generated workflow summaries.",
+                "exit_criteria": [],
+            }
+        ],
+    }
+    dict_role_recorded = record_workflow_plan(workspace, dict_role_plan)
+    assert dict_role_recorded["status"] == "recorded"
+    dict_role_state = json.loads((workspace / dict_role_recorded["loop_state_path"]).read_text(encoding="utf-8"))
+    assert dict_role_state["selected_team"] == ["fundamental-analyst"]
+    assert dict_role_state["pending_tasks"][0]["roles"] == ["fundamental-analyst"]
 
     invalid = {
         **preview,
@@ -1932,6 +2179,42 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
     assert rejected["ok"] is False
     assert any("unknown role" in error for error in rejected["errors"])
     assert any("depends on unknown or later stage" in error for error in rejected["errors"])
+    assert any("execution-operator is only valid" in error for error in rejected["errors"])
+    self_dependent = {
+        **preview,
+        "workflow_run_id": preview["workflow_run_id"] + "-self-dependency",
+        "stages": [
+            {
+                "stage_id": "self",
+                "roles": ["fundamental-analyst"],
+                "depends_on": ["self"],
+                "dispatch_mode": "sequential",
+                "purpose": "Bad cycle.",
+                "exit_criteria": [],
+            }
+        ],
+    }
+    self_dependency_rejected = validate_workflow_plan(self_dependent)
+    assert self_dependency_rejected["ok"] is False
+    assert any("depends on unknown or later stage: self" in error for error in self_dependency_rejected["errors"])
+    execution_with_judgment = {
+        **preview,
+        "lane": "order_ticket_approval_execution_gate",
+        "stages": [
+            {
+                "stage_id": "approved-action-check",
+                "roles": ["portfolio-manager", "risk-manager", "judgment-reviewer", "execution-operator"],
+                "depends_on": [],
+                "dispatch_mode": "sequential",
+                "purpose": "Invalidly reopen investment judgment in an approved-action lane.",
+                "exit_criteria": [],
+            }
+        ],
+        "blocked_actions": ["execution without approved artifacts"],
+    }
+    execution_rejected = validate_workflow_plan(execution_with_judgment)
+    assert execution_rejected["ok"] is False
+    assert any("must not dispatch judgment-reviewer" in error for error in execution_rejected["errors"])
     negated_intake = build_workflow_intake("Analyze NVDA. No valuation.", workspace, workflow_run_id=preview["workflow_run_id"])
     negated_bad_plan = {
         **preview,
@@ -1949,6 +2232,30 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
     negated_rejected = validate_workflow_plan(negated_bad_plan, intake=negated_intake)
     assert negated_rejected["ok"] is False
     assert any("negated valuation" in error for error in negated_rejected["errors"])
+    negated_role_cases = [
+        ("Analyze NVDA. No news.", "news-analyst", "negated news"),
+        ("Analyze NVDA. No technical analysis.", "technical-analyst", "negated technical"),
+        ("NVDA should I buy? No portfolio review.", "portfolio-manager", "negated portfolio"),
+        ("NVDA should I buy? No risk review.", "risk-manager", "negated risk"),
+    ]
+    for prompt, role, error_text in negated_role_cases:
+        intake = build_workflow_intake(prompt, workspace, workflow_run_id=preview["workflow_run_id"])
+        bad_plan = {
+            **preview,
+            "stages": [
+                {
+                    "stage_id": "negated-role",
+                    "roles": [role],
+                    "depends_on": [],
+                    "dispatch_mode": "sequential",
+                    "purpose": "Bad negated role.",
+                    "exit_criteria": [],
+                }
+            ],
+        }
+        rejected_role = validate_workflow_plan(bad_plan, intake=intake)
+        assert rejected_role["ok"] is False
+        assert any(error_text in error for error in rejected_role["errors"])
 
 
 def test_workflow_and_decision_cli_surfaces(tmp_path: Path) -> None:
@@ -1980,6 +2287,31 @@ def test_workflow_and_decision_cli_surfaces(tmp_path: Path) -> None:
     shown = json.loads(run(["./tcx", "decision", "show", package["decision_id"]], workspace).stdout)
     assert shown["workflow_lane"] == "connector_build"
     assert "live submit" in shown["blocked_actions"]
+    assert shown["workflow_lifecycle"]["owner_role"] == "head-manager"
+    assert shown["thesis_lifecycle"] == {}
+    assert "## Workflow Lifecycle" in shown["markdown"]
+    assert "## Thesis Lifecycle" not in shown["markdown"]
+    assert "## Boundaries" in shown["markdown"]
+    assert "## Portfolio And Risk" not in shown["markdown"]
+    assert "accepted role artifacts" not in shown["markdown"]
+    assert json.loads(run(["./tcx", "quality-check", package["decision_package_path"], "--strict"], workspace).stdout)["status"] == "pass"
+
+
+def test_workflow_validate_api_uses_url_workflow_id_for_preview(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    monkeypatch.setenv("TRADINGCODEX_WORKSPACE_ROOT", str(workspace))
+    client = Client(REMOTE_ADDR="127.0.0.1")
+
+    response = client.post(
+        "/api/workflows/workflow-api-smoke/validate",
+        data=json.dumps({"original_request": "Analyze NVDA. No valuation."}),
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["workflow_id"] == "workflow-api-smoke"
+    assert payload["deterministic_preview"]["workflow_run_id"] == "workflow-api-smoke"
+    assert "valuation-analyst" not in payload["deterministic_preview"]["heuristic_roles"]
 
 
 def test_decisions_web_review_surface(tmp_path: Path, monkeypatch) -> None:
@@ -2024,9 +2356,9 @@ def test_subagents_prompt_cli_and_api_expose_intake_summary(tmp_path: Path, monk
     assert "profile gaps and artifact handoffs" in cli_json["intake_summary"]["loop_controls"][0]["detail"]
     assert cli_json["intake_summary"]["loop_controls"][2]["label"] == "Verification budget"
     assert "source freshness" in cli_json["intake_summary"]["loop_controls"][2]["detail"]
-    assert cli_json["intake_summary"]["judgment_controls"][1]["label"] == "Challenge review"
+    assert cli_json["intake_summary"]["judgment_controls"][1]["label"] == "Independent judgment review"
     assert [item["label"] for item in cli_json["intake_summary"]["review_highlights"]] == [
-        "Pressure test",
+        "Independent review",
         "Profile gap",
         "Stop before action",
     ]
@@ -2058,7 +2390,7 @@ def test_subagents_prompt_cli_and_api_expose_intake_summary(tmp_path: Path, monk
     assert "Order ticket:" in explained
     assert "Next allowed actions:" in explained
     assert "Decision checks:" in explained
-    assert "Pressure test: Before synthesis" in explained
+    assert "Independent review: Before synthesis" in explained
     assert "Profile gap: Recommendation and sizing stay weak" in explained
     assert "Stop before action: A useful answer can end at decision support" in explained
     assert "Answer missing profile questions:" in explained
@@ -2072,7 +2404,7 @@ def test_subagents_prompt_cli_and_api_expose_intake_summary(tmp_path: Path, monk
     assert "Stop condition: Stop at decision support" in explained
     assert "Verification budget: After each pass" in explained
     assert "Judgment controls:" in explained
-    assert "Challenge review: Before synthesis" in explained
+    assert "Independent judgment review: Before synthesis" in explained
     assert "Strategy baseline: No active user-approved strategy" in explained
     assert "Workflow steps:" in explained
     assert "2. Evidence:" in explained
@@ -2129,7 +2461,7 @@ def test_subagents_prompt_cli_and_api_expose_intake_summary(tmp_path: Path, monk
     assert "no near-term cash need" in web_body
     assert "Method lenses" in web_body
     assert "Decision checks" in web_body
-    assert "Pressure test" in web_body
+    assert "Independent review" in web_body
     assert "Stop before action" in web_body
     assert "Review logic" in web_body
     assert "Codex handoff" in web_body
@@ -2326,6 +2658,13 @@ follow_up_requests:
     quality = evaluate_artifact_quality(workspace, "trading/reports/news/nvda-news.md", strict=True)
     assert quality["status"] == "pass"
     assert quality["frontmatter"]["follow_up_requests"][0]["suggested_role"] == "valuation-analyst"
+    symlink_workspace = tmp_path / "workspace-link"
+    try:
+        symlink_workspace.symlink_to(workspace, target_is_directory=True)
+    except OSError:
+        symlink_workspace = workspace
+    symlink_quality = evaluate_artifact_quality(symlink_workspace, "trading/reports/news/nvda-news.md", strict=True)
+    assert symlink_quality["path"] == "trading/reports/news/nvda-news.md"
 
     loop_preview = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/nvda-news.md"])
     assert loop_preview["pending_tasks"][0]["role"] == "valuation-analyst"
@@ -2998,22 +3337,22 @@ def test_django_ninja_control_api(monkeypatch) -> None:
     client = Client(REMOTE_ADDR="127.0.0.1")
     assert client.get("/api/health").json()["status"] == "ok"
     status = client.get("/api/harness/status").json()
-    assert status["expected_count"] == 9
-    assert status["skills_installed"] == 25
-    assert status["core_skills_installed"] == 25
+    assert status["expected_count"] == 10
+    assert status["skills_installed"] == 26
+    assert status["core_skills_installed"] == 26
     assert status["optional_skills_active"] >= 0
     assert status["user_visible_skills"] == ["plan-workflow", "tcx-workflow", "automate-workflow", "tcx-server", "tcx-build", "strategy-creator", "postmortem"]
     assert status["components_total"] == len(list_harness_components())
     assert status["component_tag_counts"]["guardrail"] > 0
     assert client.get("/api/harness/skills").json()["skills"] == status["user_visible_skills"]
-    assert len(client.get("/api/harness/skills?include_internal=true").json()["skills"]) == 25
+    assert len(client.get("/api/harness/skills?include_internal=true").json()["skills"]) == 26
     components = client.get("/api/harness/components").json()
     assert {component["id"] for component in components["components"]} == {component["id"] for component in list_harness_components()}
     component = client.get("/api/harness/components/investment-request-routing")
     assert component.status_code == 200
     assert component.json()["surfaces"]["hooks"] == ["UserPromptSubmit"]
     assert client.get("/api/harness/components/not-real").status_code == 404
-    assert len(client.get("/api/subagents").json()) == 9
+    assert len(client.get("/api/subagents").json()) == 10
     assert "portfolio-review" in client.get("/api/subagents/portfolio-manager/skills").json()["skills"]
     assert client.get("/api/harness/subagents").status_code == 404
     assert client.get("/api/harness/subagents/portfolio-manager/skills").status_code == 404
@@ -3668,13 +4007,7 @@ def test_product_web_agent_skill_and_strategy_mutation(tmp_path: Path, monkeypat
     root_config = (workspace / ".codex" / "config.toml").read_text(encoding="utf-8")
     agent_toml = (workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8")
     assert ".agents/skills/strategy-quality-income/SKILL.md" in root_config
-    agent_strategy_blocks = [
-        block
-        for block in tomllib.loads(agent_toml).get("skills", {}).get("config", [])
-        if str(block.get("path", "")).endswith(".agents/skills/strategy-quality-income/SKILL.md")
-    ]
-    assert agent_strategy_blocks
-    assert all(block.get("enabled") is False for block in agent_strategy_blocks)
+    assert ".agents/skills/strategy-quality-income/SKILL.md" not in agent_toml
     strategy_list = client.get("/harness/strategies/")
     strategy_list_body = strategy_list.content.decode()
     assert strategy_list.status_code == 200
@@ -4081,10 +4414,11 @@ def test_product_web_role_inspector_and_topology_helpers() -> None:
     roles = {node["role"] for node in topology["nodes"]}
     node_by_role = {node["role"]: node for node in topology["nodes"]}
     assert "head-manager" in roles
-    assert len(roles - {"head-manager"}) == 9
+    assert len(roles - {"head-manager"}) == 10
     assert node_by_role["head-manager"]["y"] < node_by_role["fundamental-analyst"]["y"]
     assert node_by_role["fundamental-analyst"]["y"] < node_by_role["valuation-analyst"]["y"]
-    assert node_by_role["valuation-analyst"]["y"] < node_by_role["portfolio-manager"]["y"]
+    assert node_by_role["valuation-analyst"]["y"] <= node_by_role["judgment-reviewer"]["y"]
+    assert node_by_role["judgment-reviewer"]["y"] < node_by_role["portfolio-manager"]["y"]
     assert node_by_role["portfolio-manager"]["y"] < node_by_role["risk-manager"]["y"]
     assert node_by_role["risk-manager"]["y"] < node_by_role["execution-operator"]["y"]
     assert topology["boundary"]["x"] < node_by_role["execution-operator"]["x"]
@@ -4094,6 +4428,7 @@ def test_product_web_role_inspector_and_topology_helpers() -> None:
         "Coordinator",
         "Research roles",
         "Valuation",
+        "Judgment review",
         "Portfolio fit",
         "Risk approval",
         "Approved submission",
@@ -4101,6 +4436,7 @@ def test_product_web_role_inspector_and_topology_helpers() -> None:
     assert {edge["group"] for edge in topology["edges"]} == {
         "dispatch",
         "research-handoff",
+        "judgment-review-gate",
         "portfolio-risk-gate",
         "approval-gate",
         "execution-gate",
@@ -4384,6 +4720,7 @@ forecast_block_reason: missing base rate
 missing_base_rate_note: base-rate evidence not available yet
 scenario_cases: [bull, base, bear]
 contrary_evidence: [valuation embeds high growth]
+source_trust_notes: [official source posture recorded; market anchor pending]
 update_triggers: [new guidance]
 invalidation_conditions: [margin guide-down]
 current_price_as_of: "2026-06-01"
@@ -4395,6 +4732,17 @@ current_price_as_of: "2026-06-01"
     )
     decision_quality = evaluate_decision_quality(workspace, "trading/reports/valuation/decision-quality.md", "thesis_review_then_portfolio_risk_review")
     assert decision_quality["status"] == "pass"
+    missing_source_trust_artifact = workspace / "trading" / "reports" / "valuation" / "missing-source-trust.md"
+    missing_source_trust_artifact.write_text(
+        decision_artifact.read_text(encoding="utf-8").replace(
+            "source_trust_notes: [official source posture recorded; market anchor pending]\n",
+            "",
+        ),
+        encoding="utf-8",
+    )
+    missing_source_trust_quality = evaluate_decision_quality(workspace, "trading/reports/valuation/missing-source-trust.md", "thesis_review_then_portfolio_risk_review")
+    assert missing_source_trust_quality["status"] == "fail"
+    assert "decision_quality.source_trust_notes" in missing_source_trust_quality["required_fields_missing"]
     missing_base_rate_artifact = workspace / "trading" / "reports" / "valuation" / "missing-base-rate.md"
     missing_base_rate_artifact.write_text(
         decision_artifact.read_text(encoding="utf-8")
@@ -4434,6 +4782,14 @@ current_price_as_of: "2026-06-01"
     assert snapshot["file_sot"] is True
     assert snapshot["export_path"].startswith("trading/research/source-snapshots/")
     assert (workspace / snapshot["export_path"]).exists()
+    with pytest.raises(PermissionError):
+        call_mcp_tool(workspace, "record_source_snapshot", {
+            "principal_id": "judgment-reviewer",
+            "provider": "unit-test",
+            "source_category": "filing",
+            "as_of": "2026-06-01",
+            "artifact_id": "nvda-evidence-1",
+        })
     forbidden = handle_mcp_rpc(workspace, {
         "jsonrpc": "2.0",
         "id": 9,

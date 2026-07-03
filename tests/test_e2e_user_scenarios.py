@@ -6,7 +6,6 @@ import os
 import shlex
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -157,13 +156,13 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         (
             "Analyze Apple stock",
             "thesis_review",
-            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"],
+            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "judgment-reviewer"],
             False,
         ),
         (
             "$tcx-workflow NVDA earnings preview and catalyst review, no order and no trading",
             "thesis_review",
-            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst"],
+            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "judgment-reviewer"],
             False,
         ),
         (
@@ -175,7 +174,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         (
             "rates and oil impact on my NVDA position, no order. Do not place trades.",
             "portfolio_risk_review",
-            ["macro-analyst", "portfolio-manager", "risk-manager"],
+            ["macro-analyst", "portfolio-manager", "risk-manager", "judgment-reviewer"],
             False,
         ),
         (
@@ -187,7 +186,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         (
             "Routing smoke test for NVDA. No order, no trading, no valuation. Use selected subagents only.",
             "research_only",
-            ["fundamental-analyst", "technical-analyst", "news-analyst"],
+            ["fundamental-analyst", "technical-analyst", "news-analyst", "judgment-reviewer"],
             False,
         ),
         (
@@ -199,7 +198,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         (
             "TSLA fair value and whether it fits my portfolio, no order",
             "thesis_review_then_portfolio_risk_review",
-            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "portfolio-manager", "risk-manager"],
+            ["fundamental-analyst", "technical-analyst", "news-analyst", "valuation-analyst", "portfolio-manager", "risk-manager", "judgment-reviewer"],
             False,
         ),
         (
@@ -241,11 +240,11 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     assert not (workspace / ".env").exists()
 
     status = json.loads(tcx(workspace, env_extra, "subagents", "status").stdout)
-    assert status["installed_count"] == 9
+    assert status["installed_count"] == 10
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 25
+    assert status["skills_installed"] == 26
     plan = json.loads(tcx(workspace, env_extra, "subagents", "plan", "--all").stdout)
-    assert plan["requested_count"] == 9
+    assert plan["requested_count"] == 10
     assert plan["parallel_spawn_ok"] is True
     inspect = json.loads(tcx(workspace, env_extra, "subagents", "inspect", "fundamental-analyst").stdout)
     assert inspect["effective_skills"] == [
@@ -256,6 +255,8 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         "forecasting-discipline",
         "fundamental-analysis",
     ]
+    judgment_inspect = json.loads(tcx(workspace, env_extra, "subagents", "inspect", "judgment-reviewer").stdout)
+    assert judgment_inspect["effective_skills"] == ["agent-judgment-review"]
 
     optional_body = workspace / "source-quality-body.md"
     optional_body.write_text("# Source Quality Check\n\nCheck source dates and cite stale evidence warnings.\n", encoding="utf-8")
@@ -300,14 +301,8 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     assert strategy["name"] == "strategy-quality-income"
     assert strategy["active"] is True
     assert "strategy-quality-income" in tcx(workspace, env_extra, "skills", "list").stdout
-    agent_toml = tomllib.loads((workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8"))
-    strategy_blocks = [
-        block
-        for block in agent_toml.get("skills", {}).get("config", [])
-        if str(block.get("path", "")).endswith(".agents/skills/strategy-quality-income/SKILL.md")
-    ]
-    assert strategy_blocks
-    assert all(block.get("enabled") is False for block in strategy_blocks)
+    agent_toml = (workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8")
+    assert ".agents/skills/strategy-quality-income/SKILL.md" not in agent_toml
 
     memo_path = workspace / "trading" / "research" / "nvda-evidence.md"
     memo_path.write_text("# NVDA Evidence\n\n[factual] Test evidence uses source/as-of metadata.\n", encoding="utf-8")
@@ -542,14 +537,14 @@ def test_long_multi_subagent_context_budget_audit(tmp_path: Path) -> None:
 
     audit = json.loads(tcx(workspace, env_extra, "subagents", "context-audit", "--strict").stdout)
     assert audit["status"] == "pass"
-    assert audit["latest_gate"]["compact_context_estimated_tokens"] <= 500
-    assert audit["latest_gate"]["starter_prompt_estimated_tokens"] <= 1200
+    assert audit["latest_workflow_intake"]["compact_context_estimated_tokens"] <= 500
+    assert audit["latest_workflow_intake"]["starter_prompt_estimated_tokens"] <= 1200
     assert audit["session_state"]["event_count"] == created_artifacts * 2
     assert audit["session_state"]["retained_event_count"] <= 12
     assert audit["session_state"]["estimated_tokens"] <= 2000
-    assert audit["prompt_gate_history"]["entries"] == len(scenarios)
-    assert audit["prompt_gate_history"]["max_compact_context_estimated_tokens"] <= 500
-    assert set(audit["prompt_gate_history"]["workflow_lanes"]) >= {
+    assert audit["workflow_intake_history"]["entries"] == len(scenarios)
+    assert audit["workflow_intake_history"]["max_compact_context_estimated_tokens"] <= 500
+    assert set(audit["workflow_intake_history"]["workflow_lanes"]) >= {
         "research_only",
         "thesis_review",
         "portfolio_risk_review",
@@ -562,7 +557,7 @@ def test_long_multi_subagent_context_budget_audit(tmp_path: Path) -> None:
     assert audit["artifacts"]["missing_next_action"] == []
     assert audit["artifacts"]["large_body_count"] == created_artifacts
     assert sentinel not in json.dumps(audit, ensure_ascii=False)
-    assert any(check["name"] == "gate and state avoid pasted markdown artifacts" and check["status"] == "pass" for check in audit["checks"])
+    assert any(check["name"] == "workflow intake and state avoid pasted markdown artifacts" and check["status"] == "pass" for check in audit["checks"])
 
     weak_artifact = workspace / "trading" / "research" / "missing-context-summary.evidence.md"
     weak_artifact.write_text(

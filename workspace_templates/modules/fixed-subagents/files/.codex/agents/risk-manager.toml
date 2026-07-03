@@ -52,15 +52,3 @@ enabled = true
 env = { TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1", TRADINGCODEX_SERVICE_ADDR = "127.0.0.1:48267", TRADINGCODEX_WORKSPACE_ROOT = "{{PROJECT_DIR}}" }
 enabled_tools = ["simulate_policy", "validate_approval_receipt", "list_broker_connections", "get_broker_connection_status", "list_reconciliation_runs", "get_positions", "get_portfolio_snapshot", "run_order_checks", "request_order_approval", "get_order_ticket", "list_order_tickets", "record_broker_mapping_review", "list_workflow_artifacts", "record_audit_event"]
 disabled_tools = ["submit_approved_order", "cancel_approved_order"]
-
-[[skills.config]]
-path = "{{PROJECT_DIR}}/.tradingcodex/subagents/skills/risk-manager/review-risk/SKILL.md"
-enabled = true
-
-[[skills.config]]
-path = "{{PROJECT_DIR}}/.tradingcodex/subagents/skills/risk-manager/policy-review/SKILL.md"
-enabled = true
-
-[[skills.config]]
-path = "{{PROJECT_DIR}}/.tradingcodex/subagents/skills/risk-manager/approve-order/SKILL.md"
-enabled = true

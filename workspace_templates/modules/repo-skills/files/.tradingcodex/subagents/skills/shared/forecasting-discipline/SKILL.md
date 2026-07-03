@@ -8,6 +8,11 @@ description: "Require horizon-bound, evidence-aware, updateable forecast fields 
 Use this procedure when a workflow asks for prediction, scenario probability,
 valuation implication, or decision support.
 
+Forecast fields are an agentic judgment contract, not a trading model, feature
+store, autonomous signal, or execution trigger. Use them to make role judgment
+reviewable, horizon-bound, falsifiable, updateable, and suitable for
+postmortem.
+
 Required output shape:
 
 - `forecast_required`
@@ -29,6 +34,8 @@ Quality floor:
 - Bound each forecast to a resolvable target and horizon.
 - Separate factual data, model output, assumption, and judgment.
 - Use a probability range when precision is weak.
+- Treat forecast probability as role judgment that needs evidence, contrary
+  evidence, review date, and invalidation conditions.
 - If `probability` and `probability_range` both appear, keep the point value
   inside the range.
 - If evidence is weak, use `forecast_allowed: false`,

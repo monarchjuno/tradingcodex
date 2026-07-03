@@ -125,7 +125,7 @@ codex exec -C /tmp/tradingcodex-harness-smoke --skip-git-repo-check --dangerousl
   'Harness smoke only. Do not produce investment analysis. Confirm the TradingCodex head-manager instructions loaded, identify the selected team for "Analyze NVDA. No order, no trading, no valuation.", and stop at dispatch/waiting status.'
 ```
 
-Inspect `/tmp/tradingcodex-codex-smoke.txt`, `.tradingcodex/mainagent/latest-user-prompt-gate.json`, `.tradingcodex/mainagent/subagent-session-state.json` when present, and `trading/audit/codex-hooks.jsonl`. If Codex CLI or authentication is unavailable, record that blocker and still run generated workspace, hook, and starter-prompt checks.
+Inspect `/tmp/tradingcodex-codex-smoke.txt`, `.tradingcodex/mainagent/latest-workflow-intake.json`, `.tradingcodex/mainagent/latest-workflow-plan.json` when present, `.tradingcodex/mainagent/subagent-session-state.json` when present, and `trading/audit/codex-hooks.jsonl`. If Codex CLI or authentication is unavailable, record that blocker and still run generated workspace, hook, and starter-prompt checks.
 
 Treat a smoke as failed if `head-manager` gives substantive investment analysis before accepted subagent artifacts, expands beyond the selected team, ignores negated scope such as `no order` or `no valuation`, bypasses role/tool boundaries, or cannot state `waiting`, `revise`, `blocked`, or accepted handoff status.
 

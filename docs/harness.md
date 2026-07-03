@@ -43,14 +43,14 @@ TradingCodex Harness
 
 | Area | Harness responsibility |
 | --- | --- |
-| Roles | Keep one `head-manager` and nine fixed subagents as the default coordination model. |
+| Roles | Keep one `head-manager` and ten fixed subagents as the default coordination model, including an independent `judgment-reviewer` gate. |
 | Skills | Keep core role-owned skills locked and file-native, expose direct user entrypoints, support `strategy-*` strategy skills, and let `head-manager` manage role-local optional skills through workspace files while Django shows status only. |
 | State | Keep execution-sensitive runtime state in the central Django DB, while Codex-native agent, skill, and research handoff state is workspace-file state. |
 | Interfaces | Expose Web, Admin, REST, CLI, and MCP as service-layer callers. |
 | Guardrails | Reduce, restrict, or block risky actions through guidance, enforcement, and information barriers. |
 | Improvement | Raise workflow quality through no-overlap handoff contracts, quality gates, artifact readiness, research memory, postmortems, and test feedback. |
 | Approved action boundary | Keep executable actions behind policy, approval, duplicate-request, connection, and audit checks. |
-| Decision packages | Keep investment ideas Codex-native by packaging workflow plans, artifact paths, profile gaps, blocked actions, and next allowed actions as workspace markdown. |
+| Decision packages | Keep investment ideas Codex-native by packaging workflow plans, artifact paths, source trust notes, thesis lifecycle state, profile gaps, blocked actions, and next allowed actions as workspace markdown. Non-investment workflow packages such as connector build or strategy authoring use workflow lifecycle state instead of thesis lifecycle or portfolio/risk language. |
 | Provenance | Record which workspace and role produced or requested work without making workspaces separate ledgers. |
 | Profiles | Separate paper portfolio/account/strategy state from workspace identity. |
 | Components | Provide the developer-facing maintenance map for implementation surfaces, dependencies, capabilities, tags, and validation. |

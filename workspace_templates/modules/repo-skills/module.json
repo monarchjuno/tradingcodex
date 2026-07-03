@@ -16,6 +16,7 @@
       "skill.workflow.orchestrate",
       "skill.workflow.investment_map",
       "skill.workflow.scenario_quality_gates",
+      "skill.agent_judgment_review",
       "skill.tradingcodex_operator",
       "skill.manage_subagents",
       "skill.manage_optional_skills",

@@ -95,7 +95,7 @@ The visual harness canvas is an optional diagnostic surface rather than the
 primary web entrypoint. When present, it is server-rendered SVG/HTML and shows:
 
 - center node: `head-manager`
-- surrounding nodes: the nine fixed subagents
+- surrounding nodes: the ten fixed subagents
 - edge groups: dispatch, research handoff, portfolio/risk gate, approval gate, approved action gate
 - edge contracts: what the source role must hand off, what the target role may consume, and the quality state expected before moving downstream
 - role inspector: owned skills, no-overlap handoff contract, allowed actions,

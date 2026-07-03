@@ -9,7 +9,7 @@ workflow quality, skill proposals, and postmortems.
 
 ## Fixed Role Roster
 
-TradingCodex always uses `head-manager` as the main agent with nine fixed
+TradingCodex always uses `head-manager` as the main agent with ten fixed
 subagents.
 
 | Role | Responsibility | Never allowed |
@@ -23,6 +23,7 @@ subagents.
 | `valuation-analyst` | DCF, reverse DCF, multiples, scenario, expected return | approval, execution, broker API call |
 | `portfolio-manager` | Portfolio fit, sizing, draft order ticket | self-approval, execution, arbitrary policy changes |
 | `risk-manager` | Risk review, policy review, approval readiness, approval receipt | order drafting, execution, arbitrary policy changes |
+| `judgment-reviewer` | Independent challenge review of accepted investment artifacts | original analyst work, portfolio sizing, order drafting, approval, execution, policy changes |
 | `execution-operator` | Submit approved order tickets through TradingCodex MCP | raw broker API, secret read, policy change |
 
 ## No-Overlap Role Contract
@@ -43,6 +44,7 @@ artifact.
 | `valuation-analyst` | valuation range, scenario assumptions, market-implied expectations, sensitivity | accepted research artifacts and user-stated method constraints | valuation report with assumptions, sensitivity, confidence, and readiness for portfolio/risk review |
 | `portfolio-manager` | portfolio fit, sizing context, concentration, liquidity, opportunity cost, draft order-ticket readiness | accepted research/valuation artifacts and portfolio state | portfolio report and, only when allowed, draft order-ticket readiness or draft ticket |
 | `risk-manager` | downside, restricted-list and policy readiness, limits, approval readiness, approval receipt | accepted portfolio/order artifacts, policy state, restricted-list state, audit evidence | risk/policy report, approval readiness state, approval receipt when allowed, or blocked reasons |
+| `judgment-reviewer` | independent challenge, contrary evidence, source-trust posture, update triggers, invalidation conditions | accepted upstream artifacts, source/as-of metadata, forecast fields, user constraints | judgment review artifact with `accepted`, `revise`, `blocked`, or `waiting` outcome before synthesis or downstream gates |
 | `execution-operator` | approved submit/cancel/status through the TradingCodex service boundary; live only when every live gate passes | approved order ticket, matching approval receipt, policy allow state | execution result, MCP response, audit reference, or rejected/blocked reasons |
 
 Downstream roles handle weak upstream work by returning a revision request or
@@ -119,6 +121,12 @@ approval, or execution roles unless the user later asks for valuation,
 decision support, portfolio fit, sizing, order drafting, approval, or
 execution and a new validated plan permits it.
 
+Approved-action execution-only lanes do not dispatch `judgment-reviewer`.
+Those lanes verify existing tickets, approval receipts, policy, duplicate
+requests, broker connection posture, and audit evidence through service gates;
+they do not reopen investment judgment unless a new research or decision-support
+request is routed first.
+
 Negated scope terms are binding. Phrases such as "no valuation", "no order", or
 "no trading" remove those actions or roles from routing instead of triggering
 them as positive intent.
@@ -126,10 +134,12 @@ them as positive intent.
 Broad public-equity review prompts such as "Analyze NVDA" default to the
 smallest decision-useful lane: `thesis_review` with fundamental, technical,
 news, and valuation roles. Explicit narrowing happens first, so "chart only"
-stays technical-only, "company facts only" stays research-only, and "no
-valuation" removes valuation while preserving the remaining broad thesis
-review. This default does not add portfolio advice, order drafting, approval,
-execution, broker access, or secret access.
+stays technical-only, "company facts only" stays research-only, and these
+narrow fact or technical-only requests do not add `judgment-reviewer` unless
+the user asks for thesis, decision, forecast, portfolio, risk, or broader
+review. "No valuation" removes valuation while preserving the remaining broad
+thesis review. This default does not add portfolio advice, order drafting,
+approval, execution, broker access, or secret access.
 
 Requests that combine valuation or decision support with portfolio fit, such
 as "fair value and whether it fits my portfolio", route through valuation
@@ -181,7 +191,7 @@ Instruction/skill separation:
 | Head-manager skills | compact repeatable procedures for workflow planning, workflow routing, automation arming, server/runtime recovery, build-mode work, strategy creation, and postmortems | role identity, durable routing authority, MCP allowlists, weakening base guardrails, bypassing role-owned skills, approving or executing directly |
 | Fixed subagent TOML | standing role identity, role purpose, artifact wall, model/tool config, MCP allowlist, single-item display nickname candidates, and always-on prohibitions | per-request user intent, workflow lane decisions, source selection, or temporary task-specific context |
 | Role-owned skills | capability procedure, artifact expectations, quality checks, and local output rules | role eligibility, work for other roles, self-approval, execution outside MCP |
-| Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, research artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
+| Main-to-subagent briefs | request-specific assignment envelope: verbatim user request, explicit constraints, workflow consent posture, artifact language, lane, artifact path, `context_summary`, data-cutoff needs, request-specific out-of-scope items, and return contract | standing role manuals, model/tool config, MCP allowlists, long method checklists, long source-class lists, full artifacts, or repeated guardrail prose |
 
 Repo skill bodies are dependency-light capability references. They should not
 declare role ownership, encode role-specific eligibility, or maintain direct
@@ -248,7 +258,6 @@ Head-manager skill responsibilities:
 | `automate-workflow` | mandate reuse from `$plan-workflow`, preflight checks, arming status, user-language automation summaries, and Codex automation registration for recurring TradingCodex workflows without granting execution authority |
 | `tcx-server` | startup health, local dashboard URL guidance, explicit user-requested dashboard opening, Codex restart guidance, TradingCodex MCP setup, update-status explanation, read-only broker/status inspection, and service troubleshooting without granting execution authority |
 | `tcx-build` | full-access plus TCX-build-mode gated self-update, template/harness edits, broker/API provider connect/scaffold/register/validate flows, credential-ref handling, and live-submit blocking outside service gates |
-| `external-data-source-gate` | read-only external evidence-source constraints and External MCP Gate honesty |
 | `strategy-creator` | create, update, validate, and activate user-approved `strategy-*` skills as strategy library entries without granting policy, approval, execution, MCP, or role-boundary authority |
 | `postmortem` | audit-backed process review and improvement proposals after failures, thesis changes, rejected orders, or executions |
 
@@ -299,7 +308,8 @@ mechanics.
 policy, change MCP allowlists, bypass information barriers, read secrets, or
 grant broker authority. The root `head-manager` selects at most the relevant
 strategy for a workflow and passes only compact selected strategy context to
-subagents.
+subagents. Strategy skill files are not projected into fixed subagent TOML,
+even as disabled entries.
 
 Strategy and policy behavior is fixed for the active workflow. Agents may
 record a postmortem, optional-skill proposal, policy proposal, or strategy
@@ -353,7 +363,9 @@ posture, or core skill behavior.
 - Subagent context is intentionally minimized.
 - `head-manager` keeps full product and harness context.
 - Fixed subagent TOML files supply the standing role-local card: affiliation, coordinator, assigned role, role purpose, own artifact paths, handoff target, and forbidden actions.
-- Per-task subagent briefs are assignment envelopes, not role manuals. They should add only the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, expected artifact path, compact `context_summary`, request-specific stage boundaries, and concise return contract.
+- Per-task subagent briefs are assignment envelopes, not role manuals. They should add only the current task, original request, explicit constraints, workflow consent posture, artifact language, lane, expected artifact path, compact `context_summary`, request-specific stage boundaries, and concise return contract.
+- Narrow research-only briefs use an Evidence Quality Floor instead of thesis or decision-quality fields.
+- Approved-action briefs use ticket, approval, policy, duplicate-request, connection, and audit references instead of research source snapshots or thesis-quality fields.
 - Full artifacts, source dumps, strategy libraries, and repeated role manuals
   stay out of the brief unless a short excerpt is load-bearing.
 - `.tradingcodex/mainagent/subagent-session-state.json` is a compact working
@@ -436,6 +448,8 @@ support is in scope, anti-overfit checks for backtests/signals, and conservative
 
 Shared role-skill bundles for this spine are `forecasting-discipline`,
 `thesis-scenario-tree`, `numeric-data-qc`, and `anti-overfit-validation`.
+`agent-judgment-review` is role-owned by `judgment-reviewer` so the challenge
+step is independent from the producing analyst or downstream reviewer.
 They are quality procedures only; role eligibility, MCP allowlists, approval,
 execution, broker, and secret boundaries remain registry, TOML, policy, and
 service-layer concerns.

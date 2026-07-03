@@ -2,7 +2,7 @@
 
 Scenario quality gates:
 
-- Investment workflows use `investment-workflow-map` before final lane/team selection.
+- Investment workflows use `$tcx-workflow` before final lane/team selection.
 - The universe and workflow type are named when relevant: public equity, ETF/index, crypto public market, macro/rates/FX/commodity, cross-asset overlay, credit signal, issuer baseline, idea triage, earnings preview, earnings deep dive, catalyst calendar, thesis tracker, long/short pitch, valuation/model/scenario, technical/market-structure review, model audit/normalization, position sizing/hedge, or report QC.
 - Market-sensitive inputs include source/as-of or retrieved-at dates when they affect readiness.
 - The user-facing hero artifact is distinguished from support/audit files such as source indexes, normalized CSVs, run logs, manifests, and raw JSON.
@@ -12,7 +12,7 @@ Scenario quality gates:
 - The selected subagent team is closed for the current lane; extra roles require explicit lane escalation.
 - Broad public-equity review defaults to deep thesis review unless explicit constraints narrow the team first.
 - The original user request and explicit constraints are preserved in each non-startup brief.
-- Decision-quality artifacts include evidence grade, source freshness, source quality, conflicts, readiness, confidence, missing evidence, next recipient, and blocked actions when applicable.
+- Decision-quality artifacts include evidence grade, source freshness, source quality, source trust notes, contrary evidence, update triggers, invalidation conditions, confidence, missing evidence, next recipient, and blocked actions when applicable.
 - Forecasts are horizon-bound, evidence-aware, and either ledger-valid or blocked with `forecast_block_reason`.
 - Backtest, signal, and model-performance claims include anti-overfit validation before readiness improves.
 - Required checks are user-explicit, policy-required, or scenario-quality gates; optional methods stay optional.

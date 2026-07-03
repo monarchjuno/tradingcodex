@@ -172,10 +172,6 @@ def subagent_session_state(event: str, payload: dict) -> None:
         "completed_count_total": 0,
     })
     run_id = resolve_workflow_run_id(payload)
-    gate = read_json(workflow_gate_path(run_id), {}) if run_id else {}
-    if not gate:
-        gate = read_json(ROOT / ".tradingcodex" / "mainagent" / "latest-user-prompt-gate.json", {})
-        run_id = run_id or gate.get("workflow_run_id")
     role = payload.get("agent_type") or payload.get("subagent_type") or payload.get("subagent") or payload.get("agent") or payload.get("task_name", "").split(" ")[0]
     event_count_total = int(state.get("event_count_total") or len(state.get("events", [])))
     completed_count_total = int(state.get("completed_count_total") or len(state.get("completed", [])))
@@ -218,51 +214,6 @@ def subagent_session_state(event: str, payload: dict) -> None:
     append_jsonl(ROOT / "trading" / "audit" / "subagent-session-events.jsonl", record)
 
 
-def build_initial_loop_state(gate: dict, plan: dict, compact_context: dict) -> dict:
-    selected_team = plan.get("selectedTeam") or plan.get("subagents") or []
-    allowed_followup_team = plan.get("allowedFollowupTeam") or compact_context.get("allowed_followup_team") or []
-    escalation_team = plan.get("escalationTeam") or compact_context.get("escalation_team") or []
-    pending_tasks = [
-        {
-            "task_id": f"{gate['workflow_run_id']}:{role}:initial",
-            "role": role,
-            "task_type": "initial_dispatch",
-            "status": "pending",
-            "planner_action": "downstream_handoff",
-            "delta_brief": "Initial selected-team dispatch from user prompt gate.",
-        }
-        for role in selected_team
-    ]
-    return {
-        "workflow_run_id": gate["workflow_run_id"],
-        "lane": gate["workflow_lane"],
-        "state_path": gate.get("workflow_loop_state_path") or loop_state_relpath(gate["workflow_run_id"]),
-        "latest_state_path": ".tradingcodex/mainagent/workflow-loop-state.json",
-        "session_key": gate.get("session_key", ""),
-        "iteration": 0,
-        "loop_policy": plan.get("loopPolicy") or compact_context.get("loop_policy") or {},
-        "selected_team": selected_team,
-        "allowed_followup_team": allowed_followup_team,
-        "escalation_team": escalation_team,
-        "pending_tasks": pending_tasks,
-        "completed_artifacts": [],
-        "loop_decisions": [
-            {
-                "ts": now(),
-                "planner_action": "waiting" if pending_tasks else "synthesize",
-                "reason": "Initial prompt gate wrote assisted loop state; hooks do not auto-spawn subagents.",
-            }
-        ],
-        "escalation_proposals": [],
-        "blocked_actions": (compact_context.get("routing_status") or {}).get("blocked_actions") or compact_context.get("blocked_actions") or [],
-        "stop_reason": "waiting_for_selected_subagents" if pending_tasks else "head_manager_lane",
-        "state_mode": "inspectable_assisted_loop",
-        "auto_spawn": False,
-        "recursive_hook_dispatch": False,
-        "updated_at": now(),
-    }
-
-
 def update_loop_state_for_subagent_event(event: str, role: str, record: dict) -> None:
     state = read_json(loop_state_path(record.get("run_id")), {}) if record.get("run_id") else {}
     if not state or state.get("workflow_run_id") != record.get("run_id"):
@@ -303,10 +254,6 @@ def loop_state_relpath(run_id) -> str:
 
 def loop_state_path(run_id) -> Path:
     return ROOT / ".tradingcodex" / "mainagent" / "workflows" / safe_id(run_id) / "loop-state.json"
-
-
-def workflow_gate_path(run_id) -> Path:
-    return ROOT / ".tradingcodex" / "mainagent" / "workflows" / safe_id(run_id) / "prompt-gate.json"
 
 
 def compact_loop_summary(state: dict) -> dict:
@@ -381,8 +328,20 @@ def subagent_session_id(payload: dict, run_id: str, role: str) -> str:
 def policy_gate(event: str, payload: dict) -> None:
     text = json.dumps(payload, ensure_ascii=False).lower()
     forbidden = ["broker api", "api_key", "secret.read", "cash.withdraw", "policy.write"]
+    if is_workflow_plan_command(payload):
+        forbidden.remove("broker api")
     if any(item in text for item in forbidden):
         print(json.dumps({"decision": "block", "reason": "TradingCodex policy gate blocked sensitive request"}))
+
+
+def is_workflow_plan_command(payload: dict) -> bool:
+    command = json.dumps(payload.get("tool_input") or payload.get("input") or payload, ensure_ascii=False).lower()
+    return (
+        ".tradingcodex/mainagent/workflows/" in command
+        and ".json" in command
+        and "--plan" in command
+        and ("tcx workflow validate" in command or "tcx workflow record" in command)
+    )
 
 
 def append_hook_audit(record: dict) -> None:

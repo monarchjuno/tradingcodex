@@ -26,7 +26,6 @@ from tradingcodex_service.application.agents import (
     write_agent_additional_instructions,
 )
 from tradingcodex_service.application.harness import (
-    PROFILE_FIELD_KEYS,
     build_workflow_loop_preview,
     build_workflow_intake_summary,
     build_subagent_starter_prompt,
@@ -37,6 +36,7 @@ from tradingcodex_service.application.harness import (
     list_policy_overview,
     list_recent_activity,
 )
+from tradingcodex_service.application.workflow_routing import PROFILE_FIELD_KEYS
 from tradingcodex_service.application.markdown_preview import (
     MarkdownPreview,
     read_markdown_preview,

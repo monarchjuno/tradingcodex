@@ -72,7 +72,3 @@ default_tools_approval_mode = "prompt"
 
 [mcp_servers.tradingcodex.tools.submit_approved_order]
 approval_mode = "prompt"
-
-[[skills.config]]
-path = "{{PROJECT_DIR}}/.tradingcodex/subagents/skills/execution-operator/execute-paper-order/SKILL.md"
-enabled = true

@@ -68,7 +68,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
         "hook intake excludes full starter prompt",
         "starter_prompt" not in compact_context,
     )
-    history_records = _prompt_history_records(gate_history)
+    history_records = _workflow_intake_history_records(gate_history)
     history_oversized = [
         record
         for record in history_records
@@ -125,7 +125,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
     )
     _add_check(
         checks,
-        "gate and state avoid pasted markdown artifacts",
+        "workflow intake and state avoid pasted markdown artifacts",
         not _looks_like_pasted_markdown_artifact(gate_text + "\n" + state_text),
     )
     _add_check(
@@ -215,7 +215,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
         "strict": strict,
         "checks": checks,
         "warnings": warnings,
-        "latest_gate": {
+        "latest_workflow_intake": {
             "path": ".tradingcodex/mainagent/latest-workflow-intake.json",
             "workflow_run_id": gate.get("workflow_run_id"),
             "workflow_lane": gate.get("heuristic_lane"),
@@ -223,7 +223,7 @@ def audit_context_budget(workspace_root: Path | str, *, strict: bool = False) ->
             "compact_context_estimated_tokens": compact_tokens,
             "starter_prompt_estimated_tokens": starter_prompt_tokens,
         },
-        "prompt_gate_history": {
+        "workflow_intake_history": {
             "path": ".tradingcodex/mainagent/workflow-intake-history.jsonl",
             "entries": len(gate_history),
             "max_compact_context_estimated_tokens": max((record["compact_context_estimated_tokens"] for record in history_records), default=0),
@@ -303,7 +303,7 @@ def _json_text(value: Any) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True)
 
 
-def _prompt_history_records(gate_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _workflow_intake_history_records(gate_history: list[dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for record in gate_history:
         compact_context = {

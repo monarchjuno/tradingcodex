@@ -81,7 +81,7 @@ portfolio state or execution policy.
 
 ## Role Boundary Snapshot
 
-TradingCodex always uses `head-manager` as the main coordinator with nine fixed
+TradingCodex always uses `head-manager` as the main coordinator with ten fixed
 subagents. Detailed responsibilities live in
 [roles-skills-and-workflows.md](./roles-skills-and-workflows.md).
 

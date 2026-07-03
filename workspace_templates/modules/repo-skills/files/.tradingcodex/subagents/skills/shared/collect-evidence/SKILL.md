@@ -22,6 +22,9 @@ Expected output:
 - Universe and workflow type
 - Company or asset identifier
 - Source list
+- Source trust notes: official primary source, management claim,
+  market-derived evidence, secondary news, stale evidence, or unsupported
+  assumption
 - Filing, news, price, and market context references
 - Facts versus assumptions
 - Missing evidence
@@ -31,6 +34,7 @@ Decision quality fields when applicable:
 
 - `evidence_grade`, `source_freshness`, `source_quality`
 - `conflict_status`, `decision_readiness`, `confidence`
+- `source_trust_notes`
 - `forecast_required`, `forecast_allowed`, `forecast_block_reason`
 - `contrary_evidence`, `update_triggers`, `invalidation_conditions`
 
@@ -41,6 +45,8 @@ Quality floor:
 - Include source dates or retrieval dates when available.
 - Include provider/tool names, query parameters, warnings, and credential or coverage failures for external sources.
 - Separate verified facts, source claims, assumptions, and analyst inference.
+- Weight official primary sources above management claims, secondary news,
+  stale sources, and unsupported assumptions.
 - Flag stale, missing, or conflicting evidence.
 - Label the evidence pack `factual-baseline`, `screen-grade`, or `not-decision-ready` when source gaps limit downstream use.
 - Do not fabricate source dates, prices, filings, metrics, or tool output.

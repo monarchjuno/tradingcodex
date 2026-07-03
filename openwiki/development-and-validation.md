@@ -41,7 +41,7 @@ cd /tmp/tradingcodex-harness-smoke
 printf '{"prompt":"Analyze NVDA. No order, no trading, no valuation."}\n' | python .codex/hooks/tradingcodex_hook.py user-prompt-submit
 ```
 
-Inspect generated `AGENTS.md`, `.codex/config.toml`, role TOML, hook output, generated indexes, `.tradingcodex/mainagent/latest-user-prompt-gate.json`, `.tradingcodex/mainagent/subagent-session-state.json` when present, and `trading/audit/codex-hooks.jsonl`.
+Inspect generated `AGENTS.md`, `.codex/config.toml`, role TOML, hook output, generated indexes, `.tradingcodex/mainagent/latest-workflow-intake.json`, `.tradingcodex/mainagent/latest-workflow-plan.json` when present, `.tradingcodex/mainagent/subagent-session-state.json` when present, and `trading/audit/codex-hooks.jsonl`.
 
 ## Codex CLI Smoke
 

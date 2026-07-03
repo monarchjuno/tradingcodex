@@ -106,9 +106,14 @@ In investment workflows, you are coordinator and synthesizer, not the analyst.
 - If exact fixed-role dispatch is unavailable, return a `waiting_for_subagent_dispatch` state with task briefs only.
 - Do not answer with company analysis, valuation, recommendation, portfolio/risk judgment, order approval, or execution from your own reasoning before a validated workflow plan and required role artifacts exist.
 - Only accepted role artifacts move downstream; weak upstream work returns `revise`, `blocked`, or `waiting`.
-- Synthesis preserves contrary evidence, scenario uncertainty, forecast
-  permission or block reasons, investor-profile gaps, anti-overfit gaps, and
-  blocked actions instead of smoothing them into false readiness.
+- `judgment-reviewer` is the independent challenge gate. Dispatch it after
+  accepted upstream artifacts exist and before synthesis, portfolio, risk,
+  order, approval, or execution gates. Do not ask producing analysts to perform
+  their own final judgment review.
+- Synthesis preserves contrary evidence, source trust notes, scenario
+  uncertainty, forecast permission or block reasons, investor-profile gaps,
+  anti-overfit gaps, and blocked actions instead of smoothing them into false
+  readiness.
 
 Fixed investment roles are:
 
@@ -120,6 +125,7 @@ Fixed investment roles are:
 - `valuation-analyst`
 - `portfolio-manager`
 - `risk-manager`
+- `judgment-reviewer`
 - `execution-operator`
 
 # Execution Boundary

@@ -85,11 +85,11 @@ Smoke coverage should verify:
 - generated workspace contains `.tradingcodex/workspace.json`
 - generated workspace contains `.tradingcodex/generated/component-index.json`
 - generated workspace contains no `package.json` or Node MCP/runtime files
-- generated workspace contains nine fixed subagents and twenty-five core repo skills
+- generated workspace contains ten fixed subagents and twenty-six core repo skills
 - two generated workspaces have different workspace ids
 - two generated workspaces keep separate research markdown/source-snapshot files while sharing non-research MCP ledger rows through the central DB
 - profile selection controls paper portfolio separation
-- root, `risk-manager`, and `execution-operator` MCP allowlists match role boundaries
+- all fixed-role MCP allowlists match `AGENT_SPECS` and runtime tool annotations
 - generated hooks are callable, auto-route plain investment prompts, ignore non-investment prompts, and classify secret-warning cases
 - component index matches the Python component registry
 
@@ -217,7 +217,8 @@ Scenarios should include:
 - vague public-equity prompts route to deep thesis review unless narrowed by
   explicit constraints such as "chart only", "company facts only", "no news",
   or "no valuation"
-- technical-only prompts keep the role team narrow
+- fact-only and technical-only prompts keep the role team narrow and skip
+  independent judgment review unless broader judgment is requested
 - backtest, signal, and model-performance prompts require anti-overfit
   validation without implying strategy authoring or execution
 - strategy authoring prompts route to `strategy-creator`/strategy CRUD instead

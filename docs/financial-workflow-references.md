@@ -17,7 +17,7 @@ drafting, approval, or execution.
 
 | Principle | Product implication | Reference |
 | --- | --- | --- |
-| Portfolio risk comes before single-security action | Portfolio and risk lanes ask for objective, horizon, risk tolerance, liquidity needs, holdings, and constraints before recommendation, sizing, approval, or execution. | FINRA Rule 2111 customer investment profile and suitability guidance |
+| Portfolio risk comes before single-security action | Portfolio, risk, and draft-order lanes ask for objective, horizon, risk tolerance, liquidity needs, holdings, and constraints before recommendation, sizing, or approval. Approved-action execution lanes verify the existing approval receipt instead of re-asking profile questions. | FINRA Rule 2111 customer investment profile and suitability guidance |
 | Retail recommendations require investor-profile context | Decision-support workflows should expose missing profile fields rather than producing blanket recommendations. | SEC Regulation Best Interest staff bulletin on care obligations |
 | Asset allocation, diversification, and rebalancing are the baseline risk frame | Research and portfolio outputs should separate single-name evidence from portfolio exposure, concentration, and rebalancing context. | SEC Investor.gov asset allocation/diversification/rebalancing guidance |
 | Mean-variance and factor thinking are analytical tools, not automatic advice | Valuation and portfolio roles can use expected return, variance, covariance, and factor exposure concepts, but must expose assumptions and uncertainty. | Markowitz (1952); Fama and French (1993) |

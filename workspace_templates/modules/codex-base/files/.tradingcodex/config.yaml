@@ -30,7 +30,7 @@ subagents:
   explicit_user_request_required: false
   natural_language_investment_request_allowed: true
   explicit_workflow_skill_counts_as_manual_control: true
-  primary_workflow_skill: orchestrate-workflow
+  primary_workflow_skill: tcx-workflow
   hook_action_for_plain_investment_prompt: auto_dispatch_allowed
   duplicate_subagent_policy: reuse_active_or_completed_matching_run
   session_start_plan_prepared: true

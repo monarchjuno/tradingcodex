@@ -86,13 +86,18 @@ A clean generated workspace must not contain:
 - Node MCP runtime files
 - workspace-local canonical investment DB
 - broker credentials or raw secrets
+- legacy `.tradingcodex/mainagent/head-manager.yaml` or
+  `.tradingcodex/mainagent/subagent-registry.yaml` role/skill registry copies
+- static `role_owned_skills` roster copies in
+  `.tradingcodex/policies/information-barriers.yaml`; role skill sources are
+  projected from the agent/skill registry into `.codex/agents/*.toml`
 
 ## Baseline Generated Contents
 
 Generated workspaces contain:
 
 - one root `head-manager`
-- nine fixed subagents
+- ten fixed subagents
 - an immutable workspace manifest at `.tradingcodex/workspace.json`
 - root `head-manager` identity loaded from `.codex/prompts/base_instructions/head-manager.md` through `.codex/config.toml` `model_instructions_file`
 - sectioned Markdown base-instruction format for `head-manager`, including `# How you work`, TradingCodex guardrails, and tool guidelines
@@ -105,12 +110,19 @@ Generated workspaces contain:
 - negated scope routing: phrases such as "no valuation", "no order", and "no trading" remove those actions or roles from dispatch selection
 - broad public-equity prompts such as "Analyze NVDA" default to deep thesis
   review with fundamental, technical, news, and valuation roles unless explicit
-  constraints narrow the team first
+  constraints narrow the team first; narrow fact-only and technical-only
+  prompts do not add `judgment-reviewer` unless broader judgment is requested
 - compact Decision Quality Spine flags in hook context for decision quality,
   forecast contract, profile gate, anti-overfit, and deep thesis default
 - no full-history fixed-role spawn: fixed `agent_type` subagents receive compact assignment envelopes without full-history forking on the first attempt
 - subagent hook isolation: `UserPromptSubmit` auto-routing is ignored for fixed subagent contexts so subagent briefs cannot overwrite main-agent routing state or create recursive dispatch pressure
-- main-to-subagent briefs are assignment envelopes, not role manuals: they carry the current task, original request, explicit constraints, workflow consent posture, research artifact language, lane, artifact target, compact context summary, request-specific out-of-scope items, and return contract without repeating long method/source/guardrail checklists or pasting full artifacts
+- main-to-subagent briefs are assignment envelopes, not role manuals: they carry the current task, original request, explicit constraints, workflow consent posture, artifact language, lane, artifact target, compact context summary, request-specific out-of-scope items, and return contract without repeating long method/source/guardrail checklists or pasting full artifacts
+- narrow research-only briefs use an Evidence Quality Floor instead of thesis
+  or decision-quality fields
+- approved-action briefs stay service-boundary focused by passing ticket, approval, policy, duplicate-request, connection, and audit references instead of research source snapshots or thesis-quality fields
+- verification-budget copy is lane-specific: approved-action, connector, and
+  strategy lanes verify their own service or validation evidence instead of
+  research source-freshness fields
 - context-efficient research handoffs: stored markdown frontmatter includes
   `context_summary` so downstream roles can consume artifact paths and summaries
   before opening full markdown; `reader_summary` and `next_action` keep the
@@ -140,9 +152,10 @@ Generated workspaces contain:
 - fixed subagent `nickname_candidates` set to a single item matching the exact role `name`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents
-- twenty-five core repo skills across project-scope mainagent skills and subagent skill directories, each with `SKILL.md` frontmatter for document metadata and `agents/openai.yaml` UI metadata
-- shared decision-quality skill bundles for forecasting discipline, thesis
-  scenario trees, numeric data QC, and anti-overfit validation
+- twenty-six core repo skills across project-scope mainagent skills and subagent skill directories, each with `SKILL.md` frontmatter for document metadata and UI metadata when projected
+- decision-quality skill bundles for forecasting discipline, thesis scenario
+  trees, numeric data QC, and anti-overfit validation, plus role-owned
+  `agent-judgment-review` for the independent `judgment-reviewer` gate
 - standalone `strategy-*` skills under `.agents/skills/strategy-*` for user-approved agent-readable investment strategies, created through `strategy-creator`, CLI, API, or service-layer flows and exposed to the root `head-manager` through the strategy marker block in `.codex/config.toml`; Django web lists and previews them read-only
 - file-native agent/skill projection: head-manager and strategy skills live under `.agents/skills/*`, role-owned subagent skills live under `.tradingcodex/subagents/skills/*`, and role TOML embeds the allowed role skill source list; state is expressed in `.codex/agents/*.toml`, `.codex/config.toml`, `.tradingcodex/mainagent/skill-change-proposals/*.yaml`, and `.tradingcodex/generated/*.json`, not Django skill DB tables
 - optional subagent skills are created, updated, activated, archived, deleted, and validated through the shared application service used by `head-manager`, CLI, API, and Django web
@@ -406,6 +419,8 @@ enforcement.
   instead of auto-dispatching fixed investment subagents
 - connector implementation prompts such as "connect this broker"
   route to the `connector_build` lane and `$tcx-build`, not investment
+  thesis review; their workflow packages use workflow lifecycle and boundary
+  sections rather than thesis lifecycle or portfolio/risk sections
   dispatch
 - secret-only routing: credential, token, password, broker-key, or `.env`
   storage/read/rotation prompts create warning context without activating

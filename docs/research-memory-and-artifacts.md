@@ -62,10 +62,13 @@ Research markdown frontmatter should preserve:
   with trigger, suggested fixed role, delta question, reason, materiality,
   provenance, advisory consent posture, and blocked actions; these proposals do
   not dispatch subagents or decide lane scope
+- evidence-only fields for narrow research: source/as-of posture, confidence,
+  missing evidence, source snapshot ids, next recipient, and blocked actions
 - decision-quality fields when applicable: `evidence_grade`,
   `source_freshness`, `source_quality`, `conflict_status`,
   `decision_readiness`, forecast permission fields, scenario cases, contrary
-  evidence, update triggers, invalidation conditions, and investor-profile gaps
+  evidence, update triggers, invalidation conditions, source trust notes,
+  thesis lifecycle notes, and investor-profile gaps
 - `version`
 - `content_hash`
 - `workspace_native`
@@ -121,9 +124,9 @@ blocking legacy research files.
 Forecast ledger records under `trading/forecasts/*.jsonl` are validated by the
 same quality-check path. Strict validation requires open/closed status,
 resolvable target, horizon, probability or probability range, evidence IDs,
-contrary evidence, resolution source, and review date. Initial validation checks
-schema and open/closed state only; Brier scoring and calibration review wait
-until enough forecasts resolve.
+contrary evidence, invalidation conditions, resolution source, and review date.
+Initial validation checks schema and open/closed state only; Brier scoring and
+calibration review wait until enough forecasts resolve.
 
 These tools read and write workspace markdown files for research artifacts.
 They still use the Django service boundary for validation, provenance, audit,
@@ -190,6 +193,8 @@ Investment reports, role handoffs, and final syntheses share a quality floor.
 | Hero/support artifact split | Choose the user-facing report, tracker, workbook, or synthesis first; keep CSV/JSON/run log/source indexes as support/audit layers. |
 | Conservative readiness | Use conservative labels such as `factual-baseline`, `screen-grade`, `not-decision-ready`, `ready-for-portfolio-risk`, `ready-for-draft`, or `blocked`. |
 | Handoff acceptance | Mark whether a role artifact is `accepted`, `revise`, `blocked`, or `waiting`; downstream roles should not repair upstream work outside their owned question. |
+| Source trust | Separate official primary sources, management claims, market-derived evidence, secondary news, stale evidence, and unsupported assumptions. |
+| Judgment review | Decision-oriented artifacts should preserve contrary evidence, update triggers, invalidation conditions, source trust notes, and thesis lifecycle notes when decision quality is required. |
 | Forecast discipline | Required forecasts must be horizon-bound, evidence-aware, updateable, and either valid for the ledger or blocked with `forecast_block_reason`. |
 | Anti-overfit validation | Backtest, signal, and model-performance artifacts must address leakage, survivorship bias, data snooping, out-of-sample coverage, costs, capacity, regime sensitivity, and live friction. |
 

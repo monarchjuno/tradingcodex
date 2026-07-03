@@ -8,7 +8,20 @@
     "created_by": { "type": "string" },
     "created_at": { "type": "string" },
     "trigger": { "type": "string" },
-    "findings": { "type": "array" }
+    "findings": { "type": "array" },
+    "investment_judgment_review": {
+      "type": "object",
+      "properties": {
+        "original_thesis": { "type": "string" },
+        "what_happened": { "type": "string" },
+        "failed_assumption": { "type": "string" },
+        "role_evidence_miss_or_overstatement": { "type": "string" },
+        "stale_weak_or_misleading_source": { "type": "string" },
+        "confidence_calibration": { "type": "string" },
+        "future_warning_pattern": { "type": "string" }
+      },
+      "additionalProperties": true
+    }
   },
   "additionalProperties": true
 }

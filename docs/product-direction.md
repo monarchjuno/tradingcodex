@@ -71,7 +71,7 @@ guidance emitted by the product should remain English.
 | Runtime ledger | Treat portfolio state, order lifecycle, non-research MCP ledger rows, and audit events as central DB records. Treat agent, skill, research handoff, and source-snapshot state as workspace files. |
 | Agents-first web | Show head-manager, subagents, required/optional/strategy skills, skill markdown, and workspace research markdown at `/`; keep operational diagnostics out of primary navigation. |
 | Deterministic executable boundary | Make executable action outcomes reproducible by checking requester identity, permission, policy fit, payload shape, exact approval, duplicate-request state, connection, and audit trail. |
-| Strong role model | Keep one `head-manager`, nine fixed subagents, and role-owned skills as a durable coordination model. |
+| Strong role model | Keep one `head-manager`, ten fixed subagents, and role-owned skills as a durable coordination model, including an independent judgment-review gate. |
 | Multi-universe extensibility | Let public equity be deepest first while preserving paths for ETF/index, crypto, macro/rates/FX/commodities, options, credit-signal, and cross-asset workflows. |
 | Intuition-led investing with gates | Let users begin from rough market intuition, then translate that intuition into workflow lane, role team, evidence needs, investor-profile questions, blocked actions, and next allowed actions. |
 | Compounding workflow memory | Each completed workflow should leave reusable context, source posture, missing-evidence notes, tests, or improvement proposals so the next workflow is easier to run and review. |

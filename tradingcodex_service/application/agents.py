@@ -44,6 +44,8 @@ RESEARCH_ROLES = (
     "valuation-analyst",
 )
 FORECASTING_DISCIPLINE_ROLES = RESEARCH_ROLES + ("portfolio-manager", "risk-manager")
+JUDGMENT_REVIEW_ROLE = "judgment-reviewer"
+JUDGMENT_REVIEW_ROLES = (JUDGMENT_REVIEW_ROLE,)
 THESIS_SCENARIO_TREE_ROLES = (
     "fundamental-analyst",
     "news-analyst",
@@ -283,6 +285,24 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         ),
         forbidden_skill_tags=("execution", "secret"),
     ),
+    "judgment-reviewer": AgentSpec(
+        role="judgment-reviewer",
+        label="Judgment Reviewer",
+        group="review",
+        builtin_skills=("agent-judgment-review",),
+        permission_profile="tradingcodex-judgment",
+        mcp_allowlist=(
+            "list_workflow_artifacts",
+            "create_research_artifact",
+            "get_research_artifact",
+            "list_research_artifacts",
+            "search_research_artifacts",
+            "append_research_artifact_version",
+            "export_research_artifact_md",
+            "record_audit_event",
+        ),
+        forbidden_skill_tags=("approval", "execution", "order", "secret"),
+    ),
     "execution-operator": AgentSpec(
         role="execution-operator",
         label="Execution Operator",
@@ -320,6 +340,7 @@ ROLE_PURPOSES: dict[str, str] = {
     "valuation-analyst": "Builds valuation, scenario, multiple, DCF, reverse DCF, and expected-return views.",
     "portfolio-manager": "Reviews portfolio fit, sizing, cash, concentration, and draft order-ticket readiness.",
     "risk-manager": "Reviews risk, restricted list, downside, policy readiness, and approval receipt eligibility.",
+    "judgment-reviewer": "Independently challenges accepted investment artifacts for contrary evidence, weak source trust, overconfidence, update triggers, and invalidation conditions before synthesis or downstream action gates.",
     "execution-operator": "Submits or cancels approved order tickets only through the TradingCodex service boundary; live requires every configured gate.",
 }
 
@@ -333,6 +354,7 @@ ROLE_DISPLAY_GROUPS: dict[str, str] = {
     "valuation-analyst": "analysis",
     "portfolio-manager": "portfolio",
     "risk-manager": "risk",
+    "judgment-reviewer": "review",
     "execution-operator": "execution",
 }
 
@@ -350,6 +372,7 @@ ROLE_FORBIDDEN_ACTIONS: dict[str, tuple[str, ...]] = {
     "valuation-analyst": ("No approval.", "No execution.", "No broker API calls."),
     "portfolio-manager": ("No self-approval.", "No execution.", "No arbitrary policy changes."),
     "risk-manager": ("No order drafting.", "No execution.", "No arbitrary policy changes."),
+    "judgment-reviewer": ("No original analyst work.", "No portfolio sizing.", "No order ticket.", "No approval.", "No execution.", "No policy change."),
     "execution-operator": ("No raw broker API.", "No secret read.", "No policy change.", "No bypass of live gates."),
 }
 
@@ -408,6 +431,12 @@ ROLE_HANDOFF_CONTRACTS: dict[str, dict[str, str]] = {
         "quality_gate": "Downside, limits, restricted-list, and approval-readiness checks are explicit.",
         "overlap_rule": "Does not draft orders, submit execution, or loosen policy in the same workflow.",
     },
+    "judgment-reviewer": {
+        "receives": "Accepted upstream artifacts, source/as-of metadata, source trust notes, forecast fields, and explicit user constraints from head-manager.",
+        "returns": "Independent judgment review artifact with strongest support, strongest contrary evidence, weak source posture, overconfidence risk, update triggers, invalidation conditions, and accepted/revise/blocked/waiting outcome.",
+        "quality_gate": "A favorable thesis cannot move to synthesis, portfolio, risk, order, approval, or execution when material contrary evidence, stale source posture, or invalidation conditions are unresolved.",
+        "overlap_rule": "Challenges and gates artifacts; does not create primary research, valuation, portfolio sizing, risk approval, order tickets, or execution posture.",
+    },
     "execution-operator": {
         "receives": "Approved order ticket, matching approval receipt, and policy allow state.",
         "returns": "Execution result, MCP response, audit reference, or rejected/blocked reasons.",
@@ -428,6 +457,7 @@ SKILL_SPECS: dict[str, SkillSpec] = {
     "postmortem": SkillSpec("postmortem", "Postmortem", ("head-manager",), user_visible=True),
     "collect-evidence": SkillSpec("collect-evidence", "Collect Evidence", RESEARCH_ROLES, scope="subagent_shared"),
     "forecasting-discipline": SkillSpec("forecasting-discipline", "Forecasting Discipline", FORECASTING_DISCIPLINE_ROLES, scope="subagent_shared"),
+    "agent-judgment-review": SkillSpec("agent-judgment-review", "Agent Judgment Review", JUDGMENT_REVIEW_ROLES, scope="subagent_role"),
     "thesis-scenario-tree": SkillSpec("thesis-scenario-tree", "Thesis Scenario Tree", THESIS_SCENARIO_TREE_ROLES, scope="subagent_shared"),
     "numeric-data-qc": SkillSpec("numeric-data-qc", "Numeric Data QC", NUMERIC_DATA_QC_ROLES, scope="subagent_shared"),
     "anti-overfit-validation": SkillSpec("anti-overfit-validation", "Anti-Overfit Validation", ANTI_OVERFIT_VALIDATION_ROLES, scope="subagent_shared"),
@@ -1395,13 +1425,7 @@ def _project_root_strategy_skills(root: Path) -> None:
 
 
 def _render_role_skill_config_blocks(root: Path, role: str, skills: list[str]) -> str:
-    enabled = list(dict.fromkeys(skills))
-    disabled = [skill for skill in _inherited_skill_names(root) if skill not in set(enabled)]
-    blocks = [
-        _render_skill_config_blocks(root, enabled, role=role, enabled=True).rstrip(),
-        _render_skill_config_blocks(root, disabled, role=role, enabled=False).rstrip(),
-    ]
-    return "\n\n".join(block for block in blocks if block).rstrip() + "\n"
+    return _render_skill_config_blocks(root, list(dict.fromkeys(skills)), role=role, enabled=True)
 
 
 def _project_runtime_skill_filesystem_filters(root: Path, state: dict[str, Any]) -> None:
@@ -1415,7 +1439,7 @@ def _project_runtime_skill_filesystem_filters(root: Path, state: dict[str, Any])
         profile = AGENT_SPECS[role].permission_profile
         allowed = set(state["agents"][role]["effective_skills"])
         denied = [skill for skill in runtime_skills if skill not in allowed]
-        body = "\n".join(f'"{_runtime_skill_filesystem_glob(skill)}" = "deny"' for skill in denied)
+        body = "\n".join(f'"{glob}" = "deny"' for skill in denied for glob in _runtime_skill_filesystem_globs(skill))
         block = _render_marked_block(
             RUNTIME_SKILL_FILESYSTEM_FILTER_START,
             body,
@@ -1432,8 +1456,15 @@ def _project_runtime_skill_filesystem_filters(root: Path, state: dict[str, Any])
         path.write_text(updated.rstrip() + "\n", encoding="utf-8")
 
 
-def _runtime_skill_filesystem_glob(skill: str) -> str:
-    return f".agents/skills/{skill}/**"
+def _runtime_skill_filesystem_globs(skill: str) -> list[str]:
+    spec = SKILL_SPECS.get(skill)
+    if spec and spec.scope == "subagent_shared":
+        return [f".tradingcodex/subagents/skills/shared/{skill}/**"]
+    if spec and spec.scope == "subagent_role":
+        return [f".tradingcodex/subagents/skills/{role}/{skill}/**" for role in spec.owner_roles]
+    if skill.startswith(STRATEGY_SKILL_PREFIX) or (spec and spec.scope == "mainagent"):
+        return [f".agents/skills/{skill}/**"]
+    return [f".tradingcodex/subagents/skills/*/{skill}/**"]
 
 
 def _replace_permission_table_marked_block(text: str, table_header: str, start: str, end: str, block: str) -> str:
@@ -1460,12 +1491,6 @@ def _project_runtime_skill_names(root: Path) -> list[str]:
     for record in read_optional_skill_records(root, include_archived=False):
         if record.get("status") == "active" and record.get("installed") and not record.get("validation_errors"):
             names.append(str(record.get("name") or ""))
-    return [name for name in dict.fromkeys(names) if name]
-
-
-def _inherited_skill_names(root: Path) -> list[str]:
-    names = list(HEAD_MANAGER_SKILLS)
-    names.extend(record["name"] for record in read_strategy_skill_records(root, active_only=True))
     return [name for name in dict.fromkeys(names) if name]
 
 

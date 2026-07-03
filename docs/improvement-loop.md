@@ -32,11 +32,14 @@ role outputs before synthesis.
 Quality gates should preserve:
 
 - source/as-of posture
+- source trust notes
 - claim tags
 - role boundaries
 - missing evidence
 - uncertainty
 - readiness labels
+- contrary evidence, update triggers, and invalidation conditions
+- thesis lifecycle notes when decision quality is required
 - hero/support artifact split
 - no-overlap role ownership
 - handoff acceptance state: `accepted`, `revise`, `blocked`, or `waiting`
@@ -95,8 +98,11 @@ Postmortems are not only for executed orders. They also apply to:
   `trading/audit/workflow-loop-events.jsonl`
 - process gaps
 
-A useful postmortem should end with concrete harness, guardrail, policy, skill,
-artifact, or validation improvements.
+A useful postmortem should include an investment judgment review: original
+thesis, what happened, failed assumption, role evidence miss or overstatement,
+stale or misleading source, confidence calibration, and future warning pattern.
+It should end with concrete harness, guardrail, policy, skill, artifact, or
+validation improvements.
 
 ## Validation Feedback
 

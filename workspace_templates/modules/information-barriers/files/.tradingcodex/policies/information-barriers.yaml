@@ -40,18 +40,31 @@ walls:
     cannot_do:
       - mcp.tradingcodex.submit_approved_order
 
+  judgment_review_wall:
+    can_read:
+      - trading/research/**
+      - trading/reports/**
+      - trading/forecasts/**
+    can_write:
+      - trading/reports/judgment/**
+    cannot_read:
+      - trading/approvals/**
+      - trading/orders/**
+      - trading/audit/**
+      - .tradingcodex/policies/**
+      - .tradingcodex/secrets.md
+    cannot_do:
+      - policy.write
+      - approval.request
+      - order.write
+      - mcp.tradingcodex.submit_approved_order
+
   secret_wall:
     owner: tradingcodex-mcp-process
     workspace_secret_storage_allowed: false
 
 role_boundaries:
   fundamental-analyst:
-    role_owned_skills:
-      - collect-evidence
-      - numeric-data-qc
-      - thesis-scenario-tree
-      - forecasting-discipline
-      - fundamental-analysis
     can_write:
       - trading/reports/fundamental/**
       - trading/forecasts/**
@@ -60,6 +73,7 @@ role_boundaries:
       - trading/reports/news/**
       - trading/reports/macro/**
       - trading/reports/instrument/**
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
@@ -67,12 +81,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   technical-analyst:
-    role_owned_skills:
-      - collect-evidence
-      - numeric-data-qc
-      - anti-overfit-validation
-      - forecasting-discipline
-      - technical-analysis
     can_write:
       - trading/reports/technical/**
       - trading/forecasts/**
@@ -81,6 +89,7 @@ role_boundaries:
       - trading/reports/news/**
       - trading/reports/macro/**
       - trading/reports/instrument/**
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
@@ -88,11 +97,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   news-analyst:
-    role_owned_skills:
-      - collect-evidence
-      - thesis-scenario-tree
-      - forecasting-discipline
-      - news-analysis
     can_write:
       - trading/reports/news/**
       - trading/forecasts/**
@@ -101,6 +105,7 @@ role_boundaries:
       - trading/reports/technical/**
       - trading/reports/macro/**
       - trading/reports/instrument/**
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
@@ -108,12 +113,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   valuation-analyst:
-    role_owned_skills:
-      - valuation-review
-      - numeric-data-qc
-      - thesis-scenario-tree
-      - forecasting-discipline
-      - anti-overfit-validation
     can_read:
       - trading/research/**
       - trading/reports/fundamental/**
@@ -125,6 +124,7 @@ role_boundaries:
       - trading/reports/valuation/**
       - trading/forecasts/**
     cannot_read:
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
@@ -132,12 +132,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   portfolio-manager:
-    role_owned_skills:
-      - portfolio-review
-      - numeric-data-qc
-      - forecasting-discipline
-      - anti-overfit-validation
-      - create-order-ticket
     can_read:
       - trading/research/**
       - trading/reports/fundamental/**
@@ -160,13 +154,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   risk-manager:
-    role_owned_skills:
-      - review-risk
-      - numeric-data-qc
-      - forecasting-discipline
-      - anti-overfit-validation
-      - policy-review
-      - approve-order
     can_read:
       - .tradingcodex/policies/**
       - trading/research/**
@@ -186,8 +173,6 @@ role_boundaries:
       - secret.read
 
   execution-operator:
-    role_owned_skills:
-      - execute-paper-order
     can_read:
       - trading/orders/approved/**
       - trading/approvals/**
@@ -205,18 +190,13 @@ role_boundaries:
       - trading/reports/portfolio/**
       - trading/reports/risk/**
       - trading/reports/policy/**
+      - trading/reports/judgment/**
       - .tradingcodex/secrets.md
     cannot_do:
       - policy.write
       - secret.read
 
   macro-analyst:
-    role_owned_skills:
-      - collect-evidence
-      - numeric-data-qc
-      - thesis-scenario-tree
-      - forecasting-discipline
-      - macro-analysis
     can_write:
       - trading/reports/macro/**
       - trading/forecasts/**
@@ -225,6 +205,7 @@ role_boundaries:
       - trading/reports/technical/**
       - trading/reports/news/**
       - trading/reports/instrument/**
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
@@ -232,11 +213,6 @@ role_boundaries:
       - .tradingcodex/secrets.md
 
   instrument-analyst:
-    role_owned_skills:
-      - collect-evidence
-      - thesis-scenario-tree
-      - forecasting-discipline
-      - instrument-analysis
     can_write:
       - trading/reports/instrument/**
       - trading/forecasts/**
@@ -245,8 +221,36 @@ role_boundaries:
       - trading/reports/technical/**
       - trading/reports/news/**
       - trading/reports/macro/**
+      - trading/reports/judgment/**
       - trading/approvals/**
       - trading/orders/approved/**
       - trading/orders/executed/**
       - trading/audit/**
       - .tradingcodex/secrets.md
+
+  judgment-reviewer:
+    can_read:
+      - trading/research/**
+      - trading/reports/fundamental/**
+      - trading/reports/technical/**
+      - trading/reports/news/**
+      - trading/reports/macro/**
+      - trading/reports/instrument/**
+      - trading/reports/valuation/**
+      - trading/reports/portfolio/**
+      - trading/reports/risk/**
+      - trading/reports/policy/**
+      - trading/forecasts/**
+    can_write:
+      - trading/reports/judgment/**
+    cannot_read:
+      - trading/approvals/**
+      - trading/orders/**
+      - trading/audit/**
+      - .tradingcodex/policies/**
+      - .tradingcodex/secrets.md
+    cannot_do:
+      - policy.write
+      - approval.request
+      - order.write
+      - mcp.tradingcodex.submit_approved_order

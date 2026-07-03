@@ -69,17 +69,17 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="workflow-quality-gates",
         label="Workflow Quality Gates",
-        summary="Defines lane selection, Artifact Supervisor Loop policy, Decision Quality Spine, handoff acceptance, artifact readiness, claim discipline, and synthesis gates.",
+        summary="Defines lane selection, Artifact Supervisor Loop policy, Decision Quality Spine, agent judgment review, handoff acceptance, artifact readiness, claim discipline, and synthesis gates.",
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality"),
         surfaces={
-            "skills": ("plan-workflow", "tcx-workflow", "automate-workflow"),
+            "skills": ("plan-workflow", "tcx-workflow", "automate-workflow", "agent-judgment-review"),
             "services": ("harness",),
             "templates": ("repo-skills",),
             "tests": ("quality-scenarios", "routing"),
         },
         depends_on=("investment-request-routing", "fixed-role-dispatch"),
-        owned_capabilities=("workflow.quality_gate", "workflow.decision_quality_spine", "workflow.artifact_supervisor_loop"),
+        owned_capabilities=("workflow.quality_gate", "workflow.decision_quality_spine", "workflow.agent_judgment_review", "workflow.artifact_supervisor_loop"),
         validation=("pytest", "routing scenario tests"),
     ),
     HarnessComponent(
@@ -121,7 +121,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="artifact-quality-contract",
         label="Artifact Quality Contract",
-        summary="Evaluates workspace artifacts and forecast ledgers for source/as-of posture, claim tags, handoff state, confidence, missing evidence, and routing metadata.",
+        summary="Evaluates workspace artifacts and forecast ledgers for source/as-of posture, source trust, claim tags, handoff state, confidence, missing evidence, judgment-review fields, and routing metadata.",
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality", "improvement.research_memory"),
         surfaces={

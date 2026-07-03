@@ -18,6 +18,12 @@ roles:
     actions:
       - research.read
       - report.write
+  judgment-reviewer:
+    actions:
+      - research.read
+      - report.read
+      - judgment.review
+      - judgment.report.write
   portfolio-reviewer:
     actions:
       - portfolio.read

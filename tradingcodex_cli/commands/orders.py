@@ -74,7 +74,23 @@ def postmortem(root: Path, argv: list[str]) -> None:
     if not argv or argv[0] != "create":
         raise ValueError("Usage: tcx postmortem create --trigger <trigger> [--tail n]")
     trigger = _option_value(argv, "--trigger") or "manual"
-    report = {"id": f"postmortem-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}", "created_by": _option_value(argv, "--created-by") or "head-manager", "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"), "trigger": trigger, "findings": [{"category": "audit-summary", "summary": "Reviewed recent audit events.", "evidence_count": 0}], "next_actions": ["Review rejected or adapter_error events before the next execution-sensitive workflow."]}
+    report = {
+        "id": f"postmortem-{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')}",
+        "created_by": _option_value(argv, "--created-by") or "head-manager",
+        "created_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "trigger": trigger,
+        "findings": [{"category": "audit-summary", "summary": "Reviewed recent audit events.", "evidence_count": 0}],
+        "investment_judgment_review": {
+            "original_thesis": "",
+            "what_happened": "",
+            "failed_assumption": "",
+            "role_evidence_miss_or_overstatement": "",
+            "stale_weak_or_misleading_source": "",
+            "confidence_calibration": "",
+            "future_warning_pattern": "",
+        },
+        "next_actions": ["Review rejected or adapter_error events before the next execution-sensitive workflow."],
+    }
     path = root / "trading" / "reports" / "postmortem" / f"{sanitize_id(report['id'])}.postmortem_report.json"
     write_json(path, report)
     write_audit_event(root, {"type": "postmortem.created", "payload": {"id": report["id"], "path": path.relative_to(root).as_posix()}}, "head-manager", "cli")

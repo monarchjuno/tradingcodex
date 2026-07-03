@@ -6,11 +6,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS
+from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS, JUDGMENT_REVIEW_ROLE
 from tradingcodex_service.application.common import _unique, append_jsonl, read_json, sanitize_id, write_json
 from tradingcodex_service.application.harness import (
-    build_loop_policy,
     build_workflow_intake_summary,
+)
+from tradingcodex_service.application.workflow_routing import (
+    build_loop_policy,
     classify_starter_request,
     is_connector_build_request,
     is_investment_workflow_request,
@@ -146,7 +148,7 @@ def validate_workflow_plan(plan: dict[str, Any], *, intake: dict[str, Any] | Non
         if not isinstance(raw_roles, list):
             errors.append(f"stage {stage_id or index} roles must be a list")
             raw_roles = []
-        roles = [str(role) for role in raw_roles]
+        roles = _role_names(raw_roles)
         unknown = [role for role in roles if role not in EXPECTED_SUBAGENTS]
         if unknown:
             errors.append(f"unknown role(s) in {stage_id or index}: {', '.join(unknown)}")
@@ -156,7 +158,7 @@ def validate_workflow_plan(plan: dict[str, Any], *, intake: dict[str, Any] | Non
             errors.append(f"stage {stage_id or index} depends_on must be a list")
             raw_dependencies = []
         for dep in raw_dependencies:
-            if str(dep) not in stage_ids:
+            if str(dep) == stage_id or str(dep) not in stage_ids:
                 errors.append(f"stage {stage_id or index} depends on unknown or later stage: {dep}")
         if str(stage.get("dispatch_mode") or "") not in {"parallel", "sequential", "none"}:
             errors.append(f"stage {stage_id or index} dispatch_mode must be parallel, sequential, or none")
@@ -171,10 +173,22 @@ def validate_workflow_plan(plan: dict[str, Any], *, intake: dict[str, Any] | Non
         negations = set(intake.get("explicit_negations") or [])
         if "valuation" in negations and "valuation-analyst" in all_roles:
             errors.append("negated valuation scope cannot include valuation-analyst")
+        if "technical" in negations and "technical-analyst" in all_roles:
+            errors.append("negated technical scope cannot include technical-analyst")
+        if "news" in negations and "news-analyst" in all_roles:
+            errors.append("negated news scope cannot include news-analyst")
+        if "portfolio" in negations and "portfolio-manager" in all_roles:
+            errors.append("negated portfolio scope cannot include portfolio-manager")
+        if "risk" in negations and "risk-manager" in all_roles:
+            errors.append("negated risk scope cannot include risk-manager")
         if {"order", "trading", "execution"} & negations and "execution-operator" in all_roles:
             errors.append("negated order/trading/execution scope cannot include execution-operator")
     if lane in {"connector_build", "head_manager_connector_operations", "head_manager_strategy_authoring", "secret_warning"} and all_roles:
         errors.append(f"{lane} lane must not dispatch investment roles")
+    if "execution-operator" in all_roles and lane != "order_ticket_approval_execution_gate":
+        errors.append("execution-operator is only valid in order_ticket_approval_execution_gate")
+    if lane == "order_ticket_approval_execution_gate" and JUDGMENT_REVIEW_ROLE in all_roles:
+        errors.append("order_ticket_approval_execution_gate must not dispatch judgment-reviewer")
     if "execution-operator" in all_roles and not any("execution" in item for item in blocked_actions):
         errors.append("execution role requires explicit execution blocked/precondition language in blocked_actions")
     if any(role in all_roles for role in ("portfolio-manager", "risk-manager", "execution-operator")) and lane == "research_only":
@@ -272,6 +286,8 @@ def _explicit_negations(prompt: str) -> list[str]:
     negations: list[str] = []
     checks = {
         "valuation": ("no valuation", "without valuation", "do not value", "no fair value", "no target price"),
+        "technical": ("no technical", "without technical", "no technical analysis", "without technical analysis", "do not do technical analysis", "no chart", "without chart"),
+        "news": ("no news", "without news", "no news analysis", "without news analysis", "no headline", "without headline", "no event review"),
         "order": ("no order", "without order", "do not order", "no order ticket"),
         "trading": ("no trading", "without trading", "do not trade", "do not place trades"),
         "execution": ("no execution", "without execution", "do not execute"),
@@ -326,7 +342,7 @@ def _initial_loop_state(plan: dict[str, Any], intake: dict[str, Any] | None) -> 
         {
             "task_id": f"{run_id}:{stage['stage_id']}",
             "stage_id": stage["stage_id"],
-            "roles": stage.get("roles") or [],
+            "roles": _role_names(stage.get("roles") or []),
             "task_type": "stage_dispatch",
             "status": "pending" if not stage.get("depends_on") else "blocked_by_dependency",
             "depends_on": stage.get("depends_on") or [],
@@ -344,8 +360,8 @@ def _initial_loop_state(plan: dict[str, Any], intake: dict[str, Any] | None) -> 
         "plan_path": workflow_plan_relpath(run_id),
         "iteration": 0,
         "loop_policy": build_loop_policy(str(plan.get("lane") or "research_only")),
-        "selected_team": _unique([role for stage in plan.get("stages") or [] for role in stage.get("roles") or []]),
-        "allowed_followup_team": _unique([role for stage in plan.get("stages") or [] for role in stage.get("roles") or []]),
+        "selected_team": _unique([role for stage in plan.get("stages") or [] for role in _role_names(stage.get("roles") or [])]),
+        "allowed_followup_team": _unique([role for stage in plan.get("stages") or [] for role in _role_names(stage.get("roles") or [])]),
         "escalation_team": [],
         "stages": plan.get("stages") or [],
         "pending_tasks": pending_tasks,
@@ -372,6 +388,9 @@ def _compact_loop_state(state: dict[str, Any]) -> dict[str, Any]:
         "state_path": state.get("state_path", ""),
         "plan_path": state.get("plan_path", ""),
         "iteration": state.get("iteration", 0),
+        "selected_team": state.get("selected_team", []),
+        "allowed_followup_team": state.get("allowed_followup_team", []),
+        "escalation_team": state.get("escalation_team", []),
         "pending_tasks": state.get("pending_tasks", [])[:12],
         "completed_artifacts": state.get("completed_artifacts", [])[-12:],
         "loop_decisions": state.get("loop_decisions", [])[-12:],
@@ -382,3 +401,12 @@ def _compact_loop_state(state: dict[str, Any]) -> dict[str, Any]:
         "recursive_hook_dispatch": False,
         "updated_at": state.get("updated_at", ""),
     }
+
+
+def _role_names(raw_roles: list[Any]) -> list[str]:
+    roles: list[str] = []
+    for item in raw_roles:
+        role = item.get("role") if isinstance(item, dict) else item
+        if role:
+            roles.append(str(role))
+    return roles

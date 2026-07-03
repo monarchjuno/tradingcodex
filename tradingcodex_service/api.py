@@ -18,9 +18,6 @@ from tradingcodex_service.application.components import (
 )
 from tradingcodex_service.application.common import local_or_staff_source
 from tradingcodex_service.application.harness import (
-    EXPECTED_SUBAGENTS,
-    EXPECTED_SKILLS,
-    ROLE_SKILL_MAP,
     build_subagent_starter_prompt,
     build_workflow_intake_summary,
     evaluate_artifact_supervisor_loop,
@@ -33,6 +30,9 @@ from tradingcodex_service.application.workflow_planner import (
     validate_workflow_plan,
 )
 from tradingcodex_service.application.agents import (
+    EXPECTED_SKILLS,
+    EXPECTED_SUBAGENTS,
+    ROLE_SKILL_MAP,
     build_projection_state,
     create_or_update_optional_skill,
     create_or_update_strategy_skill,
@@ -600,7 +600,7 @@ def workflow_validate(request, workflow_id: str, payload: WorkflowValidationRequ
         "workflow_id": workflow_id,
         "starter_prompt": build_subagent_starter_prompt(payload.original_request, workspace_root()),
         "intake_summary": build_workflow_intake_summary(payload.original_request, workspace_root()),
-        "deterministic_preview": build_deterministic_workflow_plan(workspace_root(), payload.original_request),
+        "deterministic_preview": build_deterministic_workflow_plan(workspace_root(), payload.original_request, workflow_run_id=workflow_id),
     }
 
 
