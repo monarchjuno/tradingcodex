@@ -140,6 +140,7 @@ def _run_metadata(run_id: str, decision_id: str, prompt: str, plan: dict[str, An
         "update_triggers": ["new user request changes workflow scope"] if non_investment else ["accepted role artifacts identify new material evidence"],
         "invalidation_conditions": ["workflow gate blocks requested change"] if non_investment else ["accepted role artifacts identify invalidating evidence"],
         "thesis_lifecycle": {} if non_investment else {
+            "state": "exploring",
             "key_forecastable_claims": ["pending accepted role artifacts"],
             "review_date": "pending accepted artifacts",
             "what_would_change_our_mind": ["accepted role artifacts identify invalidating evidence"],
@@ -272,6 +273,7 @@ def _lifecycle_markdown(metadata: dict[str, Any]) -> str:
     lifecycle = metadata["thesis_lifecycle"]
     return f"""## Thesis Lifecycle
 
+- State: {lifecycle['state']}
 - Key forecastable claims: {', '.join(lifecycle['key_forecastable_claims'])}
 - Review date: {lifecycle['review_date']}
 - What would change our mind: {', '.join(lifecycle['what_would_change_our_mind'])}

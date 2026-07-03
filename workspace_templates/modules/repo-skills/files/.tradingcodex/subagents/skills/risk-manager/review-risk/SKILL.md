@@ -19,8 +19,9 @@ Codex-native state access:
 Universe method:
 
 - Identify asset universe, instrument, intended exposure, unwanted risk, and installed workflow support.
-- For public equity and ETF/index, review downside, catalyst risk, liquidity, concentration, factor/sector exposure, and policy constraints.
+- For public equity and ETF/index, review downside, catalyst risk, drawdown, stress scenarios, liquidity, concentration, factor/sector exposure, tail risk, and policy constraints.
 - For crypto, macro/rates/FX/commodities, options, credit signals, and cross-asset overlays, name instrument-specific risk inputs that are missing, such as funding, roll, duration, basis, venue, custody, borrow, margin, spread, or Greeks.
+- Use VaR/CVaR, scenario loss, or stress language only when the data and assumptions are explicit; otherwise name the missing inputs.
 - If the universe or instrument is not supported by installed skills, data, policy, and adapter boundaries, classify as `not-decision-ready` or `blocked`.
 
 Expected output:
@@ -30,6 +31,7 @@ Expected output:
 - Thesis break conditions
 - Position sizing limit
 - Liquidity and volatility risk
+- Stress, drawdown, tail-risk, VaR/CVaR, or scenario-loss notes when supportable
 - Policy constraints
 - Approval readiness concerns
 - Go, revise, or reject recommendation

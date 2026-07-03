@@ -128,6 +128,7 @@ def compact_workflow_loop_summary(state: dict[str, Any]) -> dict[str, Any]:
         "escalation_proposals": state.get("escalation_proposals", []) if isinstance(state.get("escalation_proposals"), list) else [],
         "improvements": (state.get("improvements", []) if isinstance(state.get("improvements"), list) else [])[-12:],
         "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
+        "terminal_action": state.get("terminal_action", ""),
         "stop_reason": state.get("stop_reason", ""),
         "state_mode": state.get("state_mode", "inspectable_assisted_loop"),
         "auto_spawn": False,
@@ -169,6 +170,7 @@ def build_workflow_loop_preview(
         "escalation_proposals": state.get("escalation_proposals", []) if isinstance(state.get("escalation_proposals"), list) else [],
         "improvements": state.get("improvements", []) if isinstance(state.get("improvements"), list) else [],
         "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
+        "terminal_action": state.get("terminal_action", ""),
         "stop_reason": state.get("stop_reason", ""),
         "auto_spawn": False,
         "recursive_hook_dispatch": False,
@@ -539,6 +541,7 @@ def _record_workflow_loop_result(root: Path, state: dict[str, Any], result: dict
         "allowed_followup_team": result["allowed_followup_team"],
         "escalation_team": result["escalation_team"],
         "blocked_actions": result["blocked_actions"],
+        "terminal_action": result["terminal_action"],
         "stop_reason": result["stop_reason"],
         "updated_at": now_iso(),
     })

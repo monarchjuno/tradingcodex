@@ -10,6 +10,7 @@ Use this skill after research evidence exists and the requested universe has a s
 Universe method:
 
 - Public equity: choose DCF, comps, reverse DCF, scenario, estimate revision, or event probability methods only when the evidence supports them.
+- For each selected method, state why it fits the business, which driver it tests, and which sensitivity would break the conclusion.
 - ETF/index: focus on exposure, constituent/benchmark, factor, flow, and valuation-through-holdings logic when data exists.
 - Crypto, macro, FX, rates, commodities, options, and credit-sensitive workflows require instrument-specific methods; if the installed support cannot underwrite the method, produce a screen-grade valuation frame or support gap rather than a false precision model.
 - Always state current price or market anchor source/as-of when the user asks for risk/reward, target, entry, or action.
@@ -22,6 +23,7 @@ Expected output:
 - Market-implied expectation check
 - Scenario range
 - Sensitivity points
+- Method-selection limits and key sensitivity table or notes
 - Valuation risk
 - What would change the valuation
 - Source/as-of posture, unsupported assumptions, and model/readiness label

@@ -122,14 +122,14 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="artifact-quality-contract",
         label="Artifact Quality Contract",
-        summary="Evaluates workspace artifacts and forecast ledgers for source/as-of posture, source trust, claim tags, handoff state, confidence, missing evidence, improve records, judgment-review fields, and routing metadata.",
+        summary="Evaluates workspace artifacts, Evidence Run Cards, Validation Cards, source snapshots, and forecast ledgers for source/as-of posture, source trust, data-boundary warnings, claim tags, handoff state, confidence, missing evidence, improve records, judgment-review fields, and routing metadata.",
         status="core",
         tags=("guardrail.guidance", "improvement.workflow_quality", "improvement.research_memory"),
         surfaces={
             "services": ("artifact_quality", "research"),
-            "cli": ("quality-check --strict", "research create"),
+            "cli": ("quality-check --strict", "research create", "research run-card", "research validation-card"),
             "schemas": ("research_artifact.schema.json",),
-            "files": ("trading/forecasts/*.jsonl",),
+            "files": ("*.run-card.json", "*.validation-card.json", "trading/research/source-snapshots/*.json", "trading/forecasts/*.jsonl"),
             "templates": ("enforcement-guardrails", "repo-skills", "codex-base"),
             "tests": ("artifact-quality", "research-memory"),
         },
@@ -175,13 +175,13 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="research-memory",
         label="Research Memory",
-        summary="Indexes source-aware workspace markdown artifacts and file-native source snapshots.",
+        summary="Indexes source-aware workspace markdown artifacts, Evidence Run Cards, Validation Cards, and file-native source snapshots.",
         status="core",
         tags=("improvement.research_memory",),
         surfaces={
             "services": ("research",),
             "mcp_tools": ("create_research_artifact", "search_research_artifacts", "export_research_artifact_md"),
-            "files": ("trading/research/*.md", "trading/reports/**/*.md", "trading/research/source-snapshots/*.json"),
+            "files": ("trading/research/*.md", "trading/reports/**/*.md", "*.run-card.json", "*.validation-card.json", "trading/research/source-snapshots/*.json"),
             "templates": ("tradingcodex-mcp",),
             "tests": ("research-memory",),
         },

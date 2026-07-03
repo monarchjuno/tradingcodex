@@ -102,6 +102,8 @@ Run after research-memory changes:
 ./tcx research append
 ./tcx research search
 ./tcx research export
+./tcx research run-card
+./tcx research validation-card
 ./tcx workflow improve
 ```
 
@@ -256,6 +258,17 @@ Scenarios should include:
 - `tcx quality-check <artifact> --strict` validates
   `trading/forecasts/*.jsonl` forecast records and fails malformed probability
   ranges, missing resolution fields, or invalid open/closed status
+- `tcx quality-check <artifact>.run-card.json --strict` validates Evidence Run
+  Card config hash, input/source refs, artifact hashes, metrics or validation
+  summary, warnings, limitations, timestamp, and evidence-only authority
+- `tcx quality-check <artifact>.validation-card.json --strict` validates
+  Validation Card evidence-quality labels, anti-overfit evidence metadata,
+  artifact hashes, metrics or validation summary, warnings, limitations,
+  timestamp, and evidence-only authority
+- `tcx quality-check trading/research/source-snapshots/<id>.json` surfaces
+  data-boundary warnings for OHLC invariants, non-positive prices, duplicate or
+  sparse bars, timezone/as-of ambiguity, adjustment ambiguity, stale sources,
+  invalid JSON constants, and missing fallback policy
 - generated starter prompts and subagent-management skills include a context
   budget so agents pass artifact paths, context summaries, source snapshot IDs,
   and short deltas instead of full artifacts or repeated role manuals

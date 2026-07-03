@@ -22,6 +22,8 @@ Research is workspace-file-native. Canonical files:
 - `trading/research/*.evidence.md`
 - `trading/reports/<role>/*.md`
 - `trading/research/source-snapshots/*.json`
+- `*.run-card.json` beside research, report, decision, order, or approval artifacts
+- `*.validation-card.json` beside research, report, decision, order, or approval artifacts
 - `trading/forecasts/*.jsonl`
 
 Research service calls may index, validate, search, preview, version, and write these files, but the markdown or JSON file is the source of truth. Research MCP calls intentionally skip DB tool-call ledger rows.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -90,6 +91,73 @@ JUDGMENT_REVIEW_FIELDS = (
     "invalidation_conditions",
     "source_trust_notes",
 )
+RUN_CARD_REQUIRED_KEYS = (
+    "schema_version",
+    "artifact_type",
+    "card_id",
+    "related_artifact_path",
+    "generated_at",
+    "config_hash",
+    "input_refs",
+    "data_source_refs",
+    "artifact_hashes",
+    "warnings",
+    "source_limitations",
+    "authority",
+    "blocked_actions",
+)
+RUN_CARD_NONBLANK_FIELDS = (
+    "artifact_type",
+    "card_id",
+    "related_artifact_path",
+    "generated_at",
+    "config_hash",
+    "authority",
+)
+RUN_CARD_LIST_FIELDS = ("input_refs", "data_source_refs", "warnings", "source_limitations", "blocked_actions")
+RUN_CARD_DICT_FIELDS = ("artifact_hashes", "metrics")
+VALIDATION_CARD_REQUIRED_KEYS = (
+    "schema_version",
+    "artifact_type",
+    "card_id",
+    "related_artifact_path",
+    "generated_at",
+    "validation_scope",
+    "evidence_quality_label",
+    "input_refs",
+    "data_source_refs",
+    "artifact_hashes",
+    "checks",
+    "warnings",
+    "source_limitations",
+    "authority",
+    "blocked_actions",
+)
+VALIDATION_CARD_NONBLANK_FIELDS = (
+    "artifact_type",
+    "card_id",
+    "related_artifact_path",
+    "generated_at",
+    "validation_scope",
+    "evidence_quality_label",
+    "authority",
+)
+VALIDATION_CARD_LIST_FIELDS = ("input_refs", "data_source_refs", "warnings", "source_limitations", "blocked_actions")
+VALIDATION_CARD_DICT_FIELDS = ("artifact_hashes", "checks", "metrics")
+ANTI_OVERFIT_CHECK_KEYS = (
+    "leakage",
+    "survivorship_bias",
+    "data_snooping",
+    "out_of_sample",
+    "walk_forward_consistency",
+    "monte_carlo_permutation",
+    "bootstrap_sharpe_ci",
+    "cost_assumptions",
+    "capacity",
+    "live_friction",
+)
+EVIDENCE_QUALITY_LABELS = {"not_validated", "weak", "suggestive", "validated", "blocked"}
+THESIS_LIFECYCLE_STATES = {"exploring", "testing", "validated", "rejected", "monitoring"}
 
 
 def evaluate_artifact_quality(workspace_root: Path | str, artifact_path: str, *, strict: bool = False) -> dict[str, Any]:
@@ -140,7 +208,7 @@ def evaluate_artifact_quality(workspace_root: Path | str, artifact_path: str, *,
     if rel.endswith(".jsonl"):
         _evaluate_jsonl(text, result, strict=strict)
     elif rel.endswith(".json"):
-        _evaluate_json(text, result)
+        _evaluate_json(text, result, strict=strict)
     elif rel.endswith(".md"):
         _evaluate_markdown(text, result, strict=strict)
 
@@ -167,12 +235,30 @@ def evaluate_decision_quality(
     return result
 
 
-def _evaluate_json(text: str, result: dict[str, Any]) -> None:
+def _evaluate_json(text: str, result: dict[str, Any], *, strict: bool) -> None:
     try:
-        json.loads(text)
+        payload = _loads_json_strict(text)
         result["json_valid"] = True
     except Exception:
         result["json_valid"] = False
+        return
+    if result.get("artifact_type") == "evidence_run_card" and not isinstance(payload, dict):
+        _run_card_issue(result, strict, "json_object")
+        return
+    if result.get("artifact_type") == "validation_card" and not isinstance(payload, dict):
+        _validation_card_issue(result, strict, "json_object")
+        return
+    if result.get("artifact_type") == "source_snapshot" and not isinstance(payload, dict):
+        result["warnings"].append("source snapshot must be a JSON object")
+        if strict:
+            result["required_fields_missing"].append("source_snapshot.json_object")
+        return
+    if isinstance(payload, dict) and _is_run_card_payload(payload, result):
+        _evaluate_run_card(payload, result, strict=strict)
+    elif isinstance(payload, dict) and _is_validation_card_payload(payload, result):
+        _evaluate_validation_card(payload, result, strict=strict)
+    elif isinstance(payload, dict) and result.get("artifact_type") == "source_snapshot":
+        _evaluate_source_snapshot(payload, result, strict=strict)
 
 
 def _evaluate_jsonl(text: str, result: dict[str, Any], *, strict: bool) -> None:
@@ -182,7 +268,7 @@ def _evaluate_jsonl(text: str, result: dict[str, Any], *, strict: bool) -> None:
         if not line.strip():
             continue
         try:
-            record = json.loads(line)
+            record = _loads_json_strict(line)
         except Exception:
             errors.append(f"line {index} is not valid JSON")
             continue
@@ -260,6 +346,14 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
     })
     tags = [match.group(1).lower() for match in CLAIM_TAG_PATTERN.finditer(body)]
     result["claim_tags"] = {name: tags.count(name) for name in ("factual", "inference", "assumption")}
+    if _is_run_card_payload(frontmatter, result):
+        _evaluate_run_card(frontmatter, result, strict=strict)
+        result["frontmatter"] = {key: frontmatter.get(key) for key in RUN_CARD_REQUIRED_KEYS + ("metrics", "validation_summary", "created_by") if key in frontmatter}
+        return
+    if _is_validation_card_payload(frontmatter, result):
+        _evaluate_validation_card(frontmatter, result, strict=strict)
+        result["frontmatter"] = {key: frontmatter.get(key) for key in VALIDATION_CARD_REQUIRED_KEYS + ("metrics", "validation_summary", "created_by") if key in frontmatter}
+        return
 
     missing_fields = [field for field in STRICT_MARKDOWN_REQUIRED_FIELDS if _is_blank(frontmatter.get(field))]
     missing_keys = [field for field in STRICT_MARKDOWN_REQUIRED_KEYS if field not in frontmatter]
@@ -401,6 +495,10 @@ def _evaluate_decision_quality(frontmatter: dict[str, Any], body: str, result: d
     role = str(frontmatter.get("role") or "").strip()
     artifact_type = str(frontmatter.get("artifact_type") or result.get("artifact_type") or "").strip()
     checks: list[str] = []
+    thesis_lifecycle = frontmatter.get("thesis_lifecycle")
+    if isinstance(thesis_lifecycle, dict) and thesis_lifecycle:
+        checks.append("thesis_lifecycle")
+        _evaluate_thesis_lifecycle(thesis_lifecycle, frontmatter, result, strict=strict)
 
     if _truthy(frontmatter.get("forecast_negated")) and _has_any(frontmatter, ("probability", "probability_range")):
         _decision_issue(result, strict, "probability_for_forecast_negated")
@@ -463,6 +561,203 @@ def _evaluate_decision_quality(frontmatter: dict[str, Any], body: str, result: d
     }
 
 
+def _is_run_card_payload(payload: dict[str, Any], result: dict[str, Any]) -> bool:
+    return result.get("artifact_type") == "evidence_run_card" or str(payload.get("artifact_type") or "") == "evidence_run_card"
+
+
+def _evaluate_run_card(card: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:
+    result["artifact_type"] = "evidence_run_card"
+    result["run_card"] = {key: card.get(key) for key in RUN_CARD_REQUIRED_KEYS + ("metrics", "validation_summary", "created_by") if key in card}
+    for key in RUN_CARD_REQUIRED_KEYS:
+        if key not in card:
+            _run_card_issue(result, strict, key)
+    for field in RUN_CARD_NONBLANK_FIELDS:
+        if field in card and _is_blank(card.get(field)):
+            _run_card_issue(result, strict, field)
+    if str(card.get("artifact_type") or "") != "evidence_run_card":
+        _run_card_issue(result, strict, "artifact_type")
+    if str(card.get("authority") or "") != "evidence_only":
+        _run_card_issue(result, strict, "authority")
+    generated_at = card.get("generated_at")
+    if generated_at and not _iso_datetime(generated_at):
+        _run_card_issue(result, strict, "generated_at")
+    for field in RUN_CARD_LIST_FIELDS:
+        if field in card and not isinstance(card.get(field), list):
+            _run_card_issue(result, strict, field)
+    for field in RUN_CARD_DICT_FIELDS:
+        if field in card and not isinstance(card.get(field), dict):
+            _run_card_issue(result, strict, field)
+    if not isinstance(card.get("artifact_hashes"), dict) or not card.get("artifact_hashes"):
+        _run_card_issue(result, strict, "artifact_hashes")
+    metrics = card.get("metrics")
+    has_metrics = isinstance(metrics, dict) and bool(metrics)
+    if not has_metrics and _is_blank(card.get("validation_summary")):
+        _run_card_issue(result, strict, "metrics_or_validation_summary")
+    result["decision_quality"] = {"status": "pass", "checks": ["evidence_run_card_shape"]}
+
+
+def _run_card_issue(result: dict[str, Any], strict: bool, field: str) -> None:
+    message = f"run card missing or invalid {field}"
+    result["warnings"].append(message)
+    if strict:
+        result["required_fields_missing"].append(f"run_card.{field}")
+
+
+def _iso_datetime(value: Any) -> bool:
+    try:
+        datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return True
+
+
+def _is_validation_card_payload(payload: dict[str, Any], result: dict[str, Any]) -> bool:
+    return result.get("artifact_type") == "validation_card" or str(payload.get("artifact_type") or "") == "validation_card"
+
+
+def _evaluate_validation_card(card: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:
+    result["artifact_type"] = "validation_card"
+    result["validation_card"] = {key: card.get(key) for key in VALIDATION_CARD_REQUIRED_KEYS + ("metrics", "validation_summary", "created_by") if key in card}
+    for key in VALIDATION_CARD_REQUIRED_KEYS:
+        if key not in card:
+            _validation_card_issue(result, strict, key)
+    for field in VALIDATION_CARD_NONBLANK_FIELDS:
+        if field in card and _is_blank(card.get(field)):
+            _validation_card_issue(result, strict, field)
+    if str(card.get("artifact_type") or "") != "validation_card":
+        _validation_card_issue(result, strict, "artifact_type")
+    if str(card.get("authority") or "") != "evidence_only":
+        _validation_card_issue(result, strict, "authority")
+    label = str(card.get("evidence_quality_label") or "")
+    if label and label not in EVIDENCE_QUALITY_LABELS:
+        _validation_card_issue(result, strict, "evidence_quality_label")
+    generated_at = card.get("generated_at")
+    if generated_at and not _iso_datetime(generated_at):
+        _validation_card_issue(result, strict, "generated_at")
+    for field in VALIDATION_CARD_LIST_FIELDS:
+        if field in card and not isinstance(card.get(field), list):
+            _validation_card_issue(result, strict, field)
+    for field in VALIDATION_CARD_DICT_FIELDS:
+        if field in card and not isinstance(card.get(field), dict):
+            _validation_card_issue(result, strict, field)
+    if not isinstance(card.get("artifact_hashes"), dict) or not card.get("artifact_hashes"):
+        _validation_card_issue(result, strict, "artifact_hashes")
+    checks = card.get("checks") if isinstance(card.get("checks"), dict) else {}
+    missing_checks = [key for key in ANTI_OVERFIT_CHECK_KEYS if _is_blank(checks.get(key))]
+    for key in missing_checks:
+        _validation_card_issue(result, strict, f"checks.{key}")
+    if _is_blank(card.get("validation_summary")) and not any(str(value).strip() not in {"", "not_assessed"} for value in checks.values()):
+        _validation_card_issue(result, strict, "validation_summary")
+    result["decision_quality"] = {"status": "pass", "checks": ["validation_card_shape", "anti_overfit_evidence_metadata"]}
+
+
+def _validation_card_issue(result: dict[str, Any], strict: bool, field: str) -> None:
+    message = f"validation card missing or invalid {field}"
+    result["warnings"].append(message)
+    if strict:
+        result["required_fields_missing"].append(f"validation_card.{field}")
+
+
+def _evaluate_source_snapshot(snapshot: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:
+    result["artifact_type"] = "source_snapshot"
+    result["source_snapshot"] = {
+        key: snapshot.get(key)
+        for key in ("provider", "source_category", "as_of", "artifact_id", "warnings", "recorded_at", "snapshot_id")
+        if key in snapshot
+    }
+    for field in ("provider", "source_category", "recorded_at"):
+        if _is_blank(snapshot.get(field)):
+            _source_snapshot_warning(result, strict, field, "source snapshot missing required metadata")
+    if _is_blank(snapshot.get("as_of")):
+        _source_snapshot_warning(result, strict, "as_of", "timezone or as-of ambiguity")
+    warnings = snapshot.get("warnings")
+    if warnings in (None, ""):
+        warnings = []
+    if not isinstance(warnings, list):
+        _source_snapshot_warning(result, strict, "warnings", "source snapshot warnings should be a list")
+    else:
+        result["warnings"].extend(f"source snapshot warning: {warning}" for warning in warnings if warning)
+    payload = snapshot.get("payload")
+    if payload not in (None, "") and not isinstance(payload, dict):
+        _source_snapshot_warning(result, strict, "payload", "source snapshot payload should be an object")
+        return
+    if isinstance(payload, dict):
+        _evaluate_market_data_payload(payload, result)
+
+
+def _source_snapshot_warning(result: dict[str, Any], strict: bool, field: str, message: str) -> None:
+    result["warnings"].append(message)
+    if strict:
+        result["required_fields_missing"].append(f"source_snapshot.{field}")
+
+
+def _evaluate_market_data_payload(payload: dict[str, Any], result: dict[str, Any]) -> None:
+    bars = _market_bars(payload)
+    if not bars:
+        return
+    timestamps: list[str] = []
+    missing_bar_fields = False
+    non_positive = False
+    ohlc_failure = False
+    timezone_ambiguous = False
+    for index, bar in enumerate(bars, start=1):
+        if not isinstance(bar, dict):
+            missing_bar_fields = True
+            continue
+        timestamp = str(bar.get("timestamp") or bar.get("time") or bar.get("date") or "")
+        if timestamp:
+            timestamps.append(timestamp)
+            if "T" in timestamp and not re.search(r"(Z|[+-]\d{2}:?\d{2})$", timestamp):
+                timezone_ambiguous = True
+        values = {name: _float_or_none(bar.get(name)) for name in ("open", "high", "low", "close")}
+        if any(value is None for value in values.values()):
+            missing_bar_fields = True
+            continue
+        if any(value <= 0 for value in values.values() if value is not None):
+            non_positive = True
+        high = values["high"]
+        low = values["low"]
+        if high is not None and low is not None and (high < max(values["open"], values["close"], low) or low > min(values["open"], values["close"], high)):
+            ohlc_failure = True
+    if len(bars) <= 1 or missing_bar_fields:
+        result["warnings"].append("sparse or missing bars")
+    if len(timestamps) != len(set(timestamps)):
+        result["warnings"].append("duplicate timestamps")
+    if non_positive:
+        result["warnings"].append("non-positive prices")
+    if ohlc_failure:
+        result["warnings"].append("OHLC invariant failures")
+    if timezone_ambiguous or not timestamps:
+        result["warnings"].append("timezone or as-of ambiguity")
+    if not _has_any(payload, ("adjusted", "adjustment", "price_adjustment", "adjusted_prices")):
+        result["warnings"].append("adjusted versus unadjusted price ambiguity")
+    if _truthy(payload.get("fallback_used")) and _is_blank(payload.get("fallback_policy")):
+        result["warnings"].append("explicit source fallback policy missing")
+
+
+def _market_bars(payload: dict[str, Any]) -> list[Any]:
+    for key in ("bars", "ohlc", "prices"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return value
+    return []
+
+
+def _float_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _loads_json_strict(text: str) -> Any:
+    return json.loads(text, parse_constant=_reject_json_constant)
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"invalid JSON constant: {value}")
+
+
 def _forecast_record_errors(record: dict[str, Any], line: int) -> list[str]:
     errors: list[str] = []
     required = (
@@ -518,6 +813,37 @@ def _decision_issue(result: dict[str, Any], strict: bool, field: str) -> None:
     result["warnings"].append(f"decision quality missing {field}")
     if strict:
         result["required_fields_missing"].append(f"decision_quality.{field}")
+
+
+def _evaluate_thesis_lifecycle(lifecycle: dict[str, Any], frontmatter: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:
+    state = str(lifecycle.get("state") or "").strip()
+    if state not in THESIS_LIFECYCLE_STATES:
+        _decision_issue(result, strict, "thesis_lifecycle.state")
+        return
+    source_refs = _coerce_frontmatter_list(frontmatter.get("source_snapshot_ids")) + _coerce_frontmatter_list(frontmatter.get("evidence_ids")) + _coerce_frontmatter_list(lifecycle.get("evidence_refs"))
+    if state == "testing" and not source_refs:
+        _decision_issue(result, strict, "thesis_lifecycle.testing_evidence")
+    if state == "validated":
+        if _is_blank(lifecycle.get("evidence_run_card")) and not _coerce_frontmatter_list(lifecycle.get("evidence_run_cards")):
+            _decision_issue(result, strict, "thesis_lifecycle.evidence_run_card")
+        if _is_blank(lifecycle.get("validation_card")) and not _coerce_frontmatter_list(lifecycle.get("validation_artifacts")):
+            _decision_issue(result, strict, "thesis_lifecycle.validation_card")
+        if _is_blank(lifecycle.get("reviewer_acceptance")):
+            _decision_issue(result, strict, "thesis_lifecycle.reviewer_acceptance")
+    if state == "rejected" and _is_blank(lifecycle.get("invalidation_note")):
+        _decision_issue(result, strict, "thesis_lifecycle.invalidation_note")
+    if state == "monitoring" and _is_blank(lifecycle.get("monitoring_artifact")) and _is_blank(lifecycle.get("review_cadence")):
+        _decision_issue(result, strict, "thesis_lifecycle.monitoring_artifact_or_cadence")
+
+
+def _coerce_frontmatter_list(value: Any) -> list[Any]:
+    if value in (None, ""):
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [value]
 
 
 def _has_any(fields: dict[str, Any], names: tuple[str, ...]) -> bool:
@@ -602,6 +928,12 @@ def estimate_tokens(text: str) -> int:
 
 
 def classify_artifact_path(rel: str) -> str:
+    if rel.endswith(".run-card.json") or rel.endswith(".run-card.md"):
+        return "evidence_run_card"
+    if rel.endswith(".validation-card.json") or rel.endswith(".validation-card.md"):
+        return "validation_card"
+    if rel.startswith("trading/research/source-snapshots/"):
+        return "source_snapshot"
     if rel.startswith("trading/forecasts/"):
         return "forecast_ledger"
     if rel.startswith("trading/decisions/"):

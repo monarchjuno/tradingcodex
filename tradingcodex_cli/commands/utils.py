@@ -86,6 +86,12 @@ def text_check(root: Path, layer: str, name: str, rel: str, pattern: str, codex_
 
 
 def classify_artifact_path(rel: str) -> str:
+    if rel.endswith(".run-card.json") or rel.endswith(".run-card.md"):
+        return "evidence_run_card"
+    if rel.endswith(".validation-card.json") or rel.endswith(".validation-card.md"):
+        return "validation_card"
+    if rel.startswith("trading/research/source-snapshots/"):
+        return "source_snapshot"
     if rel.startswith("trading/forecasts/"):
         return "forecast_ledger"
     if rel.startswith("trading/decisions/"):

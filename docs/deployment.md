@@ -149,7 +149,7 @@ python3.11 -m venv /tmp/tcx-testpypi
 /tmp/tcx-testpypi/bin/pip install \
   --index-url https://test.pypi.org/simple/ \
   --extra-index-url https://pypi.org/simple/ \
-  tradingcodex==0.3.0
+  tradingcodex==0.3.1
 rm -rf /tmp/tcx-testpypi-smoke
 mkdir -p /tmp/tcx-testpypi-smoke
 cd /tmp/tcx-testpypi-smoke
@@ -178,7 +178,7 @@ After the PyPI workflow completes:
 
 ```bash
 python3.11 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.3.0
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.3.1
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -275,7 +275,9 @@ Use PEP 440 versions:
 - `0.3.0` for the independent judgment-review gate, staged workflow routing
   cleanup, Decision Quality Spine hardening, and source-aware thesis lifecycle
   updates after `0.2.10`
-- later patch releases for compatible fixes after `0.3.0`
+- `0.3.1` for compatible evidence-card validation and persisted loop closure
+  state fixes after `0.3.0`
+- later patch releases for compatible fixes after `0.3.1`
 - pre-releases such as `0.4.0a1`, `0.4.0b1`, or `0.4.0rc1` when preparing
   the next minor contract
 

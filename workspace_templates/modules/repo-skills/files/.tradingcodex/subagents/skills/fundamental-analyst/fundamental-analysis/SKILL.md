@@ -9,7 +9,7 @@ Use this skill for business, accounting, financial statement, issuer, protocol/p
 
 Universe method:
 
-- Public equity: analyze business model, financial statement quality, management, capital allocation, operating KPIs, source/as-of posture, and evidence gaps.
+- Public equity: analyze business model, financial statement linkage, earnings quality, cash conversion, DuPont-style driver decomposition when useful, management, capital allocation, operating KPIs, source/as-of posture, and evidence gaps.
 - ETF/index: analyze constituent, sector, factor, liquidity, passive-flow, and methodology fundamentals only when supported by evidence.
 - Crypto public markets: analyze protocol economics, supply, usage, governance, liquidity, and ecosystem fundamentals as research context only.
 - Macro/rates/FX/commodities: identify the relevant fundamental transmission channel and call out specialist underwriting gaps rather than inventing unsupported coverage.
@@ -21,6 +21,7 @@ Expected output:
 - Business model
 - Revenue and margin drivers
 - Balance sheet and cash flow quality
+- Earnings-quality, cash-conversion, statement-linkage, and red-flag notes
 - Management and capital allocation
 - Fundamental risks
 - Evidence and source notes

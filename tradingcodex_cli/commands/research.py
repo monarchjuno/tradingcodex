@@ -3,7 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from tradingcodex_service.application.research import (
+    create_evidence_run_card,
     create_research_artifact,
+    create_validation_card,
     export_research_artifact_md,
     get_research_artifact,
     append_research_artifact_version,
@@ -67,6 +69,39 @@ def research(root: Path, argv: list[str]) -> None:
             "source_snapshot_ids": _list_option(args, "--source-snapshot-ids"),
             "follow_up_requests": _list_option(args, "--follow-up-requests"),
             "improvements": _list_option(args, "--improvements"),
+            "created_by": _option_value(args, "--created-by") or "head-manager",
+            "export_path": _option_value(args, "--export-path"),
+        }))
+        return
+    if sub in {"run-card", "evidence-run-card"}:
+        artifact_path = args[0] if args and not args[0].startswith("--") else _option_value(args, "--artifact-path") or _option_value(args, "--related-artifact-path")
+        if not artifact_path:
+            raise ValueError("Usage: tcx research run-card <artifact-path> [--validation-summary <text>] [--config-hash <hash>]")
+        print_json(create_evidence_run_card(root, {
+            "related_artifact_path": artifact_path,
+            "config_hash": _option_value(args, "--config-hash"),
+            "input_refs": _list_option(args, "--input-ref") or _list_option(args, "--input-refs"),
+            "data_source_refs": _list_option(args, "--data-source-ref") or _list_option(args, "--data-source-refs"),
+            "validation_summary": _option_value(args, "--validation-summary") or "",
+            "warnings": _list_option(args, "--warning") or _list_option(args, "--warnings"),
+            "source_limitations": _list_option(args, "--source-limitation") or _list_option(args, "--source-limitations"),
+            "created_by": _option_value(args, "--created-by") or "head-manager",
+            "export_path": _option_value(args, "--export-path"),
+        }))
+        return
+    if sub == "validation-card":
+        artifact_path = args[0] if args and not args[0].startswith("--") else _option_value(args, "--artifact-path") or _option_value(args, "--related-artifact-path")
+        if not artifact_path:
+            raise ValueError("Usage: tcx research validation-card <artifact-path> [--validation-summary <text>] [--quality-label <label>]")
+        print_json(create_validation_card(root, {
+            "related_artifact_path": artifact_path,
+            "validation_scope": _option_value(args, "--scope") or _option_value(args, "--validation-scope") or "evidence_quality",
+            "evidence_quality_label": _option_value(args, "--quality-label") or _option_value(args, "--evidence-quality-label") or "not_validated",
+            "input_refs": _list_option(args, "--input-ref") or _list_option(args, "--input-refs"),
+            "data_source_refs": _list_option(args, "--data-source-ref") or _list_option(args, "--data-source-refs"),
+            "validation_summary": _option_value(args, "--validation-summary") or "",
+            "warnings": _list_option(args, "--warning") or _list_option(args, "--warnings"),
+            "source_limitations": _list_option(args, "--source-limitation") or _list_option(args, "--source-limitations"),
             "created_by": _option_value(args, "--created-by") or "head-manager",
             "export_path": _option_value(args, "--export-path"),
         }))

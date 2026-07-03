@@ -352,7 +352,7 @@ Top-level commands:
 - `tcx profile status|list|create|select|update`
 - `tcx subagents status|list|inspect|diff|project|plan|loop|skills|prompt|state`
 - `tcx skills list [--all]|inspect|propose-add|propose-update|apply-proposal`
-- `tcx research create|append|get|list|search|export`
+- `tcx research create|append|get|list|search|export|run-card|validation-card`
 - `tcx policy simulate`
 - `tcx db status|path|migrate`
 - `tcx mcp call <tool> [tool args]`
@@ -394,7 +394,7 @@ provider, then registration stores only provider metadata and `credential_ref`.
 - `./tcx db status|path|migrate`
 - `./tcx mcp call <tool>`
 - `./tcx mcp ledger [--tool <name>]`
-- `./tcx research create|append|get|list|search|export`
+- `./tcx research create|append|get|list|search|export|run-card|validation-card`
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
 direct user entrypoints: `plan-workflow`, `tcx-workflow`, `automate-workflow`,

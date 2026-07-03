@@ -20,7 +20,8 @@ Codex-native state access:
 Universe method:
 
 - Identify asset universe, instrument, account/context, benchmark, existing exposure, and whether the installed harness supports the instrument.
-- Public equity and ETF/index reviews should consider active weight, sector/factor exposure, liquidity, concentration, and opportunity cost when data exists.
+- Public equity and ETF/index reviews should consider active weight, sector/factor exposure, liquidity, concentration, benchmark comparison, rolling contribution, timing attribution, and opportunity cost when data exists.
+- Use Brinson-style allocation/selection language, factor attribution, or timing attribution only when holdings, benchmark, and return data are explicit; otherwise name the missing inputs.
 - Crypto, macro, FX, rates, commodities, options, and credit-linked exposures require instrument-specific implementation inputs; mark missing support as `not-decision-ready` rather than sizing from thin context.
 - Separate portfolio fit from personal investment advice.
 
@@ -32,6 +33,7 @@ Expected output:
 - Concentration risk
 - Liquidity and holding period fit
 - Opportunity cost
+- Performance attribution or benchmark-relative contribution when supportable
 - Portfolio recommendation
 - Draft readiness: ready, revise, or no-order
 - Source/as-of posture and missing implementation inputs

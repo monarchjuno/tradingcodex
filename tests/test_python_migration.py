@@ -1142,6 +1142,10 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         "forecasting-discipline",
         "fundamental-analysis",
     ]
+    assert "statement linkage" in (workspace / ".tradingcodex" / "subagents" / "skills" / "fundamental-analyst" / "fundamental-analysis" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Method-selection limits" in (workspace / ".tradingcodex" / "subagents" / "skills" / "valuation-analyst" / "valuation-review" / "SKILL.md").read_text(encoding="utf-8")
+    assert "Brinson-style" in (workspace / ".tradingcodex" / "subagents" / "skills" / "portfolio-manager" / "portfolio-review" / "SKILL.md").read_text(encoding="utf-8")
+    assert "VaR/CVaR" in (workspace / ".tradingcodex" / "subagents" / "skills" / "risk-manager" / "review-risk" / "SKILL.md").read_text(encoding="utf-8")
     judgment_inspect = json.loads(run(["./tcx", "subagents", "inspect", "judgment-reviewer"], workspace).stdout)
     assert judgment_inspect["effective_skills"] == ["agent-judgment-review"]
     execution_inspect = json.loads(run(["./tcx", "subagents", "inspect", "execution-operator"], workspace).stdout)
@@ -2114,9 +2118,11 @@ def test_decision_workflow_plan_and_package_are_codex_native(tmp_path: Path) -> 
     assert stored["readiness_label"] == "waiting"
     assert "accepted role artifacts" in stored["missing_evidence"]
     assert stored["source_trust_notes"] == ["pending accepted role artifacts"]
+    assert stored["thesis_lifecycle"]["state"] == "exploring"
     assert stored["thesis_lifecycle"]["owner_role"] == "head-manager"
     assert "## Codex Starter Prompt" in stored["markdown"]
     assert "## Thesis Lifecycle" in stored["markdown"]
+    assert "- State: exploring" in stored["markdown"]
     assert "Source/as-of posture: pending accepted artifacts" in stored["markdown"]
     assert "Source trust notes: pending accepted role artifacts" in stored["markdown"]
     assert evaluate_artifact_quality(workspace, package["decision_package_path"], strict=True)["status"] == "pass"
@@ -2702,6 +2708,10 @@ improvements:
     recorded_loop = evaluate_artifact_supervisor_loop(workspace, request, ["trading/reports/news/nvda-news.md"], record=True)
     recorded_state = json.loads((workspace / ".tradingcodex" / "mainagent" / "workflow-loop-state.json").read_text(encoding="utf-8"))
     assert recorded_loop["pending_tasks"]
+    assert recorded_state["terminal_action"] == "waiting"
+    assert recorded_state["stop_reason"] == "waiting_for_artifact_or_delta_followup"
+    assert recorded_state["auto_spawn"] is False
+    assert recorded_state["recursive_hook_dispatch"] is False
     assert any(task.get("task_type") == "artifact_follow_up" for task in recorded_state["pending_tasks"])
     assert recorded_state["improvements"]
     improve_ledger = workspace / ".tradingcodex" / "mainagent" / "improve.jsonl"
@@ -4643,6 +4653,8 @@ def test_generated_mcp_server_uses_central_db_default(tmp_path: Path) -> None:
 
 def test_file_native_research_artifacts_via_mcp_api_and_cli(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
+    from tradingcodex_service.application.research import create_evidence_run_card, create_validation_card
+
     stored = call_mcp_tool(workspace, "create_research_artifact", {
         "artifact_id": "nvda-evidence-1",
         "artifact_type": "evidence_pack",
@@ -4693,6 +4705,113 @@ def test_file_native_research_artifacts_via_mcp_api_and_cli(tmp_path: Path) -> N
     assert strict_quality["frontmatter"]["reader_summary"].startswith("Plain-English first read")
     assert strict_quality["frontmatter"]["next_action"] == "Wait for valuation before any portfolio fit discussion."
     assert not any("non-expert first-read UX" in warning for warning in strict_quality["warnings"])
+    run_card = create_evidence_run_card(workspace, {
+        "related_artifact_path": stored["export_path"],
+        "config_hash": "unit-config-hash",
+        "input_refs": ["unit prompt"],
+        "data_source_refs": ["unit-test-filing"],
+        "metrics": {"source_count": 1},
+        "warnings": ["stale after 7 days"],
+        "source_limitations": ["unit fixture only"],
+        "created_by": "fundamental-analyst",
+        "export_path": "trading/research/nvda-service.run-card.json",
+    })
+    assert run_card["artifact_type"] == "evidence_run_card"
+    assert run_card["related_artifact_path"] == stored["export_path"]
+    run_card_payload = json.loads((workspace / run_card["export_path"]).read_text(encoding="utf-8"))
+    assert run_card_payload["authority"] == "evidence_only"
+    assert "order_execution" in run_card_payload["blocked_actions"]
+    assert stored["export_path"] in run_card_payload["artifact_hashes"]
+    run_card_quality = json.loads(run(["./tcx", "quality-check", run_card["export_path"], "--strict"], workspace).stdout)
+    assert run_card_quality["status"] == "pass"
+    assert run_card_quality["artifact_type"] == "evidence_run_card"
+    assert run_card_quality["run_card"]["related_artifact_path"] == stored["export_path"]
+    cli_run_card = json.loads(run([
+        "./tcx",
+        "research",
+        "run-card",
+        stored["export_path"],
+        "--validation-summary",
+        "CLI-created run card validates the stored artifact.",
+        "--input-ref",
+        "cli prompt",
+        "--data-source-ref",
+        "unit-test-filing",
+    ], workspace).stdout)
+    assert cli_run_card["export_path"].endswith(".run-card.json")
+    assert json.loads(run(["./tcx", "quality-check", cli_run_card["export_path"], "--strict"], workspace).stdout)["status"] == "pass"
+    bad_run_card = workspace / "trading" / "research" / "bad.run-card.json"
+    bad_run_card.write_text('{"artifact_type": "evidence_run_card"}\n', encoding="utf-8")
+    bad_run_card_quality = json.loads(run(["./tcx", "quality-check", "trading/research/bad.run-card.json", "--strict"], workspace, expect_ok=False).stdout)
+    assert bad_run_card_quality["status"] == "fail"
+    assert "run_card.config_hash" in bad_run_card_quality["required_fields_missing"]
+    markdown_run_card = workspace / "trading" / "research" / "markdown.run-card.md"
+    markdown_run_card.write_text(
+        """---
+schema_version: 1
+artifact_type: evidence_run_card
+card_id: markdown-run-card
+related_artifact_path: trading/research/nvda-evidence-1.evidence.md
+generated_at: "2026-06-01T00:00:00Z"
+config_hash: unit-config-hash
+input_refs: [unit prompt]
+data_source_refs: [unit-test-filing]
+artifact_hashes:
+  trading/research/nvda-evidence-1.evidence.md: unit-hash
+metrics: {}
+validation_summary: Markdown run-card shape is accepted.
+warnings: []
+source_limitations: []
+authority: evidence_only
+blocked_actions: [order_execution]
+---
+
+# Markdown Run Card
+""",
+        encoding="utf-8",
+    )
+    markdown_run_card_quality = evaluate_artifact_quality(workspace, "trading/research/markdown.run-card.md", strict=True)
+    assert markdown_run_card_quality["status"] == "pass"
+    validation_card = create_validation_card(workspace, {
+        "related_artifact_path": stored["export_path"],
+        "evidence_quality_label": "suggestive",
+        "checks": {
+            "leakage": "checked",
+            "survivorship_bias": "not_applicable",
+            "data_snooping": "warning: single fixture",
+            "out_of_sample": "not_assessed",
+            "walk_forward_consistency": "not_assessed",
+            "monte_carlo_permutation": "not_assessed",
+            "bootstrap_sharpe_ci": "not_assessed",
+            "cost_assumptions": "documented",
+            "capacity": "not_assessed",
+            "live_friction": "documented",
+        },
+        "metrics": {"bootstrap_sharpe_ci_low": 0.1},
+        "validation_summary": "Synthetic validation card captures anti-overfit evidence metadata only.",
+        "warnings": ["single synthetic fixture"],
+        "source_limitations": ["not a live backtest"],
+    })
+    validation_card_quality = json.loads(run(["./tcx", "quality-check", validation_card["export_path"], "--strict"], workspace).stdout)
+    assert validation_card_quality["status"] == "pass"
+    assert validation_card_quality["artifact_type"] == "validation_card"
+    assert validation_card_quality["validation_card"]["evidence_quality_label"] == "suggestive"
+    cli_validation_card = json.loads(run([
+        "./tcx",
+        "research",
+        "validation-card",
+        stored["export_path"],
+        "--validation-summary",
+        "CLI-created validation card records unassessed checks explicitly.",
+        "--quality-label",
+        "weak",
+    ], workspace).stdout)
+    assert json.loads(run(["./tcx", "quality-check", cli_validation_card["export_path"], "--strict"], workspace).stdout)["status"] == "pass"
+    nan_json = workspace / "trading" / "research" / "nan.validation-card.json"
+    nan_json.write_text('{"artifact_type": "validation_card", "metrics": {"sharpe": NaN}}\n', encoding="utf-8")
+    nan_quality = json.loads(run(["./tcx", "quality-check", "trading/research/nan.validation-card.json", "--strict"], workspace, expect_ok=False).stdout)
+    assert nan_quality["status"] == "fail"
+    assert nan_quality["json_valid"] is False
     weak_path = workspace / "trading" / "research" / "weak.md"
     weak_path.write_text("# Weak\n\nUntyped claim.\n", encoding="utf-8")
     weak_quality = json.loads(run(["./tcx", "quality-check", "trading/research/weak.md", "--strict"], workspace, expect_ok=False).stdout)
@@ -4800,6 +4919,17 @@ current_price_as_of: "2026-06-01"
     missing_base_rate_quality = evaluate_decision_quality(workspace, "trading/reports/valuation/missing-base-rate.md", "thesis_review_then_portfolio_risk_review")
     assert missing_base_rate_quality["status"] == "fail"
     assert "decision_quality.base_rate" in missing_base_rate_quality["required_fields_missing"]
+    bad_lifecycle_artifact = workspace / "trading" / "reports" / "valuation" / "bad-lifecycle.md"
+    bad_lifecycle_artifact.write_text(
+        decision_artifact.read_text(encoding="utf-8").replace(
+            "workflow_lane: thesis_review_then_portfolio_risk_review\n",
+            "workflow_lane: thesis_review_then_portfolio_risk_review\nthesis_lifecycle:\n  state: validated\n",
+        ),
+        encoding="utf-8",
+    )
+    bad_lifecycle_quality = evaluate_decision_quality(workspace, "trading/reports/valuation/bad-lifecycle.md", "thesis_review_then_portfolio_risk_review")
+    assert bad_lifecycle_quality["status"] == "fail"
+    assert "decision_quality.thesis_lifecycle.evidence_run_card" in bad_lifecycle_quality["required_fields_missing"]
     searched = call_mcp_tool(workspace, "search_research_artifacts", {"query": "gross margin"})
     assert any(item["artifact_id"] == "nvda-evidence-1" for item in searched["artifacts"])
     from apps.mcp.models import McpToolCall, McpToolDefinition
@@ -4818,6 +4948,30 @@ current_price_as_of: "2026-06-01"
     assert snapshot["file_sot"] is True
     assert snapshot["export_path"].startswith("trading/research/source-snapshots/")
     assert (workspace / snapshot["export_path"]).exists()
+    snapshot_quality = evaluate_artifact_quality(workspace, snapshot["export_path"], strict=False)
+    assert snapshot_quality["artifact_type"] == "source_snapshot"
+    assert "source snapshot warning: stale after 7 days" in snapshot_quality["warnings"]
+    market_snapshot = call_mcp_tool(workspace, "record_source_snapshot", {
+        "provider": "unit-test",
+        "source_category": "market_data",
+        "as_of": "2026-06-01T00:00:00Z",
+        "artifact_id": "nvda-evidence-1",
+        "warnings": [],
+        "payload": {
+            "fallback_used": True,
+            "bars": [
+                {"timestamp": "2026-06-01T09:30:00", "open": 10, "high": 9, "low": 8, "close": 7},
+                {"timestamp": "2026-06-01T09:30:00", "open": 0, "high": 11, "low": 10, "close": 10},
+            ],
+        },
+    })
+    market_quality = evaluate_artifact_quality(workspace, market_snapshot["export_path"], strict=False)
+    assert "OHLC invariant failures" in market_quality["warnings"]
+    assert "non-positive prices" in market_quality["warnings"]
+    assert "duplicate timestamps" in market_quality["warnings"]
+    assert "timezone or as-of ambiguity" in market_quality["warnings"]
+    assert "adjusted versus unadjusted price ambiguity" in market_quality["warnings"]
+    assert "explicit source fallback policy missing" in market_quality["warnings"]
     with pytest.raises(PermissionError):
         call_mcp_tool(workspace, "record_source_snapshot", {
             "principal_id": "judgment-reviewer",

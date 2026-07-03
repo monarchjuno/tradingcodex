@@ -115,7 +115,7 @@ Usage:
   tcx skills optional list|inspect|create|update|activate|archive|delete
   tcx strategies list|inspect|create|update|activate|archive|delete
   tcx db path|status|migrate
-  tcx research list
+  tcx research list|create|append|run-card|validation-card
   tcx mcp stdio|external
   tcx service runserver [addrport] [django runserver args]
   tcx service ensure [addrport]

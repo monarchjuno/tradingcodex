@@ -203,6 +203,8 @@ Read/write research and audit use cases:
 - `search_research_artifacts`
 - `append_research_artifact_version`
 - `export_research_artifact_md`
+- `create_evidence_run_card`
+- `create_validation_card`
 - `record_source_snapshot`
 - `record_audit_event`
 
@@ -210,7 +212,8 @@ Research artifact writes preserve workspace markdown as the source of truth and
 carry handoff metadata for source/as-of posture, claim type discipline,
 confidence, missing evidence, next-recipient routing, blocked actions, and
 source snapshots. `quality-check --strict` validates the markdown handoff
-contract without moving research memory into the central DB.
+contract, Evidence Run Card shape, and Validation Card shape without moving
+research memory into the central DB.
 
 Read-only/status use cases:
 

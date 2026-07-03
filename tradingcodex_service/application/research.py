@@ -6,19 +6,32 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.common import safe_workspace_path, sanitize_id
+from tradingcodex_service.application.common import file_hash, now_iso, safe_workspace_path, sanitize_id, stable_hash
 from tradingcodex_service.application.markdown_preview import split_markdown_frontmatter
 from tradingcodex_service.application.runtime import workspace_context_payload
 
 RESEARCH_FILE_ROOTS = (Path("trading/research"), Path("trading/reports"))
 SOURCE_SNAPSHOT_ROOT = Path("trading/research/source-snapshots")
 SOURCE_SNAPSHOT_ROOTS = (SOURCE_SNAPSHOT_ROOT,)
+WORKFLOW_ARTIFACT_ROOTS = RESEARCH_FILE_ROOTS + (Path("trading/decisions"), Path("trading/orders"), Path("trading/approvals"))
+ANTI_OVERFIT_CHECK_KEYS = (
+    "leakage",
+    "survivorship_bias",
+    "data_snooping",
+    "out_of_sample",
+    "walk_forward_consistency",
+    "monte_carlo_permutation",
+    "bootstrap_sharpe_ci",
+    "cost_assumptions",
+    "capacity",
+    "live_friction",
+)
 
 
 def list_workflow_artifacts(workspace_root: Path | str) -> dict[str, Any]:
     root = Path(workspace_root)
     files = []
-    for prefix in ["trading/research", "trading/reports", "trading/orders", "trading/approvals"]:
+    for prefix in ["trading/research", "trading/reports", "trading/decisions", "trading/orders", "trading/approvals"]:
         base = root / prefix
         if base.exists():
             files.extend(str(path.relative_to(root)) for path in base.rglob("*") if path.is_file() and path.name != ".gitkeep")
@@ -238,6 +251,110 @@ def record_source_snapshot(workspace_root: Path | str, args: dict[str, Any]) -> 
     return result
 
 
+def create_evidence_run_card(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    related_rel, related_hash, artifact_hashes = _related_artifact_card_values(root, args)
+    config_hash = str(args.get("config_hash") or stable_hash(args.get("config") if args.get("config") is not None else {}))
+    card_seed = {"related_artifact_path": related_rel, "related_artifact_hash": related_hash, "config_hash": config_hash}
+    card = {
+        "schema_version": 1,
+        "artifact_type": "evidence_run_card",
+        "card_id": str(args.get("card_id") or f"run-card-{sanitize_id(Path(related_rel).stem)}-{stable_hash(card_seed)[:12]}"),
+        "related_artifact_path": related_rel,
+        "generated_at": str(args.get("generated_at") or now_iso()),
+        "created_by": str(args.get("created_by") or args.get("principal_id") or "system"),
+        "config_hash": config_hash,
+        "input_refs": _coerce_list(args.get("input_refs") or args.get("inputs")),
+        "data_source_refs": _coerce_list(args.get("data_source_refs") or args.get("data_sources")),
+        "artifact_hashes": artifact_hashes,
+        "metrics": args.get("metrics") if isinstance(args.get("metrics"), dict) else {},
+        "validation_summary": args.get("validation_summary") or "",
+        "warnings": _coerce_list(args.get("warnings")),
+        "source_limitations": _coerce_list(args.get("source_limitations")),
+        "authority": "evidence_only",
+        "blocked_actions": list(dict.fromkeys(["order_drafting", "order_approval", "order_execution", *_coerce_list(args.get("blocked_actions"))])),
+    }
+    rel_path = str(args.get("export_path") or default_evidence_run_card_path(related_rel))
+    if not rel_path.endswith(".run-card.json"):
+        raise ValueError("evidence run card export_path must end with .run-card.json")
+    path = safe_workspace_path(root, rel_path, allowed_roots=WORKFLOW_ARTIFACT_ROOTS)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(card, indent=2, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    return {
+        "status": "recorded",
+        "card_id": card["card_id"],
+        "artifact_type": "evidence_run_card",
+        "related_artifact_path": related_rel,
+        "export_path": path.relative_to(root).as_posix(),
+        "config_hash": card["config_hash"],
+        "workspace_native": True,
+        "file_sot": True,
+        "db_canonical": False,
+        "workspace_context": workspace_context_payload(root),
+    }
+
+
+def create_validation_card(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    related_rel, related_hash, artifact_hashes = _related_artifact_card_values(root, args)
+    checks = args.get("checks") if isinstance(args.get("checks"), dict) else {}
+    checks = {key: checks.get(key) or "not_assessed" for key in ANTI_OVERFIT_CHECK_KEYS}
+    card_seed = {"related_artifact_path": related_rel, "related_artifact_hash": related_hash, "validation_scope": args.get("validation_scope") or "evidence_quality"}
+    card = {
+        "schema_version": 1,
+        "artifact_type": "validation_card",
+        "card_id": str(args.get("card_id") or f"validation-card-{sanitize_id(Path(related_rel).stem)}-{stable_hash(card_seed)[:12]}"),
+        "related_artifact_path": related_rel,
+        "generated_at": str(args.get("generated_at") or now_iso()),
+        "created_by": str(args.get("created_by") or args.get("principal_id") or "system"),
+        "validation_scope": str(args.get("validation_scope") or "evidence_quality"),
+        "evidence_quality_label": str(args.get("evidence_quality_label") or "not_validated"),
+        "input_refs": _coerce_list(args.get("input_refs") or args.get("inputs")),
+        "data_source_refs": _coerce_list(args.get("data_source_refs") or args.get("data_sources")),
+        "artifact_hashes": artifact_hashes,
+        "checks": checks,
+        "metrics": args.get("metrics") if isinstance(args.get("metrics"), dict) else {},
+        "validation_summary": args.get("validation_summary") or "",
+        "warnings": _coerce_list(args.get("warnings")),
+        "source_limitations": _coerce_list(args.get("source_limitations")),
+        "authority": "evidence_only",
+        "blocked_actions": list(dict.fromkeys(["order_drafting", "order_approval", "order_execution", *_coerce_list(args.get("blocked_actions"))])),
+    }
+    rel_path = str(args.get("export_path") or default_validation_card_path(related_rel))
+    if not rel_path.endswith(".validation-card.json"):
+        raise ValueError("validation card export_path must end with .validation-card.json")
+    path = safe_workspace_path(root, rel_path, allowed_roots=WORKFLOW_ARTIFACT_ROOTS)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(card, indent=2, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
+    return {
+        "status": "recorded",
+        "card_id": card["card_id"],
+        "artifact_type": "validation_card",
+        "related_artifact_path": related_rel,
+        "export_path": path.relative_to(root).as_posix(),
+        "evidence_quality_label": card["evidence_quality_label"],
+        "workspace_native": True,
+        "file_sot": True,
+        "db_canonical": False,
+        "workspace_context": workspace_context_payload(root),
+    }
+
+
+def _related_artifact_card_values(root: Path, args: dict[str, Any]) -> tuple[str, str, dict[str, str]]:
+    related_arg = args.get("related_artifact_path") or args.get("artifact_path") or args.get("path")
+    if not related_arg:
+        raise ValueError("related_artifact_path is required")
+    related = safe_workspace_path(root, str(related_arg), allowed_roots=WORKFLOW_ARTIFACT_ROOTS)
+    if not related.exists() or not related.is_file():
+        raise ValueError("related artifact path does not exist")
+    related_rel = related.relative_to(root).as_posix()
+    related_hash = file_hash(related) or ""
+    artifact_hashes = args.get("artifact_hashes") if isinstance(args.get("artifact_hashes"), dict) else {}
+    artifact_hashes = {str(key): str(value) for key, value in artifact_hashes.items() if value not in (None, "")}
+    artifact_hashes.setdefault(related_rel, related_hash)
+    return related_rel, related_hash, artifact_hashes
+
+
 def list_workspace_research_artifacts(root: Path, *, include_markdown: bool = False) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     for rel_root in RESEARCH_FILE_ROOTS:
@@ -419,3 +536,13 @@ def default_research_export_path_from_values(artifact_id: str, artifact_type: st
     if role in {"fundamental", "technical", "news", "macro", "instrument", "valuation", "portfolio", "risk", "policy"}:
         return f"trading/reports/{role}/{stem}.md"
     return f"trading/research/{stem}.md"
+
+
+def default_evidence_run_card_path(related_artifact_path: str) -> str:
+    related = Path(related_artifact_path)
+    return (related.parent / f"{related.stem}.run-card.json").as_posix()
+
+
+def default_validation_card_path(related_artifact_path: str) -> str:
+    related = Path(related_artifact_path)
+    return (related.parent / f"{related.stem}.validation-card.json").as_posix()

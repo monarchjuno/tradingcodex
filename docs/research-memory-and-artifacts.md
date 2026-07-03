@@ -24,6 +24,11 @@ not pretend a canonical research artifact exists only because a DB row exists.
 Non-artifact research freshness records are also file-native:
 
 - `trading/research/source-snapshots/*.json` for provider/as-of/retrieved metadata
+- `*.run-card.json` beside research artifacts, reports, decision packages, or
+  other workflow artifacts for reproducibility metadata
+- `*.validation-card.json` beside research artifacts, reports, decision
+  packages, or other workflow artifacts for evidence-quality validation
+  metadata
 - `trading/forecasts/*.jsonl` for append-only forecast ledger records
 
 Research artifact creation, source snapshot recording, search, get, list, and
@@ -96,6 +101,10 @@ Market-sensitive and source-sensitive claims should record:
 - content hash or request/result hash where practical
 - coverage limitations
 - stale/missing warnings
+- data-boundary warnings for OHLC invariant failures, non-positive prices,
+  duplicate timestamps, sparse or missing bars, timezone/as-of ambiguity,
+  adjusted versus unadjusted price ambiguity, stale sources, invalid JSON
+  constants such as NaN/Infinity, and explicit source fallback policy gaps
 
 Research quality focuses on source/as-of discipline, retrieved-at metadata,
 stale-data warnings, versioning, and invalidation rather than long-lived
@@ -133,6 +142,32 @@ contrary evidence, invalidation conditions, resolution source, and review date.
 Initial validation checks schema and open/closed state only; Brier scoring and
 calibration review wait until enough forecasts resolve.
 
+Evidence Run Cards are small evidence-only JSON artifacts written beside an
+existing artifact path with a `.run-card.json` suffix. They capture config hash,
+input refs, data-source refs, artifact hashes, metrics or validation summary,
+warnings, source limitations, generated-at time, and the related artifact path.
+`tcx quality-check <path>.run-card.json --strict` validates the shape. A run
+card never grants order drafting, approval, execution, broker, or policy
+authority; it is review metadata only.
+
+Validation Cards are small evidence-only JSON artifacts written beside an
+existing artifact path with a `.validation-card.json` suffix. They capture the
+related artifact path, evidence-quality label, input/source refs, artifact
+hashes, metrics, warnings, source limitations, and anti-overfit evidence
+metadata for leakage, survivorship bias, data snooping, out-of-sample posture,
+walk-forward consistency, Monte Carlo permutation, bootstrap Sharpe confidence
+intervals, costs, capacity, and live friction. A validation card is not a
+backtest engine and never grants order drafting, approval, execution, broker,
+or policy authority.
+
+`thesis_lifecycle` metadata uses the states `exploring`, `testing`,
+`validated`, `rejected`, and `monitoring`. State changes are evidence-gated in
+artifact quality checks: `testing` needs source or evidence refs, `validated`
+needs an Evidence Run Card, Validation Card, and reviewer acceptance,
+`rejected` needs an invalidation note, and `monitoring` needs a monitoring
+artifact or review cadence. This is metadata inside existing artifacts, not a
+separate hypothesis registry.
+
 These tools read and write workspace markdown files for research artifacts.
 They still use the Django service boundary for validation, provenance, audit,
 and MCP role/capability checks. Product web renders the markdown body with a
@@ -169,6 +204,8 @@ files. That is expected because research handoff state is workspace-native.
 | Valuation reports | `trading/reports/valuation/` |
 | Portfolio reports | `trading/reports/portfolio/` |
 | Risk/policy reports | `trading/reports/risk/`, `trading/reports/policy/` |
+| Evidence Run Cards | `*.run-card.json` beside the related artifact under `trading/research/`, `trading/reports/`, `trading/decisions/`, `trading/orders/`, or `trading/approvals/` |
+| Validation Cards | `*.validation-card.json` beside the related artifact under `trading/research/`, `trading/reports/`, `trading/decisions/`, `trading/orders/`, or `trading/approvals/` |
 | Forecast ledger records | `trading/forecasts/*.jsonl` |
 | Order tickets | central DB `OrderTicket` records |
 | Postmortems | `trading/reports/postmortem/*.postmortem_report.json` |
