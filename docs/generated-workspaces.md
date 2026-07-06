@@ -158,6 +158,7 @@ Generated workspaces contain:
 - fixed subagent `nickname_candidates` set to a single item matching the exact role `name`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents
+- workspace customization preferences under `.tradingcodex/user/customization.json`, merged over global defaults in `~/.tradingcodex/preferences/customization.json`; these files store UX/config metadata and never raw credentials
 - twenty-six core repo skills across project-scope mainagent skills and subagent skill directories, each with `SKILL.md` frontmatter for document metadata and UI metadata when projected
 - decision-quality skill bundles for forecasting discipline, thesis scenario
   trees, numeric data QC, and anti-overfit validation, plus role-owned
@@ -185,6 +186,12 @@ ownership comes from the Python component registry and is exported into
 `component-index.json` for Codex-readable inspection.
 Agent and skill ownership comes from the Python agent registry and is projected
 into Codex-readable agent TOML plus generated agent/skill indexes.
+
+User-configured Codex MCP servers are discovered from project and root Codex
+config, then imported into TradingCodex External MCP Gate before use. Generated
+project config should not expose external broker/data MCP tools directly to
+subagents. TradingCodex writes Codex MCP config only inside explicit managed
+blocks and leaves user-owned config outside those blocks untouched.
 
 ## Attach-First UX
 

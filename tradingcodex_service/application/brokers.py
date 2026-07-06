@@ -580,22 +580,6 @@ class NativeApiBrokerAdapter(BrokerAdapter):
         }
 
 
-class ManualBrokerAdapter(BrokerAdapter):
-    adapter_type = "manual"
-
-    def health_check(self) -> BrokerHealth:
-        return BrokerHealth("ok", "manual broker adapter is read-only and import-backed")
-
-    def discover_accounts(self) -> list[BrokerAccountDTO]:
-        return []
-
-    def get_cash(self, account_id: str) -> list[CashDTO]:
-        return []
-
-    def get_positions(self, account_id: str) -> list[PositionDTO]:
-        return []
-
-
 def adapter_for_connection(connection: Any, workspace_root: Path | str | None = None) -> BrokerAdapter:
     if connection.adapter_type == "paper" or connection.transport == "paper" or connection.broker_id == "paper-trading":
         return PaperBrokerAdapter(workspace_root)
@@ -609,8 +593,6 @@ def adapter_for_connection(connection: Any, workspace_root: Path | str | None = 
         return provider.factory(connection, workspace_root)
     if connection.transport == "api" or connection.adapter_type == "native_api":
         return NativeApiBrokerAdapter(connection)
-    if connection.transport == "manual" or connection.adapter_type == "manual":
-        return ManualBrokerAdapter()
     raise ValueError(f"Unsupported broker adapter type: {connection.adapter_type}")
 
 

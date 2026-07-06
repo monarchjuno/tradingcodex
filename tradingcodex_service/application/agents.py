@@ -104,6 +104,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "check_external_mcp_connection",
             "discover_external_mcp_connection",
             "review_external_mcp_tool",
+            "list_external_mcp_permission_requests",
             "list_broker_adapter_providers",
             "connect_broker_connector",
             "scaffold_broker_connector",
@@ -958,7 +959,6 @@ def project_agent_configuration(
     if selected_role in {None, "head-manager"}:
         _project_head_manager_mcp_tools(root)
         _project_head_manager_prompt(root, state["agents"]["head-manager"]["additional_instructions"]["body"])
-        _strip_legacy_head_manager_skill_filters(root)
     _project_runtime_skill_filesystem_filters(root, state)
     _project_root_strategy_skills(root)
 
@@ -1303,21 +1303,6 @@ def _project_head_manager_prompt(root: Path, additional_instructions: str = "") 
     if additional_instructions.strip():
         text += "\n\n" + _render_additional_instruction_block(additional_instructions).rstrip()
     path.write_text(text.rstrip() + "\n", encoding="utf-8")
-
-
-def _strip_legacy_head_manager_skill_filters(root: Path) -> None:
-    path = _agent_config_path(root, "head-manager")
-    if not path.exists():
-        return
-    text = path.read_text(encoding="utf-8")
-    updated = re.sub(
-        r"\n*# BEGIN TradingCodex subagent skill filters.*?# END TradingCodex subagent skill filters\n*",
-        "\n\n",
-        text,
-        flags=re.S,
-    )
-    if updated != text:
-        path.write_text(updated.rstrip() + "\n", encoding="utf-8")
 
 
 def _replace_developer_instructions(

@@ -49,6 +49,8 @@ Use `$tcx-server` for operate-plane TradingCodex status, service recovery, MCP s
 
 Use `$tcx-build` for build-plane work: TradingCodex self-update, harness/template/skill rewrites, and broker/API provider requests such as "connect `<broker>`" or "add this broker".
 
+Use `$tcx-build` for Codex root/project config discovery, managed MCP config writes, and importing user-configured Codex MCP servers into the TradingCodex External MCP Gate. Do not give subagents direct access to unmanaged external MCP servers.
+
 Broker connector work is an agentic onboarding lane, not investment dispatch.
 TradingCodex is the local broker control plane: Codex may prepare provider
 files and credential references, but the server owns connector state,
@@ -155,6 +157,11 @@ Live order submission is possible only through installed and reviewed providers 
 `execution-operator` submits, cancels, and refreshes only through TradingCodex
 MCP canonical tools. Broker REST, SDK, shell, or broker-specific MCP tools must
 remain behind reviewed provider adapters and service-layer mapping.
+
+If an external MCP call returns `approval_required` or any subagent reports a
+permission prompt, stop with `waiting_for_user_permission`. Surface the pending
+request through Build Center or `tcx build permission list`; do not continue as
+if the permission was denied or granted.
 
 # Secret Boundary
 

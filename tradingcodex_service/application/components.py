@@ -213,7 +213,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         tags=("guardrail.enforcement", "guardrail.information_barrier"),
         surfaces={
             "services": ("mcp.services",),
-            "models": ("McpRouter", "McpExternalTool", "McpExternalToolPermission", "McpExternalToolCall"),
+            "models": ("McpRouter", "McpExternalTool", "McpExternalToolPermission", "McpExternalPermissionRequest", "McpExternalToolCall"),
             "templates": ("web/mcp_router.html",),
             "tests": ("external-mcp", "product-web"),
         },

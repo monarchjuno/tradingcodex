@@ -45,7 +45,7 @@ def profile(root: Path, argv: list[str]) -> None:
             "active_profile_id": active["profile_id"],
             "profiles": [
                 {**item, "active": item["profile_id"] == active["profile_id"]}
-                for item in _list_profiles(root)
+                for item in _workspace_profiles(root)
             ],
         })
         return
@@ -54,16 +54,16 @@ def profile(root: Path, argv: list[str]) -> None:
         if not profile_id:
             raise ValueError("Usage: tcx profile create <profile-id>")
         created = _profile_from_id(profile_id)
-        registry = _read_profiles(root)
+        registry = read_workspace_profiles(root)
         registry[created["profile_id"]] = created
-        _write_profiles(root, registry)
+        write_workspace_profiles(root, registry)
         print_json({"status": "created", "profile": created})
         return
     if sub == "select":
         profile_id = args[0] if args else ""
         if not profile_id:
             raise ValueError("Usage: tcx profile select <profile-id>")
-        registry = _read_profiles(root)
+        registry = read_workspace_profiles(root)
         if profile_id in {"default", "default-paper", "shared"}:
             selected = registry.get(default_active_profile()["profile_id"], default_active_profile())
         else:
@@ -92,17 +92,9 @@ def _profile_from_id(raw_id: str) -> dict[str, Any]:
     })
 
 
-def _read_profiles(root: Path) -> dict[str, dict[str, Any]]:
-    return read_workspace_profiles(root)
-
-
-def _write_profiles(root: Path, profiles: dict[str, dict[str, Any]]) -> None:
-    write_workspace_profiles(root, profiles)
-
-
-def _list_profiles(root: Path) -> list[dict[str, Any]]:
+def _workspace_profiles(root: Path) -> list[dict[str, Any]]:
     profiles = {default_active_profile()["profile_id"]: default_active_profile()}
-    profiles.update(_read_profiles(root))
+    profiles.update(read_workspace_profiles(root))
     return [profiles[key] for key in sorted(profiles)]
 
 

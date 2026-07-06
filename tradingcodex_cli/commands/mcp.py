@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from tradingcodex_service.application.customization import replace_managed_block
 from tradingcodex_service.application.runtime import ensure_runtime_database, tradingcodex_db_path
 from tradingcodex_service.mcp_runtime import call_mcp_tool
 from tradingcodex_service.mcp_runtime import SAFE_HOME_TOOL_NAMES
@@ -259,7 +260,7 @@ def install_global_mcp(args: list[str]) -> None:
         return
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-    updated = replace_managed_block(existing, block)
+    updated = replace_managed_block(existing, block, "TradingCodex home MCP")
     config_path.write_text(updated, encoding="utf-8")
     print_json({
         "status": "installed",
@@ -284,17 +285,6 @@ default_tools_approval_mode = "prompt"
 startup_timeout_sec = 20
 # END TradingCodex home MCP
 """
-
-
-def replace_managed_block(existing: str, block: str) -> str:
-    start = "# BEGIN TradingCodex home MCP"
-    end = "# END TradingCodex home MCP"
-    if start in existing and end in existing:
-        before, rest = existing.split(start, 1)
-        _, after = rest.split(end, 1)
-        return before.rstrip() + "\n\n" + block.rstrip() + "\n" + after
-    prefix = existing.rstrip() + "\n\n" if existing.strip() else ""
-    return prefix + block
 
 
 def print_mcp_help() -> None:

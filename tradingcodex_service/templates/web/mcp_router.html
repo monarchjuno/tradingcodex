@@ -211,7 +211,7 @@
         <div class="tc-mini-feed">
           {% for call in recent_external_calls %}
           <div>
-            <span class="tc-pill tc-pill--{% if call.decision == 'allow' %}good{% else %}bad{% endif %}">{{ call.decision }}</span>
+            <span class="tc-pill tc-pill--{% if call.decision == 'allow' %}good{% elif call.decision == 'approval_required' %}warn{% else %}bad{% endif %}">{{ call.decision }}</span>
             <strong>{{ call.router_name }} / {{ call.external_name }}</strong>
             <span>{{ call.principal_id }} / {{ call.access_mode_label }}</span>
           </div>

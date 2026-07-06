@@ -1495,6 +1495,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "list_external_mcp_connections" in root_mcp["enabled_tools"]
     assert "discover_external_mcp_connection" in root_mcp["enabled_tools"]
     assert "review_external_mcp_tool" in root_mcp["enabled_tools"]
+    assert "list_external_mcp_permission_requests" in root_mcp["enabled_tools"]
     assert "list_broker_adapter_providers" in root_mcp["enabled_tools"]
     assert "connect_broker_connector" in root_mcp["enabled_tools"]
     assert "scaffold_broker_connector" in root_mcp["enabled_tools"]
@@ -3666,13 +3667,135 @@ def test_mcp_admin_service_actions_write_audit_events() -> None:
     assert AuditEvent.objects.filter(action="mcp_tool_registry.synced", actor_principal="admin-service-test").exists()
 
 
+def test_codex_customization_discovers_redacts_and_writes_managed_mcp(monkeypatch, tmp_path: Path) -> None:
+    from tradingcodex_service.application.customization import (
+        discover_codex_mcp_servers,
+        read_customization_settings,
+        write_codex_mcp_server_config,
+    )
+    from tradingcodex_service.application.runtime_mode import set_runtime_mode
+
+    workspace = tmp_path / "workspace"
+    workspace_config = workspace / ".codex" / "config.toml"
+    workspace_config.parent.mkdir(parents=True)
+    workspace_config.write_text(
+        """
+[mcp_servers.user_mcp]
+command = "uvx"
+args = ["user-mcp"]
+enabled = true
+env = { API_KEY = "do-not-leak" }
+default_tools_approval_mode = "prompt"
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    codex_home = tmp_path / "codex-home"
+    codex_home.mkdir()
+    (codex_home / "config.toml").write_text(
+        """
+[mcp_servers.global_mcp]
+url = "https://localhost:9000/mcp"
+enabled_tools = ["quote"]
+env = { TOKEN = "also-hidden" }
+""".strip()
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path / "tcx-home"))
+    set_runtime_mode(workspace, "build", reason="config test")
+
+    discovered = discover_codex_mcp_servers(workspace, record=True)
+    body = json.dumps(discovered, ensure_ascii=False)
+    assert "do-not-leak" not in body
+    assert "also-hidden" not in body
+    assert {server["name"] for server in discovered["servers"]} == {"global_mcp", "user_mcp"}
+    assert next(server for server in discovered["servers"] if server["name"] == "user_mcp")["env_keys"] == ["API_KEY"]
+
+    first = write_codex_mcp_server_config(
+        workspace,
+        name="managed_one",
+        command="uvx",
+        args=["managed-one"],
+        env_keys=["MANAGED_KEY"],
+        dry_run=False,
+        full_access_detected=True,
+    )
+    second = write_codex_mcp_server_config(
+        workspace,
+        name="managed_two",
+        command="uvx",
+        args=["managed-two"],
+        dry_run=False,
+        full_access_detected=True,
+    )
+    text = workspace_config.read_text(encoding="utf-8")
+    assert first["backup_path"]
+    assert Path(second["backup_path"]).exists()
+    assert "[mcp_servers.managed_one]" in text
+    assert "[mcp_servers.managed_two]" in text
+    assert "MANAGED_KEY" in text
+
+    with pytest.raises(ValueError, match="outside TradingCodex managed block"):
+        write_codex_mcp_server_config(workspace, name="user_mcp", command="uvx", full_access_detected=True)
+
+    settings = read_customization_settings(workspace)
+    assert settings["codex_config"]["managed_servers"]["managed_two"]["scope"] == "workspace"
+    assert settings["paths"]["workspace"].endswith(".tradingcodex/user/customization.json")
+
+
+def test_tcx_build_cli_status_and_codex_mcp_dry_run(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    env_extra = {
+        "TRADINGCODEX_HOME": str(tmp_path / "tcx-home"),
+        "TRADINGCODEX_CODEX_PERMISSION": "full",
+        "TRADINGCODEX_DB_NAME": None,
+        "CODEX_HOME": str(tmp_path / "codex-home"),
+    }
+    dry_run = json.loads(
+        run(
+            [
+                sys.executable,
+                "-m",
+                "tradingcodex_cli",
+                "build",
+                "codex-mcp",
+                "add",
+                "--name",
+                "cli_mcp",
+                "--command",
+                "uvx",
+                "--arg",
+                "demo-mcp",
+                "--dry-run",
+            ],
+            workspace,
+            env_extra=env_extra,
+        ).stdout
+    )
+    assert dry_run["status"] == "dry_run"
+    assert "[mcp_servers.cli_mcp]" in dry_run["preview"]
+
+    run([sys.executable, "-m", "tradingcodex_cli", "mode", "set", "build", "--reason", "cli build smoke"], workspace, env_extra=env_extra)
+    status = json.loads(run([sys.executable, "-m", "tradingcodex_cli", "build", "status", "--json"], workspace, env_extra=env_extra).stdout)
+    assert status["mode_status"]["build_enabled"] is True
+    assert status["permission_status"]["codex_permission"] == "full_access"
+
+
 def test_external_mcp_router_classifies_tools_and_gates_proxy() -> None:
     ensure_runtime_database(ROOT)
-    from apps.mcp.models import McpExternalTool, McpRouter
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from apps.mcp.models import McpExternalPermissionRequest, McpExternalTool, McpRouter
     from apps.mcp.services import (
+        approve_external_mcp_permission_request,
         create_or_update_router,
         evaluate_external_mcp_proxy_call,
         import_external_mcp_discovery,
+        list_external_mcp_permission_requests,
         set_external_tool_policy,
     )
 
@@ -3717,6 +3840,17 @@ def test_external_mcp_router_classifies_tools_and_gates_proxy() -> None:
     set_external_tool_policy(order, proxy_mode="service_adapter", allowed_roles=["execution-operator"], enabled=True, review_status="reviewed", actor="test")
     denied = evaluate_external_mcp_proxy_call(ROOT, order, principal_id="head-manager", arguments={"symbol": "AAPL"}, actor="test")
     assert denied["decision"] == "deny"
+    pending = evaluate_external_mcp_proxy_call(ROOT, order, principal_id="execution-operator", arguments={"symbol": "AAPL"}, actor="test")
+    assert pending["decision"] == "approval_required"
+    assert pending["permission_request"]["status"] == "pending"
+    stale = McpExternalPermissionRequest.objects.get(pk=pending["permission_request"]["id"])
+    stale.expires_at = timezone.now() - timedelta(seconds=1)
+    stale.save(update_fields=["expires_at", "updated_at"])
+    expired = list_external_mcp_permission_requests(ROOT, {"status": "expired"})
+    assert stale.id in {item["id"] for item in expired["requests"]}
+    pending = evaluate_external_mcp_proxy_call(ROOT, order, principal_id="execution-operator", arguments={"symbol": "AAPL"}, actor="test")
+    assert pending["permission_request"]["id"] != stale.id
+    approve_external_mcp_permission_request(ROOT, {"request_id": pending["permission_request"]["id"], "principal_id": "user"})
     allowed = evaluate_external_mcp_proxy_call(ROOT, order, principal_id="execution-operator", arguments={"symbol": "AAPL"}, actor="test")
     assert allowed["decision"] == "allow"
     assert allowed["adapter_call_allowed"] is True
@@ -3970,6 +4104,13 @@ def test_product_web_agents_first_routes_render_skill_preview() -> None:
     harness = client.get("/harness/")
     assert harness.status_code == 302
     assert harness["Location"].endswith("/harness/agents/")
+
+    build = client.get("/build/")
+    build_body = build.content.decode()
+    assert build.status_code == 200
+    assert "Build Center" in build_body
+    assert "Discovered MCP servers" in build_body
+    assert "Permission requests" in build_body
 
     agents = client.get("/harness/agents/")
     assert agents.status_code == 200
@@ -4366,6 +4507,7 @@ def test_product_web_agent_skill_and_strategy_mutation(tmp_path: Path, monkeypat
     assert "list_external_mcp_connections" in mcp_tool_names
     assert "discover_external_mcp_connection" in mcp_tool_names
     assert "review_external_mcp_tool" in mcp_tool_names
+    assert "list_external_mcp_permission_requests" in mcp_tool_names
 
 
 def test_product_web_research_artifact_markdown_preview(tmp_path: Path, monkeypatch) -> None:

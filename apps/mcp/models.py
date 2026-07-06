@@ -130,6 +130,34 @@ class McpExternalToolPermission(models.Model):
         return f"{self.external_tool.external_name} {self.principal_or_role} {self.decision}"
 
 
+class McpExternalPermissionRequest(models.Model):
+    external_tool = models.ForeignKey(McpExternalTool, on_delete=models.SET_NULL, null=True, blank=True, related_name="permission_requests")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    router_name = models.CharField(max_length=160)
+    external_name = models.CharField(max_length=200)
+    principal_id = models.CharField(max_length=128, default="unknown")
+    role = models.CharField(max_length=128, blank=True)
+    workflow_run_id = models.CharField(max_length=160, blank=True)
+    request_hash = models.CharField(max_length=64)
+    arguments_summary = models.JSONField(default=dict, blank=True)
+    approval_scope = models.CharField(max_length=32, default="single_call")
+    status = models.CharField(max_length=32, default="pending")
+    reasons = models.JSONField(default=list, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    decided_by = models.CharField(max_length=128, blank=True)
+    decided_at = models.DateTimeField(null=True, blank=True)
+    decision_reason = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        verbose_name = "external MCP permission request"
+        verbose_name_plural = "external MCP permission requests"
+
+    def __str__(self) -> str:
+        return f"{self.router_name}:{self.external_name} {self.status}"
+
+
 class McpExternalToolCall(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     external_tool = models.ForeignKey(McpExternalTool, on_delete=models.SET_NULL, null=True, blank=True, related_name="calls")

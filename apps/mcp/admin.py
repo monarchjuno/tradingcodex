@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from apps.mcp.models import (
+    McpExternalPermissionRequest,
     McpExternalTool,
     McpExternalToolCall,
     McpExternalToolPermission,
@@ -16,5 +17,6 @@ admin.site.register([
     McpRouter,
     McpExternalTool,
     McpExternalToolPermission,
+    McpExternalPermissionRequest,
     McpExternalToolCall,
 ])

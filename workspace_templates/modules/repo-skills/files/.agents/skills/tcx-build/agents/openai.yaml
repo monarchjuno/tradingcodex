@@ -1,6 +1,6 @@
 interface:
   display_name: "TCX Build"
-  short_description: "Update TCX and build broker providers"
-  default_prompt: "Use $tcx-build for TradingCodex self-update, harness changes, or broker/API provider build work."
+  short_description: "Update TCX, config MCP, and build providers"
+  default_prompt: "Use $tcx-build for TradingCodex self-update, harness changes, Codex MCP config, or broker/API provider build work."
 policy:
   allow_implicit_invocation: true

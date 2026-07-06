@@ -50,6 +50,9 @@ Routes:
 - `/integrations/mcp/` Data Sources surface for External MCP Gate registry,
   source connection checks, manual discovery import, available action review,
   role scopes, and audited dry-run decisions
+- `/build/` Build Center for build-mode status, Codex config MCP discovery,
+  managed MCP config writes, agent customization summary, and pending external
+  MCP permission requests
 
 Direct diagnostic routes may remain for local operators, but they are not part
 of the primary product navigation:
@@ -147,6 +150,12 @@ primary web entrypoint. When present, it is server-rendered SVG/HTML and shows:
 - The product web app can register external MCP connections, import discovery
   metadata, review available actions/resources, set role scopes, and audit
   dry-run decisions. It must not expose raw external tools directly to Codex.
+- The product web app can discover project/root Codex MCP config and write
+  only TradingCodex managed MCP blocks when build mode and Codex full access
+  are active. It must not rewrite user-owned config outside managed blocks.
+- The product web app can approve or deny pending external MCP permission
+  requests; this is user consent for proxy evaluation, not order or execution
+  authorization.
 - Execution-sensitive actions remain behind TradingCodex MCP and service-layer
   policy, approval, duplicate-request, connection, and audit checks.
 
@@ -355,6 +364,7 @@ Top-level commands:
 - `tcx research create|append|get|list|search|export|run-card|validation-card`
 - `tcx policy simulate`
 - `tcx db status|path|migrate`
+- `tcx build status|codex-mcp|permission`
 - `tcx mcp call <tool> [tool args]`
 - `tcx mcp ledger [--tool <name>] [--principal <id>] [--status ok]`
 - `tcx mcp install-global --safe`
@@ -371,6 +381,7 @@ Generated workspace wrapper commands:
 - `./tcx update status [--json]`
 - `./tcx mode status`
 - `./tcx mode set build --reason "<reason>"`
+- `./tcx build status|codex-mcp|permission`
 - `./tcx mode set operate`
 - `./tcx connectors status`
 - `./tcx connectors providers`

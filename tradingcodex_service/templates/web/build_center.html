@@ -1,0 +1,196 @@
+{% extends "web/base.html" %}
+
+{% block title %}Build | tcx{% endblock %}
+{% block page_label %}Build{% endblock %}
+
+{% block content %}
+<div class="tc-build-page">
+  <section class="tc-mcp-toolbar" aria-label="Build center status">
+    <div class="tc-mcp-toolbar-main">
+      <strong>Build Center</strong>
+      <span>{{ mode_status.mode }} / {{ permission_status.codex_permission }} / {{ codex_mcp.count }} Codex MCP servers</span>
+    </div>
+    <div class="tc-inline-actions">
+      <a class="tc-button" href="/harness/agents/">Agents</a>
+      <a class="tc-button" href="/integrations/mcp/">Data Sources</a>
+    </div>
+  </section>
+
+  <section class="tc-summary-grid" aria-label="Build summary">
+    <article class="tc-summary-card">
+      <span>Build mode</span>
+      <strong>{{ mode_status.mode }}</strong>
+      {% if mode_status.build_blocked_reason %}<small>{{ mode_status.build_blocked_reason }}</small>{% endif %}
+    </article>
+    <article class="tc-summary-card">
+      <span>Permission</span>
+      <strong>{{ permission_status.codex_permission }}</strong>
+      <small>{{ permission_status.detection_source }}</small>
+    </article>
+    <article class="tc-summary-card">
+      <span>External MCP</span>
+      <strong>{{ mcp_overview.router_count }}</strong>
+      <small>{{ mcp_overview.external_tool_count }} reviewed actions</small>
+    </article>
+    <article class="tc-summary-card">
+      <span>Pending approval</span>
+      <strong>{{ pending_permission_requests|length }}</strong>
+      <small>External MCP requests</small>
+    </article>
+  </section>
+
+  <section class="tc-section-grid" aria-label="Build center workbench">
+    <div class="tc-panel">
+      <div class="tc-panel-head">
+        <div>
+          <span class="tc-eyebrow">Codex config</span>
+          <h2>Discovered MCP servers</h2>
+        </div>
+        <span class="tc-pill tc-pill--neutral">{{ codex_mcp.count }}</span>
+      </div>
+      <div class="tc-build-list">
+        {% for server in codex_mcp.servers %}
+        <article class="tc-mcp-router-card">
+          <div class="tc-build-row">
+            <div>
+              <span class="tc-pill tc-pill--{% if server.managed %}good{% else %}neutral{% endif %}">{% if server.managed %}managed{% else %}user{% endif %}</span>
+              <strong>{{ server.name|default:"parse error" }}</strong>
+              <small>{{ server.source }} / {{ server.transport }} / {% if server.enabled %}enabled{% else %}disabled{% endif %}</small>
+              {% if server.command %}<code>{{ server.command }}</code>{% elif server.url %}<code>{{ server.url }}</code>{% endif %}
+              {% if server.env_keys %}<small>env: {{ server.env_keys|join:", " }}</small>{% endif %}
+              {% if server.error %}<small>{{ server.error }}</small>{% endif %}
+            </div>
+            {% if server.status == "ok" %}
+            <form method="post" action="{% url 'web-build-codex-mcp-import' %}">
+              {% csrf_token %}
+              <input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <input type="hidden" name="source" value="{{ server.source }}">
+              <input type="hidden" name="name" value="{{ server.name }}">
+              <button class="tc-mini-button" type="submit">Import</button>
+            </form>
+            {% endif %}
+          </div>
+        </article>
+        {% empty %}
+        <div class="tc-empty-state">
+          <strong>No Codex MCP config found</strong>
+          <span>Use the managed add form or register sources in Data Sources.</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="tc-panel">
+      <div class="tc-panel-head">
+        <div>
+          <span class="tc-eyebrow">Managed write</span>
+          <h2>Add Codex MCP</h2>
+        </div>
+      </div>
+      <form class="tc-form" method="post" action="{% url 'web-build-codex-mcp-add' %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <label>Scope
+          <select name="scope">
+            <option value="workspace">workspace</option>
+            <option value="global">global</option>
+          </select>
+        </label>
+        <label>Name <input name="name" placeholder="market-data-mcp" required></label>
+        <label>Transport
+          <select name="transport">
+            <option value="stdio">stdio</option>
+            <option value="http">http</option>
+            <option value="streamable-http">streamable-http</option>
+          </select>
+        </label>
+        <label>Command <input name="command" placeholder="uvx provider-mcp"></label>
+        <label>Args <textarea name="args" rows="3" placeholder="--stdio"></textarea></label>
+        <label>URL <input name="url" placeholder="https://localhost:9000/mcp"></label>
+        <label>Required env keys <textarea name="env_keys" rows="2" placeholder="PROVIDER_API_KEY"></textarea></label>
+        <label>Credential ref <input name="credential_ref" placeholder="env:PROVIDER_API_KEY"></label>
+        <label>Mode
+          <select name="dry_run">
+            <option value="true">dry run</option>
+            <option value="false">write managed block</option>
+          </select>
+        </label>
+        <button class="tc-button" type="submit">Apply</button>
+      </form>
+      <div class="tc-mini-feed">
+        <div>
+          <span class="tc-pill tc-pill--neutral">settings</span>
+          <strong>Workspace</strong>
+          <span>{{ customization_settings.paths.workspace }}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="permission-requests" class="tc-section-grid" aria-label="Permission and customization">
+    <div class="tc-panel">
+      <div class="tc-panel-head">
+        <div>
+          <span class="tc-eyebrow">External MCP</span>
+          <h2>Permission requests</h2>
+        </div>
+      </div>
+      <div class="tc-build-list">
+        {% for item in pending_permission_requests %}
+        <article class="tc-mcp-control-card">
+          <div class="tc-build-row">
+            <div>
+              <span class="tc-pill tc-pill--warn">{{ item.status }}</span>
+              <strong>{{ item.router_name }} / {{ item.external_name }}</strong>
+              <small>{{ item.principal_id }} / {{ item.role }}</small>
+              <small>{{ item.arguments_summary }}</small>
+            </div>
+            <div class="tc-inline-actions">
+              <form method="post" action="{% url 'web-build-permission-decide' item.id 'approve' %}">
+                {% csrf_token %}
+                <button class="tc-mini-button" type="submit">Approve</button>
+              </form>
+              <form method="post" action="{% url 'web-build-permission-decide' item.id 'deny' %}">
+                {% csrf_token %}
+                <button class="tc-mini-button" type="submit">Deny</button>
+              </form>
+            </div>
+          </div>
+        </article>
+        {% empty %}
+        <div class="tc-empty-state">
+          <strong>No pending requests</strong>
+          <span>External MCP calls that need consent will wait here.</span>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="tc-panel">
+      <div class="tc-panel-head">
+        <div>
+          <span class="tc-eyebrow">Agents</span>
+          <h2>Customization</h2>
+        </div>
+      </div>
+      <div class="tc-mini-feed">
+        <div>
+          <span class="tc-pill tc-pill--neutral">{{ optional_skill_count }}</span>
+          <strong>Optional skills</strong>
+          <span><a href="/harness/agents/">Open Agents</a></span>
+        </div>
+        <div>
+          <span class="tc-pill tc-pill--neutral">{{ agents_with_notes|length }}</span>
+          <strong>Additional instructions</strong>
+          <span>{{ agents_with_notes|join:", "|default:"none" }}</span>
+        </div>
+        <div>
+          <span class="tc-pill tc-pill--neutral">{{ mcp_overview.review_required_count }}</span>
+          <strong>Reviews needed</strong>
+          <span><a href="/integrations/mcp/">Open Data Sources</a></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

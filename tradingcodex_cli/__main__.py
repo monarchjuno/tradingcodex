@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from tradingcodex_cli.commands.build import build
 from tradingcodex_cli.commands.bootstrap import attach, configure_workspace_env, init, service, update
 from tradingcodex_cli.commands.connectors import connectors
 from tradingcodex_cli.commands.db import db
@@ -48,6 +49,7 @@ WORKSPACE_COMMANDS = {
     "workspace": workspace,
     "profile": profile,
     "mode": mode,
+    "build": build,
     "connectors": connectors,
     "validate": validate,
     "risk-check": risk_check,
@@ -105,6 +107,7 @@ Usage:
   tcx init --list-modules
   tcx doctor [--layer <layer>]
   tcx mode status|set
+  tcx build status|codex-mcp|permission
   tcx connectors status|connect|scaffold|register|validate
   tcx workspace status|list
   tcx profile status|list|create|select|update

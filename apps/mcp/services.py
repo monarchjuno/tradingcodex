@@ -8,12 +8,14 @@ import shlex
 import subprocess
 import time
 import urllib.request
+from datetime import timedelta
 from typing import Any
 
 from django.utils import timezone
 from django.db.models import QuerySet
 
 from apps.mcp.models import (
+    McpExternalPermissionRequest,
     McpExternalTool,
     McpExternalToolCall,
     McpExternalToolPermission,
@@ -53,6 +55,8 @@ RESEARCH_ROLES = {
 }
 ACCOUNT_READ_ROLES = {"head-manager", "portfolio-manager", "risk-manager", "execution-operator"}
 PORTFOLIO_STATE_ROLES = {"portfolio-manager", "risk-manager"}
+USER_APPROVAL_CATEGORIES = {"account_read", "portfolio_state", "research_write", "workflow_prompt", "execution"}
+SENSITIVE_ARGUMENT_RE = re.compile(r"secret|credential|password|api[_-]?key|token", flags=re.I)
 
 
 def set_mcp_tools_enabled(queryset: QuerySet[McpToolDefinition], enabled: bool, actor: str = "admin") -> int:
@@ -355,8 +359,25 @@ def evaluate_external_mcp_proxy_call(
     arguments: dict[str, Any] | None = None,
     actor: str = "mcp-proxy",
 ) -> dict[str, Any]:
+    arguments = arguments or {}
     reasons = external_tool_denial_reasons(tool, principal_id)
-    decision = "allow" if not reasons else "deny"
+    request_hash = stable_hash(arguments)
+    permission_request = None
+    if not reasons and _external_tool_requires_user_approval(tool) and not _approved_external_permission(tool, principal_id, request_hash):
+        role = role_for_principal_id(principal_id)
+        permission_request = _create_or_reuse_permission_request(
+            tool,
+            principal_id=principal_id,
+            role=role,
+            request_hash=request_hash,
+            arguments=arguments,
+            workflow_run_id=str(arguments.get("workflow_run_id") or ""),
+            reasons=["user permission required for external MCP call"],
+        )
+        reasons = ["user permission required for external MCP call"]
+        decision = "approval_required"
+    else:
+        decision = "allow" if not reasons else "deny"
     result = {
         "decision": decision,
         "reasons": reasons,
@@ -368,6 +389,7 @@ def evaluate_external_mcp_proxy_call(
         "canonical_capability": tool.canonical_capability,
         "adapter_call_allowed": decision == "allow" and tool.proxy_mode in SERVICE_PROXY_MODES,
         "direct_proxy_allowed": decision == "allow" and tool.proxy_mode in READ_ONLY_PROXY_MODES,
+        "permission_request": serialize_permission_request(permission_request) if permission_request else None,
         "db_canonical": True,
         "workspace_context": workspace_context_payload(workspace_root),
     }
@@ -379,14 +401,102 @@ def evaluate_external_mcp_proxy_call(
         proxy_mode=tool.proxy_mode,
         decision=decision,
         reasons=reasons,
-        request=arguments or {},
+        request=arguments,
         response=result,
-        request_hash=stable_hash(arguments or {}),
+        request_hash=request_hash,
         result_hash=stable_hash(result),
         workspace_context=result["workspace_context"],
     )
-    _audit("external_mcp.proxy_allowed" if decision == "allow" else "external_mcp.proxy_denied", {"tool": str(tool), "reasons": reasons}, actor)
+    audit_action = "external_mcp.proxy_allowed" if decision == "allow" else "external_mcp.proxy_permission_required" if decision == "approval_required" else "external_mcp.proxy_denied"
+    _audit(audit_action, {"tool": str(tool), "reasons": reasons}, actor)
     return result
+
+
+def list_external_mcp_permission_requests(workspace_root: Any = None, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    ensure_runtime_database(workspace_root)
+    _expire_external_mcp_permission_requests()
+    args = args or {}
+    queryset = McpExternalPermissionRequest.objects.select_related("external_tool").all()
+    status = str(args.get("status") or "pending")
+    if status and status != "all":
+        queryset = queryset.filter(status=status)
+    if args.get("principal_id"):
+        queryset = queryset.filter(principal_id=str(args["principal_id"]))
+    if args.get("router_name") or args.get("name"):
+        queryset = queryset.filter(router_name=str(args.get("router_name") or args.get("name")))
+    limit = max(1, min(int(args.get("limit") or 50), 200))
+    return {
+        "status": "ok",
+        "requests": [serialize_permission_request(item) for item in queryset[:limit]],
+        "count": queryset.count(),
+        "workspace_context": workspace_context_payload(workspace_root),
+    }
+
+
+def approve_external_mcp_permission_request(workspace_root: Any, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    ensure_runtime_database(workspace_root)
+    _expire_external_mcp_permission_requests()
+    args = args or {}
+    request = resolve_external_mcp_permission_request(args)
+    if request.status != "pending":
+        raise ValueError(f"external MCP permission request is not pending: {request.status}")
+    request.status = "approved"
+    request.decided_by = str(args.get("principal_id") or args.get("decided_by") or "user")
+    request.decided_at = timezone.now()
+    request.decision_reason = str(args.get("reason") or "")
+    request.save(update_fields=["status", "decided_by", "decided_at", "decision_reason", "updated_at"])
+    _audit("external_mcp.permission_approved", {"request_id": request.id, "tool": f"{request.router_name}:{request.external_name}"}, request.decided_by)
+    return {"status": "approved", "request": serialize_permission_request(request), "workspace_context": workspace_context_payload(workspace_root)}
+
+
+def deny_external_mcp_permission_request(workspace_root: Any, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    ensure_runtime_database(workspace_root)
+    _expire_external_mcp_permission_requests()
+    args = args or {}
+    request = resolve_external_mcp_permission_request(args)
+    if request.status != "pending":
+        raise ValueError(f"external MCP permission request is not pending: {request.status}")
+    request.status = "denied"
+    request.decided_by = str(args.get("principal_id") or args.get("decided_by") or "user")
+    request.decided_at = timezone.now()
+    request.decision_reason = str(args.get("reason") or "")
+    request.save(update_fields=["status", "decided_by", "decided_at", "decision_reason", "updated_at"])
+    _audit("external_mcp.permission_denied", {"request_id": request.id, "tool": f"{request.router_name}:{request.external_name}"}, request.decided_by)
+    return {"status": "denied", "request": serialize_permission_request(request), "workspace_context": workspace_context_payload(workspace_root)}
+
+
+def resolve_external_mcp_permission_request(args: dict[str, Any]) -> McpExternalPermissionRequest:
+    request_id = args.get("request_id") or args.get("id")
+    if request_id in (None, ""):
+        raise ValueError("external MCP permission request requires request_id")
+    request = McpExternalPermissionRequest.objects.select_related("external_tool").filter(pk=int(request_id)).first()
+    if request is None:
+        raise ValueError(f"external MCP permission request not found: {request_id}")
+    return request
+
+
+def serialize_permission_request(request: McpExternalPermissionRequest | None) -> dict[str, Any] | None:
+    if request is None:
+        return None
+    return {
+        "id": request.id,
+        "created_at": request.created_at.isoformat() if request.created_at else "",
+        "updated_at": request.updated_at.isoformat() if request.updated_at else "",
+        "router_name": request.router_name,
+        "external_name": request.external_name,
+        "principal_id": request.principal_id,
+        "role": request.role,
+        "workflow_run_id": request.workflow_run_id,
+        "request_hash": request.request_hash,
+        "arguments_summary": request.arguments_summary,
+        "approval_scope": request.approval_scope,
+        "status": request.status,
+        "reasons": list(request.reasons or []),
+        "expires_at": request.expires_at.isoformat() if request.expires_at else "",
+        "decided_by": request.decided_by,
+        "decided_at": request.decided_at.isoformat() if request.decided_at else "",
+        "decision_reason": request.decision_reason,
+    }
 
 
 def external_tool_denial_reasons(tool: McpExternalTool, principal_id: str) -> list[str]:
@@ -410,6 +520,79 @@ def external_tool_denial_reasons(tool: McpExternalTool, principal_id: str) -> li
     if not _permission_allows(tool, principal_id, role, allowed):
         reasons.append(f"principal is not allowed for external tool: {principal_id}")
     return list(dict.fromkeys(reasons))
+
+
+def _external_tool_requires_user_approval(tool: McpExternalTool) -> bool:
+    if tool.category in USER_APPROVAL_CATEGORIES:
+        return True
+    return tool.sensitivity not in {"public", ""} or tool.risk_level in {"write", "approval", "execution"}
+
+
+def _approved_external_permission(tool: McpExternalTool, principal_id: str, request_hash: str) -> bool:
+    now = timezone.now()
+    return McpExternalPermissionRequest.objects.filter(
+        external_tool=tool,
+        principal_id=principal_id,
+        request_hash=request_hash,
+        status="approved",
+    ).filter(expires_at__gt=now).exists()
+
+
+def _create_or_reuse_permission_request(
+    tool: McpExternalTool,
+    *,
+    principal_id: str,
+    role: str,
+    request_hash: str,
+    arguments: dict[str, Any],
+    workflow_run_id: str = "",
+    reasons: list[str] | None = None,
+) -> McpExternalPermissionRequest:
+    now = timezone.now()
+    _expire_external_mcp_permission_requests(now)
+    request = McpExternalPermissionRequest.objects.filter(
+        external_tool=tool,
+        principal_id=principal_id,
+        request_hash=request_hash,
+        status="pending",
+        expires_at__gt=now,
+    ).first()
+    if request is not None:
+        return request
+    return McpExternalPermissionRequest.objects.create(
+        external_tool=tool,
+        router_name=tool.router.name,
+        external_name=tool.external_name,
+        principal_id=principal_id,
+        role=role,
+        workflow_run_id=workflow_run_id,
+        request_hash=request_hash,
+        arguments_summary=_summarize_arguments(arguments),
+        reasons=reasons or [],
+        expires_at=now + timedelta(hours=24),
+    )
+
+
+def _expire_external_mcp_permission_requests(now: Any = None) -> None:
+    now = now or timezone.now()
+    McpExternalPermissionRequest.objects.filter(status="pending", expires_at__lte=now).update(status="expired", updated_at=now)
+
+
+def _summarize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {}
+    for key, value in sorted((arguments or {}).items()):
+        if SENSITIVE_ARGUMENT_RE.search(str(key)):
+            summary[str(key)] = "<redacted>"
+        elif isinstance(value, str | int | float | bool) or value is None:
+            text = str(value)
+            summary[str(key)] = text if len(text) <= 120 else text[:117] + "..."
+        elif isinstance(value, list):
+            summary[str(key)] = f"list[{len(value)}]"
+        elif isinstance(value, dict):
+            summary[str(key)] = f"object[{len(value)}]"
+        else:
+            summary[str(key)] = type(value).__name__
+    return summary
 
 
 def resolve_external_mcp_router(args: dict[str, Any]) -> McpRouter:

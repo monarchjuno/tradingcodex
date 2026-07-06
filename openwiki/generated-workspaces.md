@@ -39,8 +39,13 @@ Generated workspaces should contain:
 - `.tradingcodex/*`
 - `trading/*`
 - `./tcx`
+- `.tradingcodex/user/customization.json` when the user saves workspace-local customization preferences
 
 Clean generated workspaces must not contain `package.json`, Node MCP runtime files, workspace-local canonical investment DBs, broker credentials, raw secrets, legacy `.tradingcodex/mainagent/*.yaml` role registries, or policy-local `role_owned_skills` roster copies. Role skill sources are projected from `tradingcodex_service/application/agents.py` into `.codex/agents/*.toml`.
+
+Project/root Codex MCP servers should be discovered or written through
+`tcx build codex-mcp ...` and imported into the External MCP Gate before use;
+generated subagents should not get direct unmanaged external MCP allowlists.
 
 ## Projection Outputs
 

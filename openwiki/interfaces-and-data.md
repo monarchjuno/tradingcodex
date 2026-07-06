@@ -14,6 +14,11 @@ Every interface is a caller of the service layer. No interface should create a p
 | MCP | `tradingcodex_service/mcp_runtime.py` | Role-scoped approved action boundary for agents. No raw REST or broker proxy. |
 | CLI | `tradingcodex_cli/commands/*` | Operator and generated-wrapper interface. Should call services. |
 
+Build customization surfaces live in the same service-layer rule:
+`/build/` and `tcx build ...` summarize Codex config discovery, managed MCP
+config writes, optional skills, additional instructions, and pending external
+MCP permissions without creating a parallel MCP registry.
+
 ## Research Memory
 
 Research is workspace-file-native. Canonical files:

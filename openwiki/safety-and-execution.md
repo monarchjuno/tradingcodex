@@ -37,6 +37,11 @@ Core ships paper by default. Broker connections start disabled or read-only exce
 
 External MCP servers enter through TradingCodex's External MCP Gate. Unknown tools are disabled until classified. Secret and policy/admin tools are not proxyable. Execution tools cannot use direct raw proxy and must map to the approved service-layer connection path.
 
+External MCP user-consent prompts become `McpExternalPermissionRequest` rows.
+The coordinator should surface `approval_required` as
+`waiting_for_user_permission`; subagents do not continue with buried permission
+prompts.
+
 ## Secret Wall
 
 Raw broker API keys, tokens, account credentials, and secrets must not appear in repository files, generated workspace files, prompts, shell output, product web, Admin exports, API responses, MCP responses, audit payloads, starter prompts, generated docs, or research artifacts.

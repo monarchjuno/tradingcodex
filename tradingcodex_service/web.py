@@ -50,6 +50,12 @@ from tradingcodex_service.application.brokers import (
     list_reconciliation_runs,
     sync_broker_account,
 )
+from tradingcodex_service.application.customization import (
+    discover_codex_mcp_servers,
+    import_codex_mcp_server,
+    read_customization_settings,
+    write_codex_mcp_server_config,
+)
 from tradingcodex_service.application.decision_packages import get_decision_package, list_decision_packages
 from tradingcodex_service.application.orders import create_order_ticket, run_order_checks
 from tradingcodex_service.application.research import list_workspace_research_artifacts
@@ -68,14 +74,19 @@ from tradingcodex_service.application.runtime import (
     save_active_profile_for_workspace,
     workspace_context_payload,
 )
+from tradingcodex_service.application.runtime_mode import get_runtime_mode_status
 from apps.mcp.services import (
+    approve_external_mcp_permission_request,
     check_external_mcp_connection,
+    deny_external_mcp_permission_request,
     discover_external_mcp_connection,
     evaluate_external_mcp_proxy_call,
     import_external_mcp_discovery,
+    list_external_mcp_permission_requests,
     register_external_mcp_connection,
     review_external_mcp_tool,
 )
+from tradingcodex_cli.startup_status import detect_codex_permission_status
 from tradingcodex_service.application.common import local_or_staff_source
 
 
@@ -87,6 +98,7 @@ PRODUCT_NAV = [
     {"label": "Brokers", "href": "/brokers/", "key": "brokers"},
     {"label": "Research", "href": "/research/", "key": "research"},
     {"label": "Data Sources", "href": "/integrations/mcp/", "key": "mcp-router"},
+    {"label": "Build", "href": "/build/", "key": "build"},
 ]
 WORKSPACE_SESSION_KEY = "tradingcodex_selected_workspace_id"
 WORKSPACE_NOTICE_SESSION_KEY = "tradingcodex_workspace_notice"
@@ -835,6 +847,87 @@ def mcp_external_tool_check(request: HttpRequest, tool_id: int) -> HttpResponse:
 
 @require_GET
 @require_local_or_staff
+def build_center(request: HttpRequest) -> HttpResponse:
+    root = workspace_root(request)
+    permission_status = detect_codex_permission_status(root)
+    codex_mcp = discover_codex_mcp_servers(root, include_global=True, record=False)
+    settings = read_customization_settings(root)
+    state = build_projection_state(root)
+    pending = list_external_mcp_permission_requests(root, {"status": "pending", "limit": 20}).get("requests", [])
+    agents_with_notes = [
+        role
+        for role in state.get("agents", {})
+        if str(read_agent_additional_instructions(root, role).get("body") or "").strip()
+    ]
+    optional_skill_count = sum(len(agent.get("optional_skills", [])) for agent in state.get("agents", {}).values())
+    mode_status = get_runtime_mode_status(root, full_access_detected=bool(permission_status.get("full_access_detected")))
+    context = {
+        **base_context(request, "build"),
+        "permission_status": permission_status,
+        "codex_mcp": codex_mcp,
+        "customization_settings": settings,
+        "mode_status": mode_status,
+        "pending_permission_requests": pending,
+        "agents_with_notes": agents_with_notes,
+        "optional_skill_count": optional_skill_count,
+        "mcp_overview": mcp_router_overview(),
+    }
+    return render(request, "web/build_center.html", context)
+
+
+@require_POST
+@require_local_or_staff
+def build_codex_mcp_import(request: HttpRequest) -> HttpResponse:
+    return _service_redirect(
+        request,
+        "/build/",
+        lambda: import_codex_mcp_server(
+            workspace_root(request),
+            name=_post(request, "name"),
+            source=_post(request, "source") or "workspace",
+            actor="web",
+        ),
+    )
+
+
+@require_POST
+@require_local_or_staff
+def build_codex_mcp_add(request: HttpRequest) -> HttpResponse:
+    def operation() -> Any:
+        root = workspace_root(request)
+        permission = detect_codex_permission_status(root)
+        return write_codex_mcp_server_config(
+            root,
+            name=_post(request, "name"),
+            scope=_post(request, "scope") or "workspace",
+            transport=_post(request, "transport") or "stdio",
+            command=_post(request, "command"),
+            args=_parse_lines_or_json(_post_preserve_newlines(request, "args")),
+            url=_post(request, "url"),
+            env_keys=_split_lines(_post_preserve_newlines(request, "env_keys")),
+            credential_ref=_post(request, "credential_ref"),
+            dry_run=_post(request, "dry_run") == "true",
+            full_access_detected=bool(permission.get("full_access_detected")),
+        )
+
+    return _service_redirect(request, "/build/", operation)
+
+
+@require_POST
+@require_local_or_staff
+def build_permission_decide(request: HttpRequest, request_id: int, decision: str) -> HttpResponse:
+    if decision not in {"approve", "deny"}:
+        return HttpResponse("Unknown permission decision.", status=404)
+    operation = approve_external_mcp_permission_request if decision == "approve" else deny_external_mcp_permission_request
+    return _service_redirect(
+        request,
+        "/build/#permission-requests",
+        lambda: operation(workspace_root(request), {"request_id": request_id, "principal_id": "user", "reason": _post(request, "reason")}),
+    )
+
+
+@require_GET
+@require_local_or_staff
 def starter_prompt(request: HttpRequest) -> HttpResponse:
     query = request.GET.get("q", "")
     root = workspace_root(request)
@@ -951,6 +1044,22 @@ def _service_redirect(request: HttpRequest, fallback_url: str, operation: Callab
 
 def _split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _split_lines(value: str) -> list[str]:
+    return [item.strip() for item in value.replace(",", "\n").splitlines() if item.strip()]
+
+
+def _parse_lines_or_json(value: str) -> list[str]:
+    text = value.strip()
+    if not text:
+        return []
+    if text.startswith("["):
+        parsed = json.loads(text)
+        if not isinstance(parsed, list):
+            raise ValueError("args must be a JSON array or one argument per line")
+        return [str(item) for item in parsed]
+    return _split_lines(text)
 
 
 def research_overview(root: Path) -> dict[str, Any]:

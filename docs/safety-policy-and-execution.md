@@ -137,6 +137,14 @@ External MCP permission is not execution authorization. Even if an external
 broker order tool is present and reviewed, order submission must still pass the
 TradingCodex order-ticket, approval, duplicate-request, connection, and audit lifecycle.
 
+Reviewed external MCP calls that expose private account state, write research
+state, use workflow prompts, or map to execution require an explicit user
+permission request before proxy evaluation returns `allow`. The request is
+stored as pending service-layer state and surfaced through Build Center,
+`tcx build permission list`, and the coordinator-visible MCP pending-request
+list. Subagents must stop at `waiting_for_user_permission` instead of burying a
+Codex permission prompt in their transcript.
+
 Codex network access may be enabled for public web, filing, disclosure, news,
 and market-data evidence gathering. That access is read-only research support:
 it does not authorize direct broker APIs, raw external broker MCP exposure,
