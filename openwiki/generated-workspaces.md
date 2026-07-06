@@ -46,6 +46,8 @@ Clean generated workspaces must not contain `package.json`, Node MCP runtime fil
 Project/root Codex MCP servers should be discovered or written through
 `tcx build codex-mcp ...` and imported into the External MCP Gate before use;
 generated subagents should not get direct unmanaged external MCP allowlists.
+The built-in TradingCodex MCP defaults safe enabled tools to Codex `approve`;
+execution submit/cancel stays disabled outside `execution-operator` and service-gated there.
 
 ## Projection Outputs
 

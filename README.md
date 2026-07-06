@@ -198,7 +198,7 @@ provide investment recommendations or guarantee returns.
 | Status | Milestone |
 | --- | --- |
 | Shipped | Generated Codex workspace, fixed role roster, project MCP config, Django service plane, local web dashboard, Admin, Ninja API, file-native research memory, component registry, policy/audit primitives. |
-| Current `0.3.4` | Build Center customization, Codex MCP discovery/import, external MCP permission approval UX, head-manager research synthesis depth, flexible package/workspace update status, skipped-version Django migration smoke coverage, Codex-native Decision Packages, independent judgment-review gate, staged workflow planning, artifact-supervisor loop closure state, Evidence Run/Validation Cards, provider capability profiles, and Python `>=3.11,<3.15` support. |
+| Current `0.3.5` | Safe TradingCodex MCP tools auto-approved for subagents, execution tools hidden outside `execution-operator`, Build Center customization, Codex MCP discovery/import, external MCP permission approval UX, head-manager research synthesis depth, flexible package/workspace update status, skipped-version Django migration smoke coverage, Codex-native Decision Packages, independent judgment-review gate, staged workflow planning, artifact-supervisor loop closure state, Evidence Run/Validation Cards, provider capability profiles, and Python `>=3.11,<3.15` support. |
 | Next | Deeper validation scenarios, richer provider capability profiles, stronger generated-workspace smoke coverage, and improved artifact quality tooling. |
 | Future | Separately governed verified adapters, hosted/managed services, enterprise policy/compliance packs, and broker-specific live providers only after explicit product, policy, adapter, and validation work. |
 

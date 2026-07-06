@@ -128,6 +128,15 @@ def _codex_mcp_config_checks(root: Path) -> list[dict[str, Any]]:
     root_tools = set(root_mcp.get("enabled_tools") or [])
     execution_tools = set(execution_mcp.get("enabled_tools") or [])
     risk_tools = set(risk_mcp.get("enabled_tools") or [])
+    sensitive_execution_tools = {"submit_approved_order", "cancel_approved_order"}
+    non_execution_exposure = []
+    for agent_path in sorted((root / ".codex" / "agents").glob("*.toml")):
+        if agent_path.stem == "execution-operator":
+            continue
+        enabled = set((_read_codex_mcp_config(agent_path).get("enabled_tools") or []))
+        exposed = sensitive_execution_tools & enabled
+        if exposed:
+            non_execution_exposure.append(f"{agent_path.stem}: {', '.join(sorted(exposed))}")
     raw_broker_tools = {"place_order", "replace_order", "cancel_order", "withdraw", "transfer"}
     broker_connector_tools = {
         "list_broker_adapter_providers",
@@ -152,6 +161,13 @@ def _codex_mcp_config_checks(root: Path) -> list[dict[str, Any]]:
             "ok": root_mcp.get("env", {}).get("TRADINGCODEX_MCP_AUTOSTART_SERVICE") == "1",
             "codexNative": True,
             "detail": "MCP env enables dashboard/service autostart" if root_mcp.get("env", {}).get("TRADINGCODEX_MCP_AUTOSTART_SERVICE") == "1" else "missing TRADINGCODEX_MCP_AUTOSTART_SERVICE=1",
+        },
+        {
+            "layer": "enforcement",
+            "name": "TradingCodex MCP safe tools auto-approved",
+            "ok": root_mcp.get("default_tools_approval_mode") == "approve",
+            "codexNative": True,
+            "detail": "default tool approval is approve" if root_mcp.get("default_tools_approval_mode") == "approve" else "default tool approval should be approve",
         },
         {
             "layer": "enforcement",
@@ -180,6 +196,13 @@ def _codex_mcp_config_checks(root: Path) -> list[dict[str, Any]]:
             "ok": "submit_approved_order" in execution_tools,
             "codexNative": True,
             "detail": "execution-operator allowlist includes submit_approved_order" if "submit_approved_order" in execution_tools else "missing submit_approved_order",
+        },
+        {
+            "layer": "enforcement",
+            "name": "non-execution roles block execution MCP tools",
+            "ok": not non_execution_exposure,
+            "codexNative": True,
+            "detail": "submit/cancel disabled outside execution-operator" if not non_execution_exposure else "; ".join(non_execution_exposure),
         },
         {
             "layer": "enforcement",

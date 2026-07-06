@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tradingcodex"
-version = "0.3.4"
+version = "0.3.5"
 description = "Agentic investment workflow harness for Codex-native research and service-gated execution checks."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"

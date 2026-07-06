@@ -281,6 +281,14 @@ The config follows the OpenAI Codex MCP shape:
 - `startup_timeout_sec`
 - `tool_timeout_sec`
 
+The built-in `tradingcodex` MCP server defaults safe enabled tools to
+`approve` so routine research, audit, status, and reviewed service calls do not
+bury Codex permission prompts inside subagent transcripts. Execution-sensitive
+tools remain excluded from non-execution roles; `execution-operator` exposes
+only the TradingCodex approved-order submit/cancel tools, and the service layer
+still revalidates permission, policy, approval, duplicate-request state,
+connection, and audit before any adapter call.
+
 Project-scoped Codex config applies only when the generated workspace is
 trusted by Codex.
 
@@ -298,6 +306,8 @@ Generated permission profiles allow network access for public evidence
 gathering, such as filings, disclosures, news, web sources, and market-data
 references. They still deny workspace secret paths and do not authorize direct
 broker APIs, broker-specific Codex MCP servers, approval bypass, or execution.
+Managed external Codex MCP entries written through `tcx build codex-mcp add`
+default to `prompt`; import them into the External MCP Gate before use.
 Broker APIs are attached through provider-driven TradingCodex connector profiles
 using canonical MCP tools such as `list_broker_adapter_providers`,
 `scaffold_broker_connector`, `register_broker_connector`,

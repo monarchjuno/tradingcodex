@@ -143,7 +143,7 @@ After the PyPI workflow completes:
 
 ```bash
 python3.11 -m venv /tmp/tcx-pypi
-/tmp/tcx-pypi/bin/pip install tradingcodex==0.3.4
+/tmp/tcx-pypi/bin/pip install tradingcodex==0.3.5
 rm -rf /tmp/tcx-pypi-smoke
 mkdir -p /tmp/tcx-pypi-smoke
 cd /tmp/tcx-pypi-smoke
@@ -250,7 +250,10 @@ Use PEP 440 versions:
 - `0.3.4` for Build Center customization, Codex MCP discovery/import, external
   MCP permission approval UX, and head-manager research synthesis depth after
   `0.3.3`
-- later patch releases for compatible fixes after `0.3.4`
+- `0.3.5` for safe built-in TradingCodex MCP auto-approval, execution-tool
+  hiding outside `execution-operator`, and service-gated execution UX after
+  `0.3.4`
+- later patch releases for compatible fixes after `0.3.5`
 - pre-releases such as `0.4.0a1`, `0.4.0b1`, or `0.4.0rc1` when preparing
   the next minor contract
 

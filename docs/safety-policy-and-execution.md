@@ -137,6 +137,12 @@ External MCP permission is not execution authorization. Even if an external
 broker order tool is present and reviewed, order submission must still pass the
 TradingCodex order-ticket, approval, duplicate-request, connection, and audit lifecycle.
 
+The built-in TradingCodex MCP server auto-approves safe enabled tools to avoid
+buried subagent prompts for routine research and audit writes. Execution
+submission and cancellation are the exception: non-execution roles do not see
+those tools, and `execution-operator` can only submit or cancel through
+TradingCodex service-layer checks.
+
 Reviewed external MCP calls that expose private account state, write research
 state, use workflow prompts, or map to execution require an explicit user
 permission request before proxy evaluation returns `allow`. The request is

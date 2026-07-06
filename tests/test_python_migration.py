@@ -1355,7 +1355,9 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "TradingCodex doctor passed" in doctor
     assert "improvement" in doctor
     assert "TradingCodex MCP autostarts local service" in doctor
+    assert "TradingCodex MCP safe tools auto-approved" in doctor
     assert "head-manager MCP execution submit excluded" in doctor
+    assert "non-execution roles block execution MCP tools" in doctor
     assert "execution-operator MCP execution allowlist configured" in doctor
     assert "risk-manager MCP approval allowlist configured" in doctor
     improvement_doctor = run(["./tcx", "doctor", "--layer", "improvement"], workspace).stdout
@@ -1482,6 +1484,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert root_mcp["command"] == "uvx"
     assert root_mcp["args"] == expected_tcx_mcp_args
     assert root_mcp["enabled"] is True
+    assert root_mcp["default_tools_approval_mode"] == "approve"
     assert root_mcp["env"]["TRADINGCODEX_MCP_AUTOSTART_SERVICE"] == "1"
     assert root_mcp["env"]["TRADINGCODEX_SERVICE_ADDR"] == "127.0.0.1:48267"
     assert root_mcp["env"]["TRADINGCODEX_WORKSPACE_ROOT"] == str(workspace)
@@ -1510,6 +1513,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
     assert "preview_order_translation" in root_mcp["enabled_tools"]
     assert "submit_approved_order" not in root_mcp["enabled_tools"]
     assert "cancel_approved_order" not in root_mcp["enabled_tools"]
+    sensitive_execution_tools = {"submit_approved_order", "cancel_approved_order"}
     for agent_file in agent_files:
         agent_config = agent_file.read_text(encoding="utf-8")
         agent_toml = tomllib.loads(agent_config)
@@ -1527,6 +1531,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
         agent_mcp = agent_toml["mcp_servers"]["tradingcodex"]
         assert agent_mcp["command"] == "uvx"
         assert agent_mcp["args"] == expected_tcx_mcp_args
+        assert agent_mcp["default_tools_approval_mode"] == "approve"
         assert agent_mcp["env"]["TRADINGCODEX_MCP_AUTOSTART_SERVICE"] == "1"
         assert agent_mcp["env"]["TRADINGCODEX_WORKSPACE_ROOT"] == str(workspace)
         configured_tools = set(agent_mcp.get("enabled_tools", [])) | set(agent_mcp.get("disabled_tools", []))
@@ -1543,8 +1548,12 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
             assert "create_order_ticket" not in agent_mcp["enabled_tools"]
         if agent_file.stem == "execution-operator":
             assert "submit_approved_order" in agent_mcp["enabled_tools"]
+            assert "cancel_approved_order" in agent_mcp["enabled_tools"]
             assert "request_order_approval" not in agent_mcp["enabled_tools"]
             assert {"place_order", "replace_order", "withdraw"}.isdisjoint(set(agent_mcp["enabled_tools"]))
+        else:
+            assert sensitive_execution_tools.isdisjoint(set(agent_mcp["enabled_tools"]))
+            assert sensitive_execution_tools.issubset(set(agent_mcp.get("disabled_tools", [])))
     assert run(["./tcx", "skills", "list"], workspace).stdout.splitlines() == [
         "plan-workflow",
         "tcx-workflow",
@@ -3740,6 +3749,7 @@ env = { TOKEN = "also-hidden" }
     assert "[mcp_servers.managed_one]" in text
     assert "[mcp_servers.managed_two]" in text
     assert "MANAGED_KEY" in text
+    assert 'default_tools_approval_mode = "prompt"' in text
 
     with pytest.raises(ValueError, match="outside TradingCodex managed block"):
         write_codex_mcp_server_config(workspace, name="user_mcp", command="uvx", full_access_detected=True)
@@ -3780,6 +3790,7 @@ def test_tcx_build_cli_status_and_codex_mcp_dry_run(tmp_path: Path) -> None:
     )
     assert dry_run["status"] == "dry_run"
     assert "[mcp_servers.cli_mcp]" in dry_run["preview"]
+    assert 'default_tools_approval_mode = "prompt"' in dry_run["preview"]
 
     run([sys.executable, "-m", "tradingcodex_cli", "mode", "set", "build", "--reason", "cli build smoke"], workspace, env_extra=env_extra)
     status = json.loads(run([sys.executable, "-m", "tradingcodex_cli", "build", "status", "--json"], workspace, env_extra=env_extra).stdout)

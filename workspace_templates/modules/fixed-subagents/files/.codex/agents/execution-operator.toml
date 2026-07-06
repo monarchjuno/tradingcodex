@@ -68,7 +68,4 @@ enabled_tools = [
   "list_workflow_artifacts",
   "record_audit_event"
 ]
-default_tools_approval_mode = "prompt"
-
-[mcp_servers.tradingcodex.tools.submit_approved_order]
-approval_mode = "prompt"
+default_tools_approval_mode = "approve"
