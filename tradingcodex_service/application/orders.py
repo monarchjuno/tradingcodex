@@ -60,6 +60,15 @@ ORDER_TICKET_TRANSITIONS = {
     "NEEDS_REVIEW": {"DRAFT", "PRECHECKED", "REJECTED", "CANCELED", "VOIDED"},
 }
 ORDER_RESOLUTION_ERROR_FIELD = "_order_resolution_error"
+ORDER_TICKET_FREE_TEXT_FIELDS = ("thesis", "strategy", "rationale", "notes", "decision_summary", "source_artifact")
+
+
+def order_ticket_free_text_from_args(args: dict[str, Any]) -> dict[str, str]:
+    return {
+        field: str(args[field])
+        for field in ORDER_TICKET_FREE_TEXT_FIELDS
+        if args.get(field) not in (None, "")
+    }
 
 
 def validate_order_ticket_payload(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
@@ -314,6 +323,11 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
 
     fields = normalize_order_ticket_fields(root, args)
     fields["created_by"] = principal_id
+    pre_existing = OrderTicket.objects.filter(ticket_id=fields.get("ticket_id") or fields.get("id") or "").first()
+    if pre_existing is not None:
+        stored_order = (pre_existing.payload or {}).get("order") if isinstance(pre_existing.payload, dict) else {}
+        if isinstance(stored_order, dict) and stored_order.get("created_at"):
+            fields["created_at"] = str(stored_order["created_at"])
     connection = _resolve_ticket_broker_connection(root, fields)
     broker_account = _resolve_ticket_broker_account(connection, fields)
     portfolio_id, account_id, strategy_id = portfolio_keys(
@@ -343,6 +357,7 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
         }
     )
     payload_hash = stable_hash(order_payload)
+    free_text = order_ticket_free_text_from_args(args)
     existing = OrderTicket.objects.filter(ticket_id=ticket_id).first()
     if existing is not None and (existing.portfolio_id, existing.account_id, existing.strategy_id) != (portfolio_id, account_id, strategy_id):
         raise ValueError("order ticket id already exists for another active profile")
@@ -377,6 +392,7 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
             "payload": {
                 "order": order_payload,
                 "canonical_order": order_payload.get("canonical_order", {}),
+                "free_text": free_text,
                 "raw": args,
             },
         },
@@ -977,6 +993,8 @@ def ensure_order_ticket_for_order(root: Path, order: dict[str, Any], actor: str 
 
 
 def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[str, Any]:
+    stored_payload = ticket.payload if isinstance(ticket.payload, dict) else {}
+    free_text = stored_payload.get("free_text") if isinstance(stored_payload.get("free_text"), dict) else {}
     record = {
         "ticket_id": ticket.ticket_id,
         "source": ticket.source,
@@ -1002,6 +1020,7 @@ def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[s
         "created_at": ticket.created_at.isoformat(),
         "updated_at": ticket.updated_at.isoformat(),
         "canonical_order": (ticket.payload or {}).get("canonical_order", {}) if isinstance(ticket.payload, dict) else {},
+        "free_text": free_text,
         "checks": [
             {"check_type": check.check_type, "decision": check.decision, "reasons": check.reasons, "created_at": check.created_at.isoformat()}
             for check in ticket.check_runs.all()

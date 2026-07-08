@@ -176,6 +176,12 @@ class OrderTicketRequest(Schema):
     portfolio_id: str | None = None
     account_id: str | None = None
     strategy_id: str | None = None
+    thesis: str | None = None
+    strategy: str | None = None
+    rationale: str | None = None
+    notes: str | None = None
+    decision_summary: str | None = None
+    source_artifact: str | None = None
 
 
 class OrderTicketActionRequest(Schema):

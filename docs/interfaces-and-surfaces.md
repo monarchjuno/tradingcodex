@@ -294,6 +294,12 @@ Minimum MCP tools:
 - `review_external_mcp_tool`
 - `record_audit_event`
 
+Order-ticket creation may include non-executable free-text metadata such as
+`thesis`, `strategy`, `rationale`, `notes`, `decision_summary`, and
+`source_artifact`. These fields are preserved for review and returned in ticket
+detail/list responses, but they are not part of the executable order hash,
+approval exact-order hash, or duplicate payload identity.
+
 Every MCP tool definition includes stable name, description, input schema,
 category, risk level, role allowlist, approval requirement, audit requirement,
 and standard MCP hints for read-only, destructive, idempotent, and open-world

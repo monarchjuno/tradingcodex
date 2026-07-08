@@ -345,6 +345,69 @@ def test_order_ticket_checks_approval_scope_submit_fill_and_duplicate_block(tmp_
     assert "already has an execution result" in "\n".join(duplicate["reasons"])
 
 
+def test_order_ticket_preserves_free_text_without_changing_execution_hash(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    ensure_runtime_database(workspace)
+
+    created = call_mcp_tool(
+        workspace,
+        "create_order_ticket",
+        {
+            "principal_id": "portfolio-manager",
+            "ticket_id": "free-text-ticket",
+            "symbol": "MSFT",
+            "side": "buy",
+            "quantity": 1,
+            "order_type": "limit",
+            "limit_price": 1000,
+            "thesis": "Durable demand with explicit invalidation trigger.",
+            "strategy": "Starter position only if risk approves.",
+            "notes": "Preserve this note for later review.",
+        },
+    )
+
+    assert created["ticket"]["free_text"] == {
+        "thesis": "Durable demand with explicit invalidation trigger.",
+        "strategy": "Starter position only if risk approves.",
+        "notes": "Preserve this note for later review.",
+    }
+    assert "thesis" not in created["ticket"]["canonical_order"]
+
+    detail = call_mcp_tool(workspace, "get_order_ticket", {"principal_id": "portfolio-manager", "ticket_id": "free-text-ticket"})
+    assert detail["ticket"]["free_text"]["strategy"] == "Starter position only if risk approves."
+
+    from apps.orders.models import OrderTicket
+
+    ticket = OrderTicket.objects.get(ticket_id="free-text-ticket")
+    original_hash = ticket.payload_hash
+
+    updated = call_mcp_tool(
+        workspace,
+        "create_order_ticket",
+        {
+            "principal_id": "portfolio-manager",
+            "ticket_id": "free-text-ticket",
+            "symbol": "MSFT",
+            "side": "buy",
+            "quantity": 1,
+            "order_type": "limit",
+            "limit_price": 1000,
+            "thesis": "Updated non-executable thesis text.",
+            "strategy": "Updated non-executable strategy text.",
+        },
+    )
+
+    ticket.refresh_from_db()
+    assert updated["status"] == "updated"
+    assert ticket.payload_hash == original_hash
+    assert updated["ticket"]["free_text"]["thesis"] == "Updated non-executable thesis text."
+
+    from tradingcodex_service import mcp_runtime
+
+    mcp_runtime._REGISTRY_SYNCED = False
+    mcp_runtime._REGISTRY_SYNCED_DB = ""
+
+
 def test_instrument_analyst_can_read_constraints_but_not_order_approve_or_submit(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
 
