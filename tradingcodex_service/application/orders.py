@@ -45,17 +45,19 @@ ORDER_TICKET_STATES = {
     "EXPIRED",
     "FAILED",
     "NEEDS_REVIEW",
+    "VOIDED",
 }
+ORDER_TICKET_TERMINAL_STATES = {"FILLED", "REJECTED", "CANCELED", "EXPIRED", "FAILED", "VOIDED"}
 ORDER_TICKET_TRANSITIONS = {
-    "DRAFT": {"PRECHECKED", "READY_FOR_APPROVAL", "NEEDS_REVIEW", "REJECTED", "CANCELED"},
-    "PRECHECKED": {"READY_FOR_APPROVAL", "NEEDS_REVIEW", "APPROVED", "REJECTED", "CANCELED"},
-    "READY_FOR_APPROVAL": {"APPROVED", "NEEDS_REVIEW", "REJECTED", "CANCELED"},
-    "APPROVED": {"RESERVED", "EXPIRED", "CANCELED", "NEEDS_REVIEW"},
+    "DRAFT": {"PRECHECKED", "READY_FOR_APPROVAL", "NEEDS_REVIEW", "REJECTED", "CANCELED", "VOIDED"},
+    "PRECHECKED": {"READY_FOR_APPROVAL", "NEEDS_REVIEW", "APPROVED", "REJECTED", "CANCELED", "VOIDED"},
+    "READY_FOR_APPROVAL": {"APPROVED", "NEEDS_REVIEW", "REJECTED", "CANCELED", "VOIDED"},
+    "APPROVED": {"RESERVED", "EXPIRED", "CANCELED", "NEEDS_REVIEW", "VOIDED"},
     "RESERVED": {"SUBMITTED", "FAILED"},
     "SUBMITTED": {"ACKED", "FILLED", "PARTIALLY_FILLED", "REJECTED", "FAILED", "NEEDS_REVIEW"},
     "ACKED": {"PARTIALLY_FILLED", "FILLED", "CANCELED", "REJECTED", "FAILED", "NEEDS_REVIEW"},
     "PARTIALLY_FILLED": {"FILLED", "CANCELED", "FAILED", "NEEDS_REVIEW"},
-    "NEEDS_REVIEW": {"DRAFT", "PRECHECKED", "REJECTED", "CANCELED"},
+    "NEEDS_REVIEW": {"DRAFT", "PRECHECKED", "REJECTED", "CANCELED", "VOIDED"},
 }
 ORDER_RESOLUTION_ERROR_FIELD = "_order_resolution_error"
 
@@ -184,6 +186,7 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
     order = resolve_order_ticket_payload(root, args)
     receipt = resolve_approval_receipt(root, args, order)
     principal_id = args.get("principal_id") or "execution-operator"
+    terminal_reasons = order_ticket_submit_block_reasons(root, args)
     order_reasons = _schema_reasons(order)
     order_validation = {"valid": not order_reasons, "reasons": order_reasons}
     receipt_validation = validate_approval_receipt(root, {"order": order, "approval_receipt": receipt})
@@ -194,11 +197,11 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
         "approval_receipt": receipt,
         "require_approval_check": True,
     })
-    if not order_validation["valid"] or not receipt_validation["valid"] or policy["decision"] != "allow":
+    if terminal_reasons or not order_validation["valid"] or not receipt_validation["valid"] or policy["decision"] != "allow":
         rejected = {
             "status": "rejected",
             "order_ticket_id": order.get("id"),
-            "reasons": order_validation["reasons"] + receipt_validation["reasons"] + policy["reasons"],
+            "reasons": terminal_reasons + order_validation["reasons"] + receipt_validation["reasons"] + policy["reasons"],
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
         }
@@ -635,6 +638,32 @@ def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
         }
 
 
+def void_approved_only_ticket(workspace_root: Path | str, ticket: Any, principal_id: str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    if ticket.broker_orders.exists() or ticket.fills.exists():
+        raise ValueError("local void is only allowed before broker orders or fills exist")
+    if ticket.current_state not in {"READY_FOR_APPROVAL", "APPROVED", "NEEDS_REVIEW"}:
+        raise ValueError(f"local void is not allowed from {ticket.current_state}")
+    payload = {
+        "mode": "local_approved_only_void",
+        "void_reason": str(args.get("void_reason") or args.get("reason") or "approved-only ticket voided locally"),
+        "superseded_by_ticket_id": str(args.get("superseded_by_ticket_id") or ""),
+    }
+    invalidated = invalidate_approval_receipts_for_ticket(root, ticket.ticket_id, principal_id, payload)
+    transition_order_ticket(ticket, "VOIDED", principal_id, payload)
+    ticket.refresh_from_db()
+    result = {
+        "status": "voided",
+        "ticket_id": ticket.ticket_id,
+        "invalidated_approval_receipts": invalidated,
+        "ticket": serialize_order_ticket(ticket, include_related=True),
+        "db_canonical": True,
+        "workspace_context": workspace_context_payload(root),
+    }
+    write_audit_event(root, {"type": "order_ticket.void.accepted", "payload": result}, principal_id, "service")
+    return result
+
+
 def cancel_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     ensure_runtime_database(root)
@@ -655,6 +684,20 @@ def cancel_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
             ticket = broker_order.ticket if broker_order is not None else None
     if ticket is None:
         raise ValueError("ticket_id or known broker_order_id is required")
+    if broker_order is None and not ticket.fills.exists() and ticket.current_state in {"READY_FOR_APPROVAL", "APPROVED", "NEEDS_REVIEW"}:
+        try:
+            return void_approved_only_ticket(root, ticket, principal_id, args)
+        except ValueError as exc:
+            result = {
+                "status": "not_cancelable",
+                "ticket_id": ticket.ticket_id,
+                "reasons": [str(exc)],
+                "ticket": serialize_order_ticket(ticket, include_related=True),
+                "db_canonical": True,
+                "workspace_context": workspace_context_payload(root),
+            }
+            write_audit_event(root, {"type": "order_ticket.void.rejected", "payload": result}, principal_id, "service")
+            return result
     if ticket.current_state in {"FILLED", "REJECTED", "CANCELED", "EXPIRED", "FAILED"}:
         result = {
             "status": "not_cancelable",
@@ -785,6 +828,17 @@ def get_order_ticket_model(workspace_root: Path | str, args: dict[str, Any]) -> 
     return ticket
 
 
+def order_ticket_submit_block_reasons(workspace_root: Path | str, args: dict[str, Any]) -> list[str]:
+    try:
+        ticket = get_order_ticket_model(workspace_root, args)
+    except ValueError:
+        return []
+    state = ticket.current_state or "DRAFT"
+    if state in ORDER_TICKET_TERMINAL_STATES and state != "FILLED":
+        return [f"order ticket is {state.lower()}"]
+    return []
+
+
 def _find_broker_order_for_active_profile(workspace_root: Path | str, args: dict[str, Any], broker_order_id: str) -> Any:
     ensure_runtime_database(workspace_root)
     from apps.orders.models import BrokerOrder
@@ -828,6 +882,24 @@ def record_order_event(ticket: Any, event_type: str, actor: str, payload: dict[s
         payload=payload,
         payload_hash=stable_hash(payload),
     )
+
+
+def invalidate_approval_receipts_for_ticket(root: Path, ticket_id: str, actor: str, payload: dict[str, Any]) -> int:
+    ensure_runtime_database(root)
+    from apps.orders.models import ApprovalReceipt
+
+    count = 0
+    for receipt in ApprovalReceipt.objects.filter(order_ticket_id=ticket_id, valid=True).order_by("created_at", "id"):
+        stored_payload = dict(receipt.payload or {})
+        stored_payload["valid"] = False
+        stored_payload["voided_at"] = now_iso()
+        stored_payload["voided_by"] = actor
+        stored_payload["void_payload"] = payload
+        receipt.valid = False
+        receipt.payload = stored_payload
+        receipt.save(update_fields=["valid", "payload"])
+        count += 1
+    return count
 
 
 def order_payload_from_ticket(ticket: Any) -> dict[str, Any]:

@@ -23,9 +23,13 @@ DRAFT -> PRECHECKED -> READY_FOR_APPROVAL -> APPROVED -> RESERVED
   -> SUBMITTED -> ACKED -> PARTIALLY_FILLED -> FILLED
 ```
 
-Terminal or review states are `REJECTED`, `CANCELED`, `EXPIRED`, `FAILED`, and `NEEDS_REVIEW`.
+Terminal or review states are `REJECTED`, `CANCELED`, `EXPIRED`, `FAILED`, `VOIDED`, and `NEEDS_REVIEW`.
 
 Approved execution is idempotent by `portfolio_id`, `account_id`, and `strategy_id`. Duplicate approved-order submission must fail before connection use.
+
+Approved-only tickets with no broker order or fills can be locally voided. The
+service invalidates active approval receipts and later submit attempts must
+fail before connection use.
 
 ## Required Blocks
 

@@ -73,13 +73,18 @@ DRAFT -> PRECHECKED -> READY_FOR_APPROVAL -> APPROVED -> RESERVED
 ```
 
 Terminal or review states are `REJECTED`, `CANCELED`, `EXPIRED`, `FAILED`,
-and `NEEDS_REVIEW`. Fills create `Fill`, `BrokerOrder`, `OrderEvent`, portfolio
-ledger, snapshots, and reconciliation records. Validation submissions create
-broker-order and audit records but no fill when the broker endpoint validates
-without sending an order to a matching engine. For validation-only connector
-modes, `refresh_broker_order_status` preserves the local validated state when
-the broker endpoint intentionally does not create an external order. Live cancel
-uses the installed provider cancel path and remains audited.
+`VOIDED`, and `NEEDS_REVIEW`. Fills create `Fill`, `BrokerOrder`, `OrderEvent`,
+portfolio ledger, snapshots, and reconciliation records. Validation submissions
+create broker-order and audit records but no fill when the broker endpoint
+validates without sending an order to a matching engine. For validation-only
+connector modes, `refresh_broker_order_status` preserves the local validated
+state when the broker endpoint intentionally does not create an external order.
+Live cancel uses the installed provider cancel path and remains audited.
+
+Approved-only tickets that have no broker order and no fills may be locally
+voided through the service layer. Local void invalidates active approval
+receipts, records an order event plus audit event, and blocks later submission
+with a terminal-state reason.
 
 Signed broker credential failures are execution blockers, not execution
 attempts. The connector remains read-only with no enabled trade scopes, exposes

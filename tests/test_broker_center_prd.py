@@ -717,6 +717,50 @@ def test_fake_live_provider_cancel_calls_provider_cancel_path(tmp_path: Path, mo
     assert FakeLiveBrokerAdapter.cancel_calls == [submitted["result"]["broker_order_id"]]
 
 
+def test_approved_only_live_ticket_can_be_voided_without_broker_order(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"fake-live-void-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-void"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    create_approved_fake_live_ticket(workspace, ticket_id, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+
+    from apps.orders.models import ApprovalReceipt, BrokerOrder, Fill, OrderTicket
+
+    ticket = OrderTicket.objects.get(ticket_id=ticket_id)
+    assert ticket.current_state == "APPROVED"
+    assert not BrokerOrder.objects.filter(ticket=ticket).exists()
+    assert not Fill.objects.filter(ticket=ticket).exists()
+    assert ApprovalReceipt.objects.filter(order_ticket_id=ticket_id, valid=True).count() == 1
+
+    result = call_mcp_tool(
+        workspace,
+        "cancel_approved_order",
+        {
+            "principal_id": "execution-operator",
+            "ticket_id": ticket_id,
+            "void_reason": "superseded approved-only ticket",
+            "superseded_by_ticket_id": "replacement-ticket",
+        },
+    )
+
+    assert result["status"] == "voided", result
+    assert result["ticket"]["current_state"] == "VOIDED"
+    assert result["invalidated_approval_receipts"] == 1
+    assert FakeLiveBrokerAdapter.cancel_calls == []
+    assert ApprovalReceipt.objects.filter(order_ticket_id=ticket_id, valid=True).count() == 0
+
+    rejected = call_mcp_tool(
+        workspace,
+        "submit_approved_order",
+        {"principal_id": "execution-operator", "ticket_id": ticket_id},
+    )
+    assert rejected["status"] == "rejected"
+    assert "voided" in "\n".join(rejected["reasons"]).lower()
+
+
 def test_fake_live_uncertain_submit_records_needs_review_and_blocks_retry(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     ticket_id = f"fake-live-uncertain-{uuid.uuid4().hex[:12]}"
