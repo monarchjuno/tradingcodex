@@ -217,6 +217,9 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
         }
+        reconciled = reconcile_existing_ticket_activity_before_reject(root, args, principal_id, rejected)
+        if reconciled is not None:
+            return reconciled
         write_audit_event(root, {"type": "submit_approved_order.adapter_preflight_rejected", "payload": rejected}, principal_id=principal_id, source="mcp")
         return rejected
     ensure_runtime_database(root)
@@ -1287,6 +1290,55 @@ def submit_with_adapter(root: Path, order: dict[str, Any]) -> dict[str, Any]:
     order = dict(order)
     order.setdefault("client_order_id", _deterministic_client_order_id(order))
     return adapter_for_connection(connection, root).submit_order(order)
+
+
+def reconcile_existing_ticket_activity_before_reject(
+    root: Path,
+    args: dict[str, Any],
+    principal_id: str,
+    original_rejection: dict[str, Any],
+) -> dict[str, Any] | None:
+    try:
+        ticket = get_order_ticket_model(root, args)
+    except ValueError:
+        return None
+    broker_order = ticket.broker_orders.order_by("-submitted_at", "-id").first()
+    if broker_order is None and ticket.current_state not in {"SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED", "NEEDS_REVIEW"}:
+        return None
+
+    reconciliation: dict[str, Any] = {"status": "local_timeline", "ticket_id": ticket.ticket_id}
+    if broker_order is not None:
+        try:
+            reconciliation = refresh_broker_order_status(
+                root,
+                {
+                    **args,
+                    "principal_id": principal_id,
+                    "ticket_id": ticket.ticket_id,
+                    "broker_order_id": broker_order.broker_order_id,
+                },
+            )
+        except Exception as exc:
+            reconciliation = {
+                "status": "refresh_failed",
+                "ticket_id": ticket.ticket_id,
+                "broker_order_id": broker_order.broker_order_id,
+                "reasons": [str(exc)],
+            }
+    ticket.refresh_from_db()
+    if ticket.current_state in {"SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED", "NEEDS_REVIEW"}:
+        result = {
+            "status": "reconciled",
+            "order_ticket_id": ticket.ticket_id,
+            "original_rejection": original_rejection,
+            "reconciliation": reconciliation,
+            "ticket": serialize_order_ticket(ticket, include_related=True),
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        write_audit_event(root, {"type": "submit_approved_order.reconciled_before_reject", "payload": result}, principal_id=principal_id, source="mcp")
+        return result
+    return None
 
 
 def _adapter_preflight_reasons(root: Path, order: dict[str, Any], args: dict[str, Any] | None = None) -> list[str]:

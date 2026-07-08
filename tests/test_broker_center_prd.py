@@ -761,6 +761,51 @@ def test_approved_only_live_ticket_can_be_voided_without_broker_order(tmp_path: 
     assert "voided" in "\n".join(rejected["reasons"]).lower()
 
 
+def test_submit_reconciles_existing_broker_order_before_preflight_reject(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"fake-live-race-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-race"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    confirmation = create_approved_fake_live_ticket(workspace, ticket_id, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+
+    from django.utils import timezone
+    from apps.integrations.models import BrokerConnection
+    from apps.orders.models import BrokerOrder, OrderTicket
+
+    ticket = OrderTicket.objects.get(ticket_id=ticket_id)
+    ticket.current_state = "SUBMITTED"
+    ticket.status = "SUBMITTED"
+    ticket.save(update_fields=["current_state", "status", "updated_at"])
+    BrokerOrder.objects.create(
+        ticket=ticket,
+        broker_order_id="race-existing-provider-order",
+        broker_status="submitted",
+        submitted_at=timezone.now(),
+        last_seen_at=timezone.now(),
+        metadata={"source": "race fixture"},
+    )
+
+    connection = BrokerConnection.objects.get(broker_id=broker_id)
+    connection.status = "read_only"
+    connection.save(update_fields=["status", "updated_at"])
+
+    result = call_mcp_tool(
+        workspace,
+        "submit_approved_order",
+        {"principal_id": "execution-operator", "ticket_id": ticket_id, "live_confirmation": confirmation},
+    )
+
+    assert result["status"] == "reconciled", result
+    assert result["original_rejection"]["reasons"] == [f"broker connection is not trading_enabled: {broker_id}"]
+    assert result["ticket"]["current_state"] == "FILLED"
+    assert result["reconciliation"]["status"] == "refreshed"
+    assert FakeLiveBrokerAdapter.submit_calls == []
+    assert FakeLiveBrokerAdapter.status_calls == ["race-existing-provider-order"]
+
+
 def test_fake_live_uncertain_submit_records_needs_review_and_blocks_retry(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     ticket_id = f"fake-live-uncertain-{uuid.uuid4().hex[:12]}"
