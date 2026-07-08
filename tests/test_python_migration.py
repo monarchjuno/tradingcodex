@@ -4975,6 +4975,36 @@ def test_central_db_env_overrides(tmp_path: Path) -> None:
     assert explicit_path == str(explicit)
 
 
+def test_database_url_sqlite_config_preserves_timeout(tmp_path: Path, monkeypatch) -> None:
+    from tradingcodex_service.settings import database_config_from_url
+
+    db_path = tmp_path / "url.sqlite3"
+    monkeypatch.setenv("TRADINGCODEX_SQLITE_TIMEOUT", "45")
+
+    config = database_config_from_url(f"sqlite:///{db_path}")
+
+    assert config == {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": str(db_path.resolve()),
+        "OPTIONS": {"timeout": 45},
+    }
+    assert db_path.parent.exists()
+
+
+def test_database_url_postgres_config_uses_django_postgresql_backend() -> None:
+    from tradingcodex_service.settings import database_config_from_url
+
+    config = database_config_from_url("postgresql://tcx:secret@db.local:5432/tradingcodex?sslmode=require")
+
+    assert config["ENGINE"] == "django.db.backends.postgresql"
+    assert config["NAME"] == "tradingcodex"
+    assert config["USER"] == "tcx"
+    assert config["PASSWORD"] == "secret"
+    assert config["HOST"] == "db.local"
+    assert config["PORT"] == "5432"
+    assert config["OPTIONS"] == {"sslmode": "require"}
+
+
 def test_generated_mcp_server_uses_central_db_default(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     home = tmp_path / "tc-home"

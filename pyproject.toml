@@ -39,6 +39,9 @@ dependencies = [
 dev = [
   "pytest>=8"
 ]
+postgres = [
+  "psycopg[binary]>=3,<4"
+]
 
 [project.scripts]
 tcx = "tradingcodex_cli.__main__:main"

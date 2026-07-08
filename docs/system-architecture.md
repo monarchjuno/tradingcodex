@@ -116,6 +116,9 @@ Overrides:
 
 - `TRADINGCODEX_HOME`
 - `TRADINGCODEX_DB_NAME`
+- `TRADINGCODEX_DATABASE_URL` for SQLite or PostgreSQL-style Django database
+  configuration. PostgreSQL deployments should install the package with the
+  `postgres` extra so Django can load the driver.
 
 `TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workbench for file-native
 agent, skill, and research state. It must not partition canonical
