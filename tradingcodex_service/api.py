@@ -61,6 +61,10 @@ from tradingcodex_service.application.orders import (
     request_order_approval,
     run_order_checks,
 )
+from tradingcodex_service.application.order_lineage import (
+    get_pre_approval_occupancy,
+    validate_order_approval_crosswalk,
+)
 from tradingcodex_service.application.policy import simulate_policy as simulate_policy_service
 from tradingcodex_service.application.portfolio import list_positions
 from tradingcodex_service.application.research import (
@@ -498,6 +502,52 @@ def simulate_policy(request, payload: PolicyRequest):
 @orders_router.get("/tickets")
 def order_tickets(request, limit: int = 30):
     return list_order_tickets(workspace_root(), {"limit": limit})
+
+
+@orders_router.get("/approval-crosswalk")
+def order_approval_crosswalk(
+    request,
+    ticket_id: str | None = None,
+    approval_receipt_id: str | None = None,
+    broker_order_id: str | None = None,
+    limit: int = 200,
+):
+    return validate_order_approval_crosswalk(
+        workspace_root(),
+        {
+            "ticket_id": ticket_id,
+            "approval_receipt_id": approval_receipt_id,
+            "broker_order_id": broker_order_id,
+            "limit": limit,
+        },
+    )
+
+
+@orders_router.get("/pre-approval-occupancy")
+def pre_approval_occupancy(
+    request,
+    portfolio_id: str | None = None,
+    account_id: str | None = None,
+    strategy_id: str | None = None,
+    broker_account_id: str | None = None,
+    symbol: str | None = None,
+    side: str | None = None,
+    allow_conservative_exclusion: bool = False,
+    limit: int = 200,
+):
+    return get_pre_approval_occupancy(
+        workspace_root(),
+        {
+            "portfolio_id": portfolio_id,
+            "account_id": account_id,
+            "strategy_id": strategy_id,
+            "broker_account_id": broker_account_id,
+            "symbol": symbol,
+            "side": side,
+            "allow_conservative_exclusion": allow_conservative_exclusion,
+            "limit": limit,
+        },
+    )
 
 
 @orders_router.post("/tickets")

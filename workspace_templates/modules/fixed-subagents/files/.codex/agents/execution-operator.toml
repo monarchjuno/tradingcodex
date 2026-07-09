@@ -60,6 +60,8 @@ enabled_tools = [
   "get_order_status",
   "get_order_ticket",
   "list_order_tickets",
+  "validate_order_approval_crosswalk",
+  "get_pre_approval_occupancy",
   "list_broker_connections",
   "get_broker_connection_status",
   "list_reconciliation_runs",

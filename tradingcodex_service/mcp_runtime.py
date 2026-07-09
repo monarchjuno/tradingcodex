@@ -26,6 +26,8 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "get_research_artifact",
     "list_research_artifacts",
     "search_research_artifacts",
+    "validate_order_approval_crosswalk",
+    "get_pre_approval_occupancy",
 })
 
 
@@ -573,6 +575,45 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         ),
     ),
     McpToolSpec(
+        name="validate_order_approval_crosswalk",
+        description="Return a read-only approval-to-ticket-to-broker-order crosswalk with replacement lineage, latest status, and anomaly flags that block terminal inference when unresolved.",
+        category="orders",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("validate_order_approval_crosswalk"),
+        handler_name="validate_order_approval_crosswalk",
+        input_schema=object_schema(
+            {
+                "ticket_id": {"type": "string"},
+                "order_ticket_id": {"type": "string"},
+                "order_id": {"type": "string"},
+                "approval_receipt_id": {"type": "string"},
+                "receipt_id": {"type": "string"},
+                "broker_order_id": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            }
+        ),
+    ),
+    McpToolSpec(
+        name="get_pre_approval_occupancy",
+        description="Return a read-only account-symbol occupancy view for unresolved approved, ACKED, NEEDS_REVIEW, unknown, and replacement-lineage rows before approval creation.",
+        category="orders",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_pre_approval_occupancy"),
+        handler_name="get_pre_approval_occupancy",
+        input_schema=object_schema(
+            {
+                "portfolio_id": {"type": "string"},
+                "account_id": {"type": "string"},
+                "strategy_id": {"type": "string"},
+                "broker_account_id": {"type": "string"},
+                "symbol": {"type": "string"},
+                "side": {"type": "string", "enum": ["buy", "sell"]},
+                "allow_conservative_exclusion": {"type": "boolean"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            }
+        ),
+    ),
+    McpToolSpec(
         name="record_broker_mapping_review",
         description="Record reviewed external MCP broker tool mappings and keep execution mappings disabled unless gated by a TradingCodex service connection.",
         category="brokers",
@@ -932,7 +973,7 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
 
 
 def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str, Any], principal_id: str) -> dict[str, Any]:
-    from tradingcodex_service.application import audit, brokers, orders, policy, portfolio, research
+    from tradingcodex_service.application import audit, brokers, orders, order_lineage, policy, portfolio, research
     from apps.mcp import services as mcp_services
 
     def get_tradingcodex_status() -> dict[str, Any]:
@@ -988,6 +1029,8 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         "request_order_approval": lambda: orders.request_order_approval(workspace_root, {**with_principal, "approved_by": args.get("approved_by") or principal_id}),
         "get_order_ticket": lambda: orders.get_order_ticket(workspace_root, args),
         "list_order_tickets": lambda: orders.list_order_tickets(workspace_root, args),
+        "validate_order_approval_crosswalk": lambda: order_lineage.validate_order_approval_crosswalk(workspace_root, args),
+        "get_pre_approval_occupancy": lambda: order_lineage.get_pre_approval_occupancy(workspace_root, args),
         "record_broker_mapping_review": lambda: brokers.record_broker_mapping_review(workspace_root, with_principal),
         "list_external_mcp_connections": lambda: mcp_services.list_external_mcp_connections(workspace_root, with_principal),
         "register_external_mcp_connection": lambda: mcp_services.register_external_mcp_connection(workspace_root, with_principal),

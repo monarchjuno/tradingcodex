@@ -62,6 +62,13 @@ Before returning a connection-state preflight rejection, the service checks
 whether the same ticket already has local broker-order activity and refreshes
 that order first. If the ticket timeline shows provider progress, the response
 is `reconciled` with both the original rejection reasons and final ticket state.
+Read-only crosswalk and occupancy views must preserve this uncertainty. If a
+ticket, approval receipt, broker order id, replacement lineage, or latest
+broker status cannot be joined cleanly, the view reports anomaly flags and sets
+terminal inference to false. An unresolved `ACKED`, `NEEDS_REVIEW`, or broker
+`unknown` row remains duplicate/cash-reservation-relevant until a later
+canonical refresh, cancel, reject, fill, expiry, or reviewed correction resolves
+it.
 
 Order ticket ids are central-DB ids. CLI/API/MCP calls use `ticket_id` or
 `order_ticket_id`; if the same id appears with a different payload, validation

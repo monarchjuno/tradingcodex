@@ -149,6 +149,15 @@ Verify at least:
 - `./tcx mcp external list/register/check/discover/review-tool` covers External
   MCP Gate lifecycle operations
 - schema drift disables reviewed tools until re-reviewed
+- `validate_order_approval_crosswalk` and `get_pre_approval_occupancy` are
+  read-only tools, visible only to order-aware roles and safe-home read scope,
+  with no approval, submit, cancel, sync, or order-ticket mutation authority.
+- Crosswalk tests must cover missing broker order ids, duplicate replacement
+  lineage, stale originals, and unresolved `ACKED` / broker `unknown` rows that
+  set `terminal_inference_allowed: false`.
+- Occupancy tests must cover approved-not-submitted rows, unresolved unknown
+  rows, conservative reserved notional, and overlap disposition of `blocked` or
+  `conservative_exclusion` before approval creation.
 
 ## Broker Provider Smoke
 

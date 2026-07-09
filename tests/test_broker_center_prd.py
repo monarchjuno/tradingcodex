@@ -44,6 +44,27 @@ def restore_broker_provider_registry():
     _WORKSPACE_PROVIDER_SOURCES.update(previous_sources)
 
 
+@pytest.fixture(autouse=True)
+def _cleanup_order_tables():
+    from apps.orders.models import (
+        ApprovalReceipt,
+        BrokerOrder,
+        ExecutionResult,
+        Fill,
+        OrderCheckRun,
+        OrderEvent,
+        OrderTicket,
+    )
+    yield
+    Fill.objects.all().delete()
+    BrokerOrder.objects.all().delete()
+    ExecutionResult.objects.all().delete()
+    OrderEvent.objects.all().delete()
+    OrderCheckRun.objects.all().delete()
+    OrderTicket.objects.all().delete()
+    ApprovalReceipt.objects.all().delete()
+
+
 def make_workspace(tmp_path: Path) -> Path:
     workspace = tmp_path / "workspace"
     bootstrap_workspace(workspace, force=True)
@@ -512,6 +533,10 @@ def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Pat
     assert "create_order_ticket" not in tool_names
     assert "request_order_approval" not in tool_names
     assert "submit_approved_order" not in tool_names
+    assert {
+        "validate_order_approval_crosswalk",
+        "get_pre_approval_occupancy",
+    }.issubset(tool_names)
 
 
 def test_external_mcp_broker_discovery_stays_read_only_until_review() -> None:
@@ -1005,3 +1030,115 @@ def test_broker_center_and_order_ticket_web_surfaces_render() -> None:
     assert "Risk review first" in order_body
     assert "Approved submission only" in order_body
     assert "local confirmation" in order_body
+def create_pending_fake_live_ticket(workspace, ticket_id, symbol="AAPL", side="buy", broker_id="fake-live"):
+    call_mcp_tool(workspace, "create_order_ticket", {"principal_id": "portfolio-manager", "ticket_id": ticket_id, "broker_id": broker_id, "broker_account_id": "fake-account", "symbol": symbol, "side": side, "quantity": 1, "order_type": "limit", "limit_price": 100, "time_in_force": "day", "currency": "USD"})
+    checks = call_mcp_tool(workspace, "run_order_checks", {"principal_id": "portfolio-manager", "ticket_id": ticket_id})
+    assert checks["approval_ready"] is True, checks
+    approval = call_mcp_tool(workspace, "request_order_approval", {"principal_id": "risk-manager", "ticket_id": ticket_id})
+    assert approval["status"] == "approved", approval
+    return approval
+
+def test_approval_crosswalk_flags_unknown_and_blocks_terminal_inference(tmp_path, monkeypatch):
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"crosswalk-unknown-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-crosswalk"
+    FakeLiveBrokerAdapter.reset()
+    FakeLiveBrokerAdapter.submit_mode = "uncertain"
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    confirmation = create_approved_fake_live_ticket(workspace, ticket_id, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+    submitted = call_mcp_tool(workspace, "submit_approved_order", {"principal_id": "execution-operator", "ticket_id": ticket_id, "live_confirmation": confirmation})
+    assert submitted["status"] == "needs_review", submitted
+    crosswalk = call_mcp_tool(workspace, "validate_order_approval_crosswalk", {"principal_id": "execution-operator", "ticket_id": ticket_id})
+    assert crosswalk["status"] == "anomaly"
+    assert crosswalk["terminal_inference_allowed"] is False
+    assert "unresolved_acked_or_unknown" in crosswalk["terminal_inference_blockers"]
+    assert crosswalk["rows"][0]["canonical_ticket_id"] == ticket_id
+    assert crosswalk["rows"][0]["broker_order_ids"]
+    assert "unresolved_acked_or_unknown" in crosswalk["rows"][0]["anomalies"]
+    assert crosswalk["rows"][0]["terminal_inference_allowed"] is False
+
+def test_approval_crosswalk_flags_approved_missing_broker_order_without_mutation(tmp_path):
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"crosswalk-approved-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-approved"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    approval = create_pending_fake_live_ticket(workspace, ticket_id, broker_id=broker_id)
+    crosswalk = call_mcp_tool(workspace, "validate_order_approval_crosswalk", {"principal_id": "risk-manager", "approval_receipt_id": approval["approval_receipt"]["id"]})
+    assert crosswalk["status"] == "anomaly"
+    assert crosswalk["terminal_inference_allowed"] is False
+    assert crosswalk["anomaly_counts"]["missing_broker_order_id"] == 1
+    assert crosswalk["rows"][0]["latest_status"]["ticket_state"] == "APPROVED"
+    assert crosswalk["rows"][0]["broker_order_ids"] == []
+
+def test_approval_crosswalk_reports_replacement_lineage_and_duplicate_replacements(tmp_path):
+    workspace = make_workspace(tmp_path)
+    broker_id = "fake-live-lineage"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    original_id = f"lineage-original-{uuid.uuid4().hex[:8]}"
+    replacement_a = f"lineage-replacement-a-{uuid.uuid4().hex[:8]}"
+    replacement_b = f"lineage-replacement-b-{uuid.uuid4().hex[:8]}"
+    create_pending_fake_live_ticket(workspace, original_id, broker_id=broker_id)
+    create_pending_fake_live_ticket(workspace, replacement_a, broker_id=broker_id)
+    create_pending_fake_live_ticket(workspace, replacement_b, broker_id=broker_id)
+
+    from apps.orders.models import OrderEvent, OrderTicket
+    for replacement_id in (replacement_a, replacement_b):
+        replacement = OrderTicket.objects.get(ticket_id=replacement_id)
+        payload = dict(replacement.payload or {})
+        raw = dict(payload.get("raw") or {})
+        raw["replacement_of"] = original_id
+        payload["raw"] = raw
+        replacement.payload = payload
+        replacement.save(update_fields=["payload", "updated_at"])
+        OrderEvent.objects.create(ticket=replacement, event_type="replacement_created", actor="test", payload={"original_ticket_id": original_id})
+    crosswalk = call_mcp_tool(workspace, "validate_order_approval_crosswalk", {"principal_id": "head-manager", "ticket_id": original_id})
+
+    assert crosswalk["status"] == "anomaly"
+    assert crosswalk["terminal_inference_allowed"] is False
+    assert "duplicate_replacement" in crosswalk["terminal_inference_blockers"]
+    row = crosswalk["rows"][0]
+    assert set(row["replacement_lineage"]["replacement_ticket_ids"]) == {replacement_a, replacement_b}
+    assert "duplicate_replacement" in row["anomalies"]
+    assert "stale_original" in row["anomalies"]
+
+def test_pre_approval_occupancy_blocks_overlapping_unresolved_rows(tmp_path):
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"occupancy-acked-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-occupancy"
+    FakeLiveBrokerAdapter.reset()
+    FakeLiveBrokerAdapter.submit_mode = "submitted"
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    create_pending_fake_live_ticket(workspace, ticket_id, broker_id=broker_id)
+    from apps.orders.models import BrokerOrder, OrderTicket
+    ticket = OrderTicket.objects.get(ticket_id=ticket_id)
+    ticket.current_state = "ACKED"
+    ticket.status = "ACKED"
+    ticket.save(update_fields=["current_state", "status", "updated_at"])
+    BrokerOrder.objects.create(ticket=ticket, broker_order_id=f"broker-{ticket_id}", broker_status="unknown", metadata={"status": "unknown"})
+    occupancy = call_mcp_tool(workspace, "get_pre_approval_occupancy", {"principal_id": "risk-manager", "account_id": "local-paper", "broker_account_id": "fake-account", "symbol": "AAPL", "side": "buy"})
+    assert occupancy["status"] == "blocked"
+    assert occupancy["overlap_policy"]["disposition"] == "blocked"
+    assert ticket_id in occupancy["overlap_policy"]["overlapping_ticket_ids"]
+    assert occupancy["reserved_notional_conservative"] == 100.0
+    assert occupancy["groups"][0]["unresolved_unknown_count"] == 1
+
+def test_order_lineage_read_tools_are_role_scoped_and_read_only(tmp_path):
+    workspace = make_workspace(tmp_path)
+    tools = handle_mcp_rpc(workspace, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+    tool_by_name = {tool["name"]: tool for tool in tools["result"]["tools"]}
+    for name in ("validate_order_approval_crosswalk", "get_pre_approval_occupancy"):
+        assert tool_by_name[name]["annotations"]["readOnlyHint"] is True
+        assert tool_by_name[name]["annotations"]["destructiveHint"] is False
+        assert tool_by_name[name]["annotations"]["requires_approval"] is False
+        assert "risk-manager" in tool_by_name[name]["annotations"]["allowed_roles"]
+        assert "execution-operator" in tool_by_name[name]["annotations"]["allowed_roles"]
+    assert tool_by_name["request_order_approval"]["annotations"]["requires_approval"] is True
+    assert tool_by_name["submit_approved_order"]["annotations"]["readOnlyHint"] is False
+

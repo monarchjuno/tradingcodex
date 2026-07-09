@@ -223,6 +223,15 @@ Django Ninja provides local/staff typed control APIs:
 - `GET /api/orders/tickets/{ticket_id}`
 - `POST /api/orders/tickets/{ticket_id}/checks`
 - `POST /api/orders/tickets/{ticket_id}/approval-request` local control only; Codex risk-manager workflows should prefer MCP `request_order_approval`
+- `GET /api/orders/approval-crosswalk` returns a read-only approval receipt,
+  canonical ticket, broker order, replacement lineage, and latest-status
+  validator. Rows include anomaly flags, and any anomaly sets
+  `terminal_inference_allowed: false` so close/synthesis flows do not infer a
+  terminal outcome from unresolved data.
+- `GET /api/orders/pre-approval-occupancy` returns read-only account/symbol
+  occupancy before approval creation, including approved-not-submitted tickets,
+  unresolved `ACKED` / `NEEDS_REVIEW` / broker `unknown` rows, replacement
+  lineage, conservative reserved notional, and overlap disposition.
 - `POST /api/approvals`
 - `POST /api/executions/submit-approved`
 - `GET /api/audit/events` returns recent audit events for the API process
@@ -274,6 +283,8 @@ Minimum MCP tools:
 - `request_order_approval`
 - `get_order_ticket`
 - `list_order_tickets`
+- `validate_order_approval_crosswalk`
+- `get_pre_approval_occupancy`
 - `submit_approved_order`
 - `cancel_approved_order`
 - `refresh_broker_order_status`
@@ -315,6 +326,9 @@ chat context; default responses remain full-detail for local operator review.
 hashes, errors, and duration, except research tools and
 `list_workflow_artifacts`, which are excluded so research payloads remain only
 in workspace files.
+The order lineage read tools are inspection-only. They do not create order
+tickets, approvals, broker orders, cancellations, sync runs, or execution
+results; they only aggregate existing central DB state and anomaly flags.
 
 `tcx mcp stdio` calls the same service layer as CLI, API, and web surfaces. The
 stdio bridge must never write non-MCP logs to stdout.
