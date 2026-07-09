@@ -3341,9 +3341,12 @@ def test_capabilities_are_enforced_before_mcp_and_policy(tmp_path: Path) -> None
         "created_by": "portfolio-manager",
         "created_at": "2026-01-01T00:00:00Z",
     }
-    result = validate_order_ticket_payload(workspace, {"principal_id": "portfolio-manager", "order": order})
-    assert result["valid"] is False
-    assert "capability denied" in "\n".join(result["reasons"])
+    try:
+        result = validate_order_ticket_payload(workspace, {"principal_id": "portfolio-manager", "order": order})
+        assert result["valid"] is False
+        assert "capability denied" in "\n".join(result["reasons"])
+    finally:
+        Capability.objects.filter(principal__principal_id="portfolio-manager", action="order_ticket.check").update(effect="allow")
 
 
 def test_mcp_stdio_minimum_surface(tmp_path: Path) -> None:

@@ -66,6 +66,7 @@ from tradingcodex_service.application.order_lineage import (
     validate_order_approval_crosswalk,
 )
 from tradingcodex_service.application.policy import simulate_policy as simulate_policy_service
+from tradingcodex_service.application.resting_lifecycle import get_resting_lifecycle_panel
 from tradingcodex_service.application.portfolio import list_positions
 from tradingcodex_service.application.research import (
     create_research_artifact,
@@ -547,6 +548,33 @@ def pre_approval_occupancy(
             "symbol": symbol,
             "side": side,
             "allow_conservative_exclusion": allow_conservative_exclusion,
+            "limit": limit,
+        },
+    )
+
+
+@orders_router.get("/resting-lifecycle")
+def resting_lifecycle_panel(
+    request,
+    ticket_id: str | None = None,
+    broker_order_id: str | None = None,
+    portfolio_id: str | None = None,
+    account_id: str | None = None,
+    strategy_id: str | None = None,
+    lifecycle_state: str | None = None,
+    as_of: str | None = None,
+    limit: int = 200,
+):
+    return get_resting_lifecycle_panel(
+        workspace_root(),
+        {
+            "ticket_id": ticket_id,
+            "broker_order_id": broker_order_id,
+            "portfolio_id": portfolio_id,
+            "account_id": account_id,
+            "strategy_id": strategy_id,
+            "lifecycle_state": lifecycle_state,
+            "as_of": as_of,
             "limit": limit,
         },
     )

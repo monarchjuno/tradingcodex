@@ -160,6 +160,16 @@ Verify at least:
 - Occupancy tests must cover approved-not-submitted rows, unresolved unknown
   rows, conservative reserved notional, and overlap disposition of `blocked` or
   `conservative_exclusion` before approval creation.
+- `get_resting_lifecycle_panel` is a read-only tool, visible only to
+  order-aware roles and safe-home read scope, with no approval, submit, cancel,
+  sync, or order-ticket mutation authority.
+- Resting lifecycle tests must cover: a working order past 20:00 KST without
+  terminal evidence renders `terminal_blocked` (never `expired`) with a
+  `no_terminal_evidence` gap and no DB mutation; two consecutive missed
+  cadence checkpoints render `ttl_stale`; `resting` requires at least one
+  observed `status_refreshed` event; unknown broker status renders
+  `anomaly_unverified`; checkpoint output stays bounded (aggregate counts plus
+  a short tail); and identical `as_of` inputs return identical rows.
 
 ## Broker Provider Smoke
 

@@ -232,6 +232,18 @@ Django Ninja provides local/staff typed control APIs:
   occupancy before approval creation, including approved-not-submitted tickets,
   unresolved `ACKED` / `NEEDS_REVIEW` / broker `unknown` rows, replacement
   lineage, conservative reserved notional, and overlap disposition.
+- `GET /api/orders/resting-lifecycle` returns a read-only resting lifecycle
+  evidence panel: per-ticket derived lifecycle state (`approved`, `submitted`,
+  `acked`, `resting`, `ttl_stale`, `nxt_active`, `terminal_blocked`, `filled`,
+  `cancelled`, `expired`, `anomaly_unverified`), planned checkpoints
+  (post-submit, regular-session 5-minute cadence, NXT 10-minute cadence,
+  post-20:00 KST terminal refresh), checkpoint results (`observed`, `blocked`,
+  `skipped`, `stale`, plus `pending` for not-yet-due ticks), owner and
+  approval principal, next allowed and blocked actions, and the standing
+  `no_auto_reprice` / `no_overnight_carry` flags. The panel never infers
+  terminal expiry from time alone; missing evidence is reported as explicit
+  `evidence_gaps` entries and blocks terminal inference. An optional `as_of`
+  argument evaluates the panel at a fixed instant for deterministic review.
 - `POST /api/approvals`
 - `POST /api/executions/submit-approved`
 - `GET /api/audit/events` returns recent audit events for the API process
@@ -285,6 +297,7 @@ Minimum MCP tools:
 - `list_order_tickets`
 - `validate_order_approval_crosswalk`
 - `get_pre_approval_occupancy`
+- `get_resting_lifecycle_panel`
 - `submit_approved_order`
 - `cancel_approved_order`
 - `refresh_broker_order_status`
@@ -326,9 +339,12 @@ chat context; default responses remain full-detail for local operator review.
 hashes, errors, and duration, except research tools and
 `list_workflow_artifacts`, which are excluded so research payloads remain only
 in workspace files.
-The order lineage read tools are inspection-only. They do not create order
-tickets, approvals, broker orders, cancellations, sync runs, or execution
-results; they only aggregate existing central DB state and anomaly flags.
+The order lineage read tools and the resting lifecycle panel are
+inspection-only. They do not create order tickets, approvals, broker orders,
+cancellations, sync runs, or execution results; they only aggregate existing
+central DB state, anomaly flags, and checkpoint evidence. The panel's
+`next_allowed_action` and `blocked_actions` fields are declarations for the
+operator, never invocations.
 
 `tcx mcp stdio` calls the same service layer as CLI, API, and web surfaces. The
 stdio bridge must never write non-MCP logs to stdout.

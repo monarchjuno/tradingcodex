@@ -62,6 +62,7 @@ enabled_tools = [
   "list_order_tickets",
   "validate_order_approval_crosswalk",
   "get_pre_approval_occupancy",
+  "get_resting_lifecycle_panel",
   "list_broker_connections",
   "get_broker_connection_status",
   "list_reconciliation_runs",

@@ -28,6 +28,7 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "search_research_artifacts",
     "validate_order_approval_crosswalk",
     "get_pre_approval_occupancy",
+    "get_resting_lifecycle_panel",
 })
 
 
@@ -616,6 +617,43 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         ),
     ),
     McpToolSpec(
+        name="get_resting_lifecycle_panel",
+        description="Return a read-only resting-order lifecycle evidence panel with derived lifecycle state, planned checkpoints (post-submit, regular 5-min, NXT 10-min, post-20:00 terminal refresh), checkpoint results, evidence gaps, owner, next and blocked actions, and no-auto-reprice/no-overnight-carry flags. Never infers terminal expiry from time alone.",
+        category="orders",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_resting_lifecycle_panel"),
+        handler_name="get_resting_lifecycle_panel",
+        input_schema=object_schema(
+            {
+                "ticket_id": {"type": "string"},
+                "order_ticket_id": {"type": "string"},
+                "order_id": {"type": "string"},
+                "broker_order_id": {"type": "string"},
+                "portfolio_id": {"type": "string"},
+                "account_id": {"type": "string"},
+                "strategy_id": {"type": "string"},
+                "lifecycle_state": {
+                    "type": "string",
+                    "enum": [
+                        "approved",
+                        "submitted",
+                        "acked",
+                        "resting",
+                        "ttl_stale",
+                        "nxt_active",
+                        "terminal_blocked",
+                        "filled",
+                        "cancelled",
+                        "expired",
+                        "anomaly_unverified",
+                    ],
+                },
+                "as_of": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            }
+        ),
+    ),
+    McpToolSpec(
         name="record_broker_mapping_review",
         description="Record reviewed external MCP broker tool mappings and keep execution mappings disabled unless gated by a TradingCodex service connection.",
         category="brokers",
@@ -975,7 +1013,7 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
 
 
 def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str, Any], principal_id: str) -> dict[str, Any]:
-    from tradingcodex_service.application import audit, brokers, orders, order_lineage, policy, portfolio, research
+    from tradingcodex_service.application import audit, brokers, orders, order_lineage, policy, portfolio, research, resting_lifecycle
     from apps.mcp import services as mcp_services
 
     def get_tradingcodex_status() -> dict[str, Any]:
@@ -1033,6 +1071,7 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         "list_order_tickets": lambda: orders.list_order_tickets(workspace_root, args),
         "validate_order_approval_crosswalk": lambda: order_lineage.validate_order_approval_crosswalk(workspace_root, args),
         "get_pre_approval_occupancy": lambda: order_lineage.get_pre_approval_occupancy(workspace_root, args),
+        "get_resting_lifecycle_panel": lambda: resting_lifecycle.get_resting_lifecycle_panel(workspace_root, args),
         "record_broker_mapping_review": lambda: brokers.record_broker_mapping_review(workspace_root, with_principal),
         "list_external_mcp_connections": lambda: mcp_services.list_external_mcp_connections(workspace_root, with_principal),
         "register_external_mcp_connection": lambda: mcp_services.register_external_mcp_connection(workspace_root, with_principal),

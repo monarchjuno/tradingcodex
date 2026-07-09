@@ -92,6 +92,18 @@ terminal inference to false. An unresolved `ACKED`, `NEEDS_REVIEW`, or broker
 canonical refresh, cancel, reject, fill, expiry, or reviewed correction resolves
 it.
 
+The resting lifecycle panel (`get_resting_lifecycle_panel`) extends the same
+discipline to time-based checkpoints. It never infers terminal expiry from the
+wall clock: a working order past the post-20:00 KST terminal-refresh deadline
+without an observed terminal broker status renders `terminal_blocked` — never
+`expired` — with an explicit `no_terminal_evidence` gap and terminal inference
+set to false. Missed cadence checkpoints render `ttl_stale` with the missed
+count recorded as a gap, and missed ticks are attributed to `blocked` only
+while a block signal (provider source review or a failed terminal refresh in
+the approval table) is currently evidenced. The `no_auto_reprice` and
+`no_overnight_carry` fields are standing-rule declarations for the operator;
+the panel enforces nothing and mutates nothing.
+
 Order ticket ids are central-DB ids. CLI/API/MCP calls use `ticket_id` or
 `order_ticket_id`; if the same id appears with a different payload, validation
 must fail closed instead of mutating the existing ticket.

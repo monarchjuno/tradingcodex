@@ -536,6 +536,7 @@ def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Pat
     assert {
         "validate_order_approval_crosswalk",
         "get_pre_approval_occupancy",
+        "get_resting_lifecycle_panel",
     }.issubset(tool_names)
 
 
