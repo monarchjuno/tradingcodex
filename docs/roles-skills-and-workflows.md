@@ -47,6 +47,15 @@ artifact.
 | `judgment-reviewer` | independent challenge, contrary evidence, source-trust posture, update triggers, invalidation conditions | accepted upstream artifacts, source/as-of metadata, forecast fields, user constraints | judgment review artifact with `accepted`, `revise`, `blocked`, or `waiting` outcome before synthesis or downstream gates |
 | `execution-operator` | approved submit/cancel/status through the TradingCodex service boundary; live only when every live gate passes | approved order ticket, matching approval receipt, policy allow state | execution result, MCP response, audit reference, or rejected/blocked reasons |
 
+Order-ticket and approval-ready artifacts should preserve the latest approval
+table validity metadata when available: `valid_until`, `invalidates_on`,
+per-row `quote_as_of`, `cash_as_of`, `order_status_as_of`, and a
+cash-reserve stress line covering pre-batch orderable cash, total notional,
+fee/tax reserve, post-batch residual, and residual warning threshold.
+Metadata-free legacy approval tables remain backward compatible, but generated
+guidance should label them as legacy instead of implying a fresh machine-readable
+table.
+
 Downstream roles handle weak upstream work by returning a revision request or
 `blocked` readiness state. They do not repair missing upstream analysis inside
 their own artifact unless the missing work is explicitly within their owned

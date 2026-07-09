@@ -37,6 +37,11 @@ Rules:
 - Do not fabricate instrument support, adapter support, borrow/locate, option terms, margin terms, funding rates, or account eligibility.
 - In narrative notes, tag material claims as `[factual]`, `[inference]`, or `[assumption]`; do not add non-schema claim tags inside the order ticket payload.
 - Run the `run_order_checks` MCP tool after creating the ticket.
-- Include the ticket id, current state, check results, and unresolved gaps in the output.
+- Include the ticket id, current state, check results, approval table
+  `valid_until`, `invalidates_on`, per-row `quote_as_of`, `cash_as_of`,
+  `order_status_as_of`, and unresolved gaps in the output.
+- Include a cash-reserve stress line for any batch-ready approval table:
+  pre-batch orderable, total notional, fee/tax reserve, post-batch residual,
+  and residual warning threshold.
 - Include a note that approval and execution are separate downstream gates.
 - If prerequisites are missing, write a revise/block reason instead of drafting.

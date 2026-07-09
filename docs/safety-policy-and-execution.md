@@ -43,6 +43,17 @@ raw broker execution primitive directly.
 | Portfolio fit | portfolio review | `portfolio-manager` | Check sizing, cash, concentration, liquidity, and portfolio fit. |
 | Broker sync | `BrokerSyncRun`, `PortfolioLedgerEvent`, `ReconciliationRun` | service layer | Read-only connection path only; raw credentials are references. |
 | Draft order | `OrderTicket` | `portfolio-manager` | No execution before schema, policy, cash/position, broker validation, and risk checks. |
+
+Approval table metadata is part of approval readiness. New `run_order_checks`
+results carry machine-readable `approval_table_meta` with `valid_until`,
+`invalidates_on`, per-row `quote_as_of`, `cash_as_of`,
+`order_status_as_of`, and cash-reserve stress fields. `request_order_approval`
+must refuse to create an `ApprovalReceipt` when that metadata is stale because
+of quote drift, cash delta, order-status delta, replacement-ticket creation,
+terminal-refresh failure, or age threshold. Metadata-free legacy check tables
+remain accepted for backward compatibility, but approval responses must surface
+a warning instead of silently implying freshness.
+
 | Risk review | risk/policy report | `risk-manager` | Check restricted list, downside, limits, and approval readiness. |
 
 Approval table metadata is part of approval readiness. New `run_order_checks`
