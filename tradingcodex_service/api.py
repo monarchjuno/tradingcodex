@@ -140,6 +140,8 @@ class ApprovalReceiptPayload(Schema):
     valid_until: str | None = None
     quote_as_of_requirement: str | None = None
     policy_decision: dict[str, Any] | None = None
+    approval_table_meta: dict[str, Any] | None = None
+    warnings: list[str] | None = None
 
 
 class ApprovalRequest(Schema):

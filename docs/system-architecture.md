@@ -242,7 +242,7 @@ Read-only/status use cases:
 | `WorkflowRun` | Workflow lane, status, role participation, and lifecycle. |
 | `ArtifactRef` | Handoff references, role owner, hero/support marker, and acceptance state between workflow runs and artifacts. |
 | `OrderTicket` | Canonical user-facing draft/check/approval/submission state machine and payload hash owner. |
-| `OrderCheckRun` | Schema, policy, cash/position, market, broker-validation, and risk check results. |
+| `OrderCheckRun` | Schema, policy, cash/position, market, broker-validation, and risk check results, plus machine-readable `approval_table_meta` carrying approval-table validity window, invalidation events, per-row as-of fields, snapshot hashes, and cash-reserve stress values. |
 | `ApprovalReceipt` | Approval evidence, approver, exact order payload hash, broker/account scope, and policy context. |
 | `OrderEvent` | Order ticket state and broker timeline events. |
 | `BrokerOrder` | Broker-side order id and status mapping. |

@@ -32,6 +32,8 @@ Unit tests should cover:
 - order ticket creation, state transitions, check pass/warn/fail recording,
   approval readiness, exact approval-scope hash validation, broker order
   events, and fill deduplication
+- stale approval-table gates: expired `valid_until`, cash delta, order-status
+  delta, receipt-embedded stale metadata, and metadata-free legacy warning
 - approved-order idempotency and duplicate execution blocking
 - broker connection defaults, broker account discovery, read-only sync runs,
   portfolio ledger event creation, snapshot materialization, and

@@ -44,6 +44,17 @@ raw broker execution primitive directly.
 | Broker sync | `BrokerSyncRun`, `PortfolioLedgerEvent`, `ReconciliationRun` | service layer | Read-only connection path only; raw credentials are references. |
 | Draft order | `OrderTicket` | `portfolio-manager` | No execution before schema, policy, cash/position, broker validation, and risk checks. |
 | Risk review | risk/policy report | `risk-manager` | Check restricted list, downside, limits, and approval readiness. |
+
+Approval table metadata is part of approval readiness. New `run_order_checks`
+results carry machine-readable `approval_table_meta` with `valid_until`,
+`invalidates_on`, per-row `quote_as_of`, `cash_as_of`,
+`order_status_as_of`, and cash-reserve stress fields. `request_order_approval`
+must refuse to create an `ApprovalReceipt` when that metadata is stale because
+of quote drift, cash delta, order-status delta, replacement-ticket creation,
+terminal-refresh failure, or age threshold. Metadata-free legacy check tables
+remain accepted for backward compatibility, but approval responses must surface
+a warning instead of silently implying freshness.
+
 | Approval | `ApprovalReceipt` | `risk-manager` | Bind approval to exact order payload hash, broker/account, max notional/price, order type, time-in-force, and expiry. |
 | Execution | `submit_approved_order` through TradingCodex MCP | `execution-operator` | Revalidate the order ticket payload and approval receipt in MCP. |
 | Audit/postmortem | audit event, execution result, postmortem | MCP/head-manager | Record rejects, approvals, executions, and policy decisions. |
@@ -119,6 +130,7 @@ TradingCodex must block:
 - expired approval receipts or expired approval `valid_until`
 - orders exceeding approval max notional, max price, order type, or time-in-force scope
 - paper/test-sandbox/live provider orders without a valid order ticket plus matching approval receipt
+- stale approval-table metadata: `valid_until` expiry, cash delta, order-status delta, quote drift, replacement-ticket creation, terminal-refresh failure, or age threshold
 - repeated connection submission for an already executed approved order
 - duplicate order ticket ids with different payloads
 - global MCP exposure for approval, execution, cancellation, policy mutation, secret, or broker tools

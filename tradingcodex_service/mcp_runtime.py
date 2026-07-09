@@ -135,6 +135,8 @@ APPROVAL_RECEIPT_SCHEMA = json_object_schema(
         "valid_until": {"type": "string", "maxLength": 80},
         "quote_as_of_requirement": {"type": "string", "maxLength": 80},
         "policy_decision": {"type": "object"},
+        "approval_table_meta": {"type": "object"},
+        "warnings": {"type": "array", "items": {"type": "string"}},
     },
     ["id", "order_ticket_id", "approved_by", "valid", "expires_at"],
     additional_properties=False,

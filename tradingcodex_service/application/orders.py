@@ -60,8 +60,18 @@ ORDER_TICKET_TRANSITIONS = {
     "NEEDS_REVIEW": {"DRAFT", "PRECHECKED", "REJECTED", "CANCELED", "VOIDED"},
 }
 ORDER_RESOLUTION_ERROR_FIELD = "_order_resolution_error"
+APPROVAL_TABLE_TTL_MINUTES = 15
+APPROVAL_TABLE_FEE_TAX_RESERVE_BPS = Decimal("10")
+APPROVAL_TABLE_RESIDUAL_WARNING_BPS = Decimal("200")
+APPROVAL_TABLE_INVALIDATES_ON = (
+    "quote_drift",
+    "cash_delta",
+    "order_status_delta",
+    "replacement_created",
+    "terminal_refresh_failed",
+    "age_threshold",
+)
 ORDER_TICKET_FREE_TEXT_FIELDS = ("thesis", "strategy", "rationale", "notes", "decision_summary", "source_artifact")
-
 
 def order_ticket_free_text_from_args(args: dict[str, Any]) -> dict[str, str]:
     return {
@@ -69,7 +79,6 @@ def order_ticket_free_text_from_args(args: dict[str, Any]) -> dict[str, str]:
         for field in ORDER_TICKET_FREE_TEXT_FIELDS
         if args.get(field) not in (None, "")
     }
-
 
 def validate_order_ticket_payload(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     order = resolve_order_ticket_payload(Path(workspace_root), args)
@@ -82,12 +91,12 @@ def validate_order_ticket_payload(workspace_root: Path | str, args: dict[str, An
     result = {"valid": not all_reasons and policy["decision"] == "allow", "reasons": all_reasons, "policy": policy, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
     return result
 
-
 def validate_approval_receipt(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     order = resolve_order_ticket_payload(root, args)
     receipt = resolve_approval_receipt(root, args, order)
     reasons: list[str] = []
+    warnings: list[str] = []
     for field in ["id", "order_ticket_id", "approved_by", "valid", "expires_at"]:
         if receipt.get(field) in (None, ""):
             reasons.append(f"missing {field}")
@@ -125,10 +134,26 @@ def validate_approval_receipt(workspace_root: Path | str, args: dict[str, Any]) 
         reasons.append("order type differs from approval scope")
     if receipt.get("approved_time_in_force") and order.get("time_in_force") and receipt.get("approved_time_in_force") != order.get("time_in_force"):
         reasons.append("time in force differs from approval scope")
-    return {"valid": not reasons, "reasons": reasons, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
+    if isinstance(receipt.get("approval_table_meta"), dict) and order.get("id"):
+        try:
+            ticket = get_order_ticket_model(root, {"ticket_id": order["id"]})
+            embedded = _approval_table_freshness_from_meta(root, ticket, order, receipt["approval_table_meta"])
+            reasons.extend(embedded["reasons"])
+            warnings.extend(embedded["warnings"])
+        except ValueError as exc:
+            reasons.append(f"approval table freshness could not resolve order ticket: {exc}")
+    elif "approval_table_meta" not in receipt:
+        warnings.append("legacy approval receipt has no approval_table_meta")
+    return {"valid": not reasons, "reasons": reasons, "warnings": warnings, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
 
-
-def _create_order_approval_receipt(workspace_root: Path | str, order: dict[str, Any], approved_by: str = "risk-manager", expires_hours: int = 24) -> dict[str, Any]:
+def _create_order_approval_receipt(
+    workspace_root: Path | str,
+    order: dict[str, Any],
+    approved_by: str = "risk-manager",
+    expires_hours: int = 24,
+    approval_table_meta: dict[str, Any] | None = None,
+    approval_warnings: list[str] | None = None,
+) -> dict[str, Any]:
     root = Path(workspace_root)
     validation = validate_order_ticket_payload(root, {"principal_id": approved_by, "order": order})
     if not validation["valid"]:
@@ -167,6 +192,11 @@ def _create_order_approval_receipt(workspace_root: Path | str, order: dict[str, 
         "quote_as_of_requirement": order.get("quote_as_of_requirement", ""),
         "policy_decision": validation["policy"],
     }
+    if approval_table_meta:
+        receipt["approval_table_meta"] = approval_table_meta
+    warnings: list[str] = list(approval_warnings or [])
+    if warnings:
+        receipt["warnings"] = warnings
     receipt_validation = validate_approval_receipt(root, {"order": order, "approval_receipt": receipt})
     if not receipt_validation["valid"]:
         return {"status": "rejected", "order_ticket_id": order.get("id"), "reasons": receipt_validation["reasons"], "db_canonical": True, "workspace_context": workspace_context_payload(root)}
@@ -183,12 +213,12 @@ def _create_order_approval_receipt(workspace_root: Path | str, order: dict[str, 
         "status": "approved",
         "order_ticket_id": order["id"],
         "approval_receipt": receipt,
+        "warnings": warnings,
         "db_canonical": True,
         "workspace_context": workspace_context_payload(root),
     }
     write_audit_event(root, {"type": "approval.accepted", "payload": result}, principal_id=approved_by, source="service")
     return result
-
 
 def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -310,7 +340,6 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
     write_audit_event(root, {"type": "submit_approved_order.accepted", "payload": accepted}, principal_id=principal_id, source="mcp")
     return accepted
 
-
 def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     ensure_runtime_database(root)
@@ -402,6 +431,118 @@ def create_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dic
     write_audit_event(root, {"type": "order_ticket.created" if created else "order_ticket.updated", "payload": result}, args.get("principal_id") or ticket.created_by, "service")
     return {"status": "created" if created else "updated", "ticket": result, "db_canonical": True, "workspace_context": workspace_context_payload(root)}
 
+def _approval_table_order_status_snapshot(ticket: Any) -> dict[str, Any]:
+    return {
+        "ticket_id": ticket.ticket_id,
+        "current_state": ticket.current_state,
+        "payload_hash": ticket.payload_hash,
+        "broker_orders": [
+            {"broker_order_id": item.broker_order_id, "broker_status": item.broker_status}
+            for item in ticket.broker_orders.all()
+        ],
+        "fills_count": ticket.fills.count(),
+    }
+
+def _cash_position_snapshot(root: Path, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
+    account_id = str(order.get("broker_account_id") or order.get("account_id") or DEFAULT_ACCOUNT_ID)
+    if adapter is None:
+        return {"available": False, "reason": "broker adapter is not configured"}
+    side = str(order.get("side") or "").lower()
+    if side == "buy":
+        try:
+            return {
+                "side": "buy",
+                "account_id": account_id,
+                "cash": [
+                    {"currency": item.currency, "amount": float(item.amount)}
+                    for item in adapter.get_cash(account_id)
+                ],
+            }
+        except Exception as exc:
+            return {"available": False, "side": "buy", "account_id": account_id, "reason": str(exc)}
+    symbol = str(order.get("symbol") or "").upper()
+    try:
+        return {
+            "side": "sell",
+            "account_id": account_id,
+            "positions": [
+                {"symbol": item.symbol, "quantity": float(item.quantity), "currency": item.currency}
+                for item in adapter.get_positions(account_id)
+                if str(item.symbol).upper() == symbol
+            ],
+        }
+    except Exception as exc:
+        return {"available": False, "side": "sell", "account_id": account_id, "reason": str(exc)}
+
+def _approval_table_current_snapshot(root: Path, ticket: Any, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
+    observed_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+    quote_snapshot = {
+        "symbol": order.get("symbol"),
+        "limit_price": order.get("limit_price"),
+        "estimated_notional_krw": order.get("estimated_notional_krw"),
+    }
+    cash_snapshot = _cash_position_snapshot(root, order, adapter)
+    order_status_snapshot = _approval_table_order_status_snapshot(ticket)
+    return {
+        "quote_as_of": observed_at,
+        "cash_as_of": observed_at,
+        "order_status_as_of": observed_at,
+        "quote_snapshot_hash": stable_hash(quote_snapshot),
+        "cash_snapshot_hash": stable_hash(cash_snapshot),
+        "order_status_snapshot_hash": stable_hash(order_status_snapshot),
+    }
+
+def _cash_reserve_stress(root: Path, ticket: Any, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
+    currency = str(order.get("currency") or "KRW")
+    notional = Decimal(str(order.get("estimated_notional_krw") or order.get("estimated_notional") or 0))
+    reserve = (notional * APPROVAL_TABLE_FEE_TAX_RESERVE_BPS / Decimal("10000")).quantize(Decimal("0.01"))
+    threshold = (notional * APPROVAL_TABLE_RESIDUAL_WARNING_BPS / Decimal("10000")).quantize(Decimal("0.01"))
+    side = str(order.get("side") or "").lower()
+    pre_batch_orderable = Decimal("0")
+    if adapter is not None and side == "buy":
+        account_id = str(order.get("broker_account_id") or order.get("account_id") or DEFAULT_ACCOUNT_ID)
+        try:
+            pre_batch_orderable = sum(
+                Decimal(str(item.amount))
+                for item in adapter.get_cash(account_id)
+                if str(item.currency or currency) == currency
+            )
+        except Exception:
+            pre_batch_orderable = Decimal("0")
+    post_batch_residual = pre_batch_orderable - notional - reserve if side == "buy" else pre_batch_orderable
+    return {
+        "currency": currency,
+        "pre_batch_orderable": float(pre_batch_orderable),
+        "total_notional": float(notional),
+        "fee_tax_reserve": float(reserve),
+        "post_batch_residual": float(post_batch_residual),
+        "residual_warning_threshold": float(threshold),
+        "residual_warning": (post_batch_residual < threshold) if side == "buy" else False,
+    }
+
+def _build_approval_table_meta(root: Path, ticket: Any, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
+    created = datetime.now(timezone.utc)
+    snapshot = _approval_table_current_snapshot(root, ticket, order, adapter)
+    return {
+        "schema_version": 1,
+        "created_at": created.isoformat().replace("+00:00", "Z"),
+        "valid_until": (created + timedelta(minutes=APPROVAL_TABLE_TTL_MINUTES)).isoformat().replace("+00:00", "Z"),
+        "invalidates_on": list(APPROVAL_TABLE_INVALIDATES_ON),
+        "rows": [
+            {
+                "ticket_id": ticket.ticket_id,
+                "quote_as_of": snapshot["quote_as_of"],
+                "cash_as_of": snapshot["cash_as_of"],
+                "order_status_as_of": snapshot["order_status_as_of"],
+                "quote_snapshot_hash": snapshot["quote_snapshot_hash"],
+                "cash_snapshot_hash": snapshot["cash_snapshot_hash"],
+                "order_status_snapshot_hash": snapshot["order_status_snapshot_hash"],
+                "order_payload_hash": stable_hash(order),
+            }
+        ],
+        "cash_reserve_stress": _cash_reserve_stress(root, ticket, order, adapter),
+        "terminal_refresh_status": "ok",
+    }
 
 def run_order_checks(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -437,6 +578,7 @@ def run_order_checks(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
     checks.append(_check_result("risk", not [item for item in checks if item["decision"] == "fail"], [], {"review": "risk-manager review required before approval"}))
 
     OrderCheckRun.objects.filter(ticket=ticket).delete()
+
     for check in checks:
         OrderCheckRun.objects.create(
             ticket=ticket,
@@ -450,16 +592,134 @@ def run_order_checks(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
     failed = [check for check in checks if check["decision"] == "fail"]
     next_state = "NEEDS_REVIEW" if failed else "READY_FOR_APPROVAL"
     transition_order_ticket(ticket, next_state, principal_id, {"checks": checks})
+    approval_table_meta = _build_approval_table_meta(root, ticket, order, adapter)
+    stress = approval_table_meta["cash_reserve_stress"]
+    stress_reasons = []
+    if stress.get("residual_warning"):
+        stress_reasons.append("post-batch residual is below residual warning threshold")
+    approval_table_check = _check_result(
+        "approval_table",
+        True,
+        stress_reasons,
+        {"approval_table_meta": approval_table_meta},
+        decision="warn" if stress_reasons else "pass",
+    )
+    OrderCheckRun.objects.create(
+        ticket=ticket,
+        check_type=approval_table_check["check_type"],
+        decision=approval_table_check["decision"],
+        reasons=approval_table_check["reasons"],
+        quote_as_of=approval_table_check.get("quote_as_of", ""),
+        source_snapshot_ref=approval_table_check.get("source_snapshot_ref", ""),
+        payload=approval_table_check.get("payload", {}),
+    )
+    checks.append(approval_table_check)
     result = {
         "status": "checked",
         "ticket_id": ticket.ticket_id,
         "approval_ready": not failed,
         "checks": checks,
+        "approval_table_meta": approval_table_meta,
         "db_canonical": True,
         "workspace_context": workspace_context_payload(root),
     }
     write_audit_event(root, {"type": "order_ticket.checked", "payload": result}, principal_id, "service")
     return result
+
+def _approval_table_meta_from_check_runs(check_runs: list[Any]) -> dict[str, Any]:
+    approval_table_checks = [check for check in check_runs if check.check_type == "approval_table"]
+    for check in sorted(approval_table_checks, key=lambda item: item.created_at, reverse=True):
+        payload = check.payload if isinstance(check.payload, dict) else {}
+        meta = payload.get("approval_table_meta")
+        if isinstance(meta, dict):
+            return meta
+    return {}
+
+
+def _approval_table_freshness(
+    root: Path,
+    ticket: Any,
+    order: dict[str, Any],
+    check_runs: list[Any],
+    *,
+    include_snapshots: bool = True,
+) -> dict[str, Any]:
+    meta = _approval_table_meta_from_check_runs(check_runs)
+    if not meta:
+        return {
+            "fresh": True,
+            "legacy": True,
+            "warnings": ["legacy approval table has no machine-readable validity metadata"],
+            "reasons": [],
+            "approval_table_meta": {},
+        }
+    reasons: list[str] = []
+    warnings: list[str] = []
+    valid_until = _parse_datetime(meta.get("valid_until"))
+    if meta.get("valid_until") and valid_until is None:
+        reasons.append("approval table valid_until is not a valid date")
+    if valid_until and valid_until <= datetime.now(timezone.utc):
+        reasons.append("approval table valid_until is expired")
+    created_at = _parse_datetime(meta.get("created_at"))
+    if created_at and datetime.now(timezone.utc) - created_at > timedelta(minutes=APPROVAL_TABLE_TTL_MINUTES):
+        reasons.append("approval table age threshold is exceeded")
+    invalidated_by = meta.get("invalidated_by") if isinstance(meta.get("invalidated_by"), list) else []
+    for event in invalidated_by:
+        if event in APPROVAL_TABLE_INVALIDATES_ON:
+            reasons.append(f"{event.replace('_', '-')} invalidated approval table")
+    terminal_status = str(meta.get("terminal_refresh_status") or "ok")
+    if terminal_status == "failed":
+        reasons.append("terminal-refresh failure invalidated approval table")
+    rows = meta.get("rows") if isinstance(meta.get("rows"), list) else []
+    row = rows[0] if rows and isinstance(rows[0], dict) else {}
+    adapter = None
+    if ticket.broker_connection:
+        from tradingcodex_service.application.brokers import adapter_for_connection
+
+        adapter = adapter_for_connection(ticket.broker_connection, root)
+    current = _approval_table_current_snapshot(root, ticket, order, adapter)
+    if include_snapshots:
+        if row.get("cash_snapshot_hash") and row.get("cash_snapshot_hash") != current["cash_snapshot_hash"]:
+            reasons.append("cash delta invalidated approval table")
+        if row.get("order_status_snapshot_hash") and row.get("order_status_snapshot_hash") != current["order_status_snapshot_hash"]:
+            allowed_post_approval_states = {
+                "APPROVED",
+                "RESERVED",
+                "SUBMITTED",
+                "ACKED",
+                "PARTIALLY_FILLED",
+                "FILLED",
+                "REJECTED",
+                "CANCELED",
+                "EXPIRED",
+                "FAILED",
+                "VOIDED",
+            }
+            if ticket.current_state not in allowed_post_approval_states:
+                reasons.append("order-status delta invalidated approval table")
+        if row.get("order_payload_hash") and row.get("order_payload_hash") != stable_hash(order):
+            reasons.append("replacement-created invalidated approval table")
+        if row.get("quote_snapshot_hash") and row.get("quote_snapshot_hash") != current["quote_snapshot_hash"]:
+            reasons.append("quote drift invalidated approval table")
+    else:
+        if row.get("order_payload_hash") and row.get("order_payload_hash") != stable_hash(order):
+            reasons.append("replacement-created invalidated approval table")
+    return {
+        "fresh": not reasons,
+        "legacy": False,
+        "warnings": warnings,
+        "reasons": list(dict.fromkeys(reasons)),
+        "approval_table_meta": meta,
+    }
+
+
+def _approval_table_freshness_from_meta(root: Path, ticket: Any, order: dict[str, Any], meta: dict[str, Any]) -> dict[str, Any]:
+    class _Check:
+        check_type = "approval_table"
+        created_at = datetime.now(timezone.utc)
+        payload = {"approval_table_meta": meta}
+
+    return _approval_table_freshness(root, ticket, order, [_Check()], include_snapshots=False)
 
 
 def request_order_approval(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
@@ -471,17 +731,36 @@ def request_order_approval(workspace_root: Path | str, args: dict[str, Any]) -> 
         checks = run_order_checks(root, {"ticket_id": ticket.ticket_id, "principal_id": principal_id})
         if not checks["approval_ready"]:
             return {"status": "rejected", "ticket_id": ticket.ticket_id, "reasons": ["order checks failed"], "checks": checks["checks"], "db_canonical": True, "workspace_context": workspace_context_payload(root)}
+        latest_checks = list(ticket.check_runs.all())
     elif any(check.decision == "fail" for check in latest_checks):
         return {"status": "rejected", "ticket_id": ticket.ticket_id, "reasons": ["fail check prevents approval"], "db_canonical": True, "workspace_context": workspace_context_payload(root)}
     order = order_payload_from_ticket(ticket)
-    result = _create_order_approval_receipt(root, order, principal_id, int(args.get("expires_hours") or 24))
+    freshness = _approval_table_freshness(root, ticket, order, latest_checks)
+    if not freshness["fresh"]:
+        result = {
+            "status": "recheck_required",
+            "ticket_id": ticket.ticket_id,
+            "order_ticket_id": ticket.ticket_id,
+            "reasons": freshness["reasons"],
+            "approval_table_freshness": freshness,
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        write_audit_event(root, {"type": "approval.recheck_required", "payload": result}, principal_id=principal_id, source="service")
+        return result
+    result = _create_order_approval_receipt(
+        root,
+        order,
+        principal_id,
+        int(args.get("expires_hours") or 24),
+        freshness["approval_table_meta"],
+        freshness["warnings"],
+    )
     if result.get("status") == "approved":
         ticket.refresh_from_db()
         if ticket.current_state != "APPROVED":
             transition_order_ticket(ticket, "APPROVED", principal_id, result)
-    return {**result, "ticket_id": ticket.ticket_id}
-
-
+    return {**result, "ticket_id": ticket.ticket_id, "warnings": result.get("warnings", [])}
 def list_order_tickets(workspace_root: Path | str, args: dict[str, Any] | None = None) -> dict[str, Any]:
     ensure_runtime_database(workspace_root)
     from apps.orders.models import OrderTicket
@@ -509,14 +788,12 @@ def list_order_tickets(workspace_root: Path | str, args: dict[str, Any] | None =
         "workspace_context": workspace_context_payload(workspace_root),
     }
 
-
 def get_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     return {
         "ticket": serialize_order_ticket(get_order_ticket_model(workspace_root, args), include_related=True),
         "db_canonical": True,
         "workspace_context": workspace_context_payload(workspace_root),
     }
-
 
 def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -627,7 +904,6 @@ def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]
     write_audit_event(root, {"type": "broker_order_status.refreshed", "payload": result}, principal_id, "service")
     return result
 
-
 def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     ensure_runtime_database(root)
@@ -662,7 +938,6 @@ def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
             "workspace_context": workspace_context_payload(root),
         })
 
-
 def _shape_order_status_response(root: Path, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
     compact = bool(args.get("compact"))
     redact = bool(args.get("redact"))
@@ -692,7 +967,6 @@ def _shape_order_status_response(root: Path, args: dict[str, Any], result: dict[
         shaped.setdefault("workspace_context", workspace_context_payload(root))
     return shaped
 
-
 def void_approved_only_ticket(workspace_root: Path | str, ticket: Any, principal_id: str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     if ticket.broker_orders.exists() or ticket.fills.exists():
@@ -717,7 +991,6 @@ def void_approved_only_ticket(workspace_root: Path | str, ticket: Any, principal
     }
     write_audit_event(root, {"type": "order_ticket.void.accepted", "payload": result}, principal_id, "service")
     return result
-
 
 def cancel_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -858,7 +1131,6 @@ def cancel_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
     write_audit_event(root, {"type": "order_ticket.cancel.accepted", "payload": result}, principal_id, "service")
     return result
 
-
 def get_order_ticket_model(workspace_root: Path | str, args: dict[str, Any]) -> Any:
     ensure_runtime_database(workspace_root)
     from apps.orders.models import OrderTicket
@@ -882,7 +1154,6 @@ def get_order_ticket_model(workspace_root: Path | str, args: dict[str, Any]) -> 
         raise ValueError(f"unknown order ticket for active profile: {ticket_id}")
     return ticket
 
-
 def order_ticket_submit_block_reasons(workspace_root: Path | str, args: dict[str, Any]) -> list[str]:
     try:
         ticket = get_order_ticket_model(workspace_root, args)
@@ -892,7 +1163,6 @@ def order_ticket_submit_block_reasons(workspace_root: Path | str, args: dict[str
     if state in ORDER_TICKET_TERMINAL_STATES and state != "FILLED":
         return [f"order ticket is {state.lower()}"]
     return []
-
 
 def _find_broker_order_for_active_profile(workspace_root: Path | str, args: dict[str, Any], broker_order_id: str) -> Any:
     ensure_runtime_database(workspace_root)
@@ -910,7 +1180,6 @@ def _find_broker_order_for_active_profile(workspace_root: Path | str, args: dict
         .first()
     )
 
-
 def transition_order_ticket(ticket: Any, target_state: str, actor: str, payload: dict[str, Any] | None = None) -> None:
     if target_state not in ORDER_TICKET_STATES:
         raise ValueError(f"unknown order ticket state: {target_state}")
@@ -925,7 +1194,6 @@ def transition_order_ticket(ticket: Any, target_state: str, actor: str, payload:
     workspace_root = ticket_context.get("path") or None
     write_audit_event_if_available(workspace_root, actor, "service", {"type": "order_ticket.transition", "payload": {"ticket_id": ticket.ticket_id, "order_ticket_id": ticket.ticket_id, "from": current, "to": target_state, **(payload or {})}})
 
-
 def record_order_event(ticket: Any, event_type: str, actor: str, payload: dict[str, Any] | None = None) -> Any:
     from apps.orders.models import OrderEvent
 
@@ -937,7 +1205,6 @@ def record_order_event(ticket: Any, event_type: str, actor: str, payload: dict[s
         payload=payload,
         payload_hash=stable_hash(payload),
     )
-
 
 def invalidate_approval_receipts_for_ticket(root: Path, ticket_id: str, actor: str, payload: dict[str, Any]) -> int:
     ensure_runtime_database(root)
@@ -955,7 +1222,6 @@ def invalidate_approval_receipts_for_ticket(root: Path, ticket_id: str, actor: s
         receipt.save(update_fields=["valid", "payload"])
         count += 1
     return count
-
 
 def order_payload_from_ticket(ticket: Any) -> dict[str, Any]:
     stored_payload = ticket.payload if isinstance(ticket.payload, dict) else {}
@@ -1010,7 +1276,6 @@ def order_payload_from_ticket(ticket: Any) -> dict[str, Any]:
         "time_in_force": ticket.time_in_force,
     }
 
-
 def ensure_order_ticket_for_order(root: Path, order: dict[str, Any], actor: str = "service") -> Any | None:
     try:
         ensure_runtime_database(root)
@@ -1026,7 +1291,6 @@ def ensure_order_ticket_for_order(root: Path, order: dict[str, Any], actor: str 
         return OrderTicket.objects.select_related("broker_connection", "broker_account").get(ticket_id=result["ticket"]["ticket_id"])
     except Exception:
         return None
-
 
 def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[str, Any]:
     stored_payload = ticket.payload if isinstance(ticket.payload, dict) else {}
@@ -1058,7 +1322,13 @@ def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[s
         "canonical_order": (ticket.payload or {}).get("canonical_order", {}) if isinstance(ticket.payload, dict) else {},
         "free_text": free_text,
         "checks": [
-            {"check_type": check.check_type, "decision": check.decision, "reasons": check.reasons, "created_at": check.created_at.isoformat()}
+            {
+                "check_type": check.check_type,
+                "decision": check.decision,
+                "reasons": check.reasons,
+                "created_at": check.created_at.isoformat(),
+                "payload": check.payload,
+            }
             for check in ticket.check_runs.all()
         ],
     }
@@ -1080,7 +1350,6 @@ def serialize_order_ticket(ticket: Any, include_related: bool = False) -> dict[s
             }
         )
     return record
-
 
 def normalize_order_ticket_fields(root: Path, args: dict[str, Any]) -> dict[str, Any]:
     parsed = parse_natural_language_order(str(args.get("natural_language") or args.get("prompt") or ""))
@@ -1104,7 +1373,6 @@ def normalize_order_ticket_fields(root: Path, args: dict[str, Any]) -> dict[str,
     fields.setdefault("created_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
     fields.setdefault("created_by", args.get("principal_id") or "portfolio-manager")
     return fields
-
 
 def parse_natural_language_order(text: str) -> dict[str, Any]:
     if not text.strip():
@@ -1133,7 +1401,6 @@ def parse_natural_language_order(text: str) -> dict[str, Any]:
         limit_price = price_match.group(1)
     currency = "USD" if re.search(r"\b(usd|dollars?)\b|\$", normalized, flags=re.I) else "KRW"
     return {key: value for key, value in {"symbol": symbol, "side": side, "quantity": quantity, "limit_price": limit_price, "currency": currency, "natural_language": text}.items() if value}
-
 
 def canonical_order_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
     created_at = str(fields.get("created_at") or datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
@@ -1165,7 +1432,6 @@ def canonical_order_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
         order["canonical_order"] = {}
     return order
 
-
 def _resolve_ticket_broker_connection(root: Path, fields: dict[str, Any]) -> Any:
     from apps.integrations.models import BrokerConnection
     from tradingcodex_service.application.brokers import ensure_paper_broker_connection
@@ -1178,7 +1444,6 @@ def _resolve_ticket_broker_connection(root: Path, fields: dict[str, Any]) -> Any
         raise ValueError(f"unknown broker connection: {broker_id}")
     return connection
 
-
 def _resolve_ticket_broker_account(connection: Any, fields: dict[str, Any]) -> Any:
     if connection is None:
         return None
@@ -1187,10 +1452,8 @@ def _resolve_ticket_broker_account(connection: Any, fields: dict[str, Any]) -> A
         return connection.accounts.filter(broker_account_id=account_id).first()
     return connection.accounts.order_by("broker_account_id").first()
 
-
 def _ticket_summary(order: dict[str, Any]) -> str:
     return f"{order['side'].upper()} {order['quantity']} {order['symbol']} @ {order['limit_price']} {order['currency']}"
-
 
 def _schema_reasons(order: dict[str, Any]) -> list[str]:
     reasons: list[str] = []
@@ -1206,12 +1469,10 @@ def _schema_reasons(order: dict[str, Any]) -> list[str]:
     _validate_positive(order.get("estimated_notional_krw"), "estimated_notional_krw", reasons)
     return reasons
 
-
 def _check_result(check_type: str, passed: bool, reasons: list[str], payload: dict[str, Any] | None = None, decision: str | None = None) -> dict[str, Any]:
     if decision is None:
         decision = "pass" if passed else "fail"
     return {"check_type": check_type, "decision": decision, "reasons": reasons, "payload": payload or {}}
-
 
 def _record_ticket_submit_result(root: Path, order: dict[str, Any], receipt: dict[str, Any], adapter_result: dict[str, Any], principal_id: str) -> None:
     ensure_runtime_database(root)
@@ -1310,13 +1571,11 @@ def _record_ticket_submit_result(root: Path, order: dict[str, Any], receipt: dic
         except ValueError:
             pass
 
-
 def _number_or_none(value: Any) -> Decimal | None:
     try:
         return Decimal(str(value))
     except Exception:
         return None
-
 
 def submit_with_adapter(root: Path, order: dict[str, Any]) -> dict[str, Any]:
     broker = order.get("broker")
@@ -1345,7 +1604,6 @@ def submit_with_adapter(root: Path, order: dict[str, Any]) -> dict[str, Any]:
     order = dict(order)
     order.setdefault("client_order_id", _deterministic_client_order_id(order))
     return adapter_for_connection(connection, root).submit_order(order)
-
 
 def reconcile_existing_ticket_activity_before_reject(
     root: Path,
@@ -1395,7 +1653,6 @@ def reconcile_existing_ticket_activity_before_reject(
         return result
     return None
 
-
 def _adapter_preflight_reasons(root: Path, order: dict[str, Any], args: dict[str, Any] | None = None) -> list[str]:
     args = args or {}
     broker = order.get("broker")
@@ -1433,7 +1690,6 @@ def _adapter_preflight_reasons(root: Path, order: dict[str, Any], args: dict[str
         return [f"broker health is {health.status}{message}"]
     return []
 
-
 def _deterministic_client_order_id(order: dict[str, Any]) -> str:
     source = {
         "ticket_id": order.get("order_ticket_id") or order.get("id"),
@@ -1444,7 +1700,6 @@ def _deterministic_client_order_id(order: dict[str, Any]) -> str:
     }
     return ("tcx-" + stable_hash(source)[:28])[:32]
 
-
 def _expected_live_confirmation(order: dict[str, Any]) -> str:
     return "LIVE:{ticket}:{broker}:{symbol}:{side}:{quantity}".format(
         ticket=order.get("order_ticket_id") or order.get("id") or "",
@@ -1453,7 +1708,6 @@ def _expected_live_confirmation(order: dict[str, Any]) -> str:
         side=order.get("side") or "",
         quantity=order.get("quantity") or "",
     )
-
 
 def resolve_order_ticket_payload(root: Path, args: dict[str, Any]) -> dict[str, Any]:
     if isinstance(args.get("order"), dict):
@@ -1465,7 +1719,6 @@ def resolve_order_ticket_payload(root: Path, args: dict[str, Any]) -> dict[str, 
         except ValueError as exc:
             return {"id": str(ticket_id), "order_ticket_id": str(ticket_id), ORDER_RESOLUTION_ERROR_FIELD: str(exc)}
     return {}
-
 
 def resolve_approval_receipt(root: Path, args: dict[str, Any], order: dict[str, Any] | None = None) -> dict[str, Any]:
     if isinstance(args.get("approval_receipt"), dict):
@@ -1481,7 +1734,6 @@ def resolve_approval_receipt(root: Path, args: dict[str, Any], order: dict[str, 
         return find_approval_receipt_by_order_id(root, ticket_id) or {}
     return {}
 
-
 def find_order_payload_by_id(root: Path, order_id: str) -> dict[str, Any] | None:
     try:
         ensure_runtime_database(root)
@@ -1493,7 +1745,6 @@ def find_order_payload_by_id(root: Path, order_id: str) -> dict[str, Any] | None
     except Exception:
         pass
     return None
-
 
 def order_ticket_payload_conflict(root: Path, order: dict[str, Any]) -> str:
     order_id = order.get("order_ticket_id") or order.get("id")
@@ -1512,7 +1763,6 @@ def order_ticket_payload_conflict(root: Path, order: dict[str, Any]) -> str:
     except Exception as exc:
         return f"order ticket DB conflict check unavailable: {exc}"
     return ""
-
 
 def _order_conflict_payload(order: dict[str, Any]) -> dict[str, Any]:
     quantity = _number_or_none(order.get("quantity"))
@@ -1534,7 +1784,6 @@ def _order_conflict_payload(order: dict[str, Any]) -> dict[str, Any]:
         "time_in_force": str(order.get("time_in_force") or "day"),
     }
 
-
 def find_approval_receipt_by_id(root: Path, receipt_id: str) -> dict[str, Any] | None:
     try:
         ensure_runtime_database(root)
@@ -1550,7 +1799,6 @@ def find_approval_receipt_by_id(root: Path, receipt_id: str) -> dict[str, Any] |
         if data.get("id") == receipt_id:
             return data
     return None
-
 
 def find_approval_receipt_by_order_id(root: Path, order_id: str) -> dict[str, Any] | None:
     try:
@@ -1568,7 +1816,6 @@ def find_approval_receipt_by_order_id(root: Path, order_id: str) -> dict[str, An
             return data
     return None
 
-
 def write_rejected_order(root: Path, order: dict[str, Any], reasons: list[str]) -> None:
     write_json(root / "trading" / "orders" / "rejected" / f"{sanitize_id(order.get('order_ticket_id') or order.get('id', 'unknown'))}.rejected_order.json", {
         "order": order,
@@ -1576,7 +1823,6 @@ def write_rejected_order(root: Path, order: dict[str, Any], reasons: list[str]) 
         "rejected_at": now_iso(),
         "reasons": reasons,
     })
-
 
 def persist_approval_receipt_if_available(root: Path, receipt: dict[str, Any]) -> None:
     required = ["id", "order_ticket_id", "approved_by", "valid", "expires_at"]
