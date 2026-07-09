@@ -110,6 +110,10 @@ def mcp(root: Path, argv: list[str]) -> None:
     })
     if "--reduce-only" in args:
         payload["reduce_only"] = True
+    if "--compact" in args:
+        payload["compact"] = True
+    if "--redact" in args:
+        payload["redact"] = True
     payload_json = _option_value(args, "--payload")
     if payload_json:
         parsed_payload = json.loads(payload_json)

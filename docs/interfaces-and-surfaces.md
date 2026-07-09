@@ -306,6 +306,9 @@ and standard MCP hints for read-only, destructive, idempotent, and open-world
 behavior. `tools/list` returns this metadata as tool annotations.
 Research artifact write tools accept the handoff metadata validated by
 `tcx quality-check --strict`.
+Read-only status and broker inspection tools accept optional `compact` and
+`redact` booleans so coordinators can request brief, secret-safe responses for
+chat context; default responses remain full-detail for local operator review.
 `tools/call` records `McpToolCall` rows with principal, status, request/result
 hashes, errors, and duration, except research tools and
 `list_workflow_artifacts`, which are excluded so research payloads remain only

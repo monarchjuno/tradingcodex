@@ -1081,19 +1081,31 @@ def create_external_mcp_broker_connection(
 
 
 def list_broker_connections(workspace_root: Path | str | None = None, args: dict[str, Any] | None = None) -> dict[str, Any]:
+    args = args or {}
     ensure_runtime_database(workspace_root)
     from apps.integrations.models import BrokerConnection
 
     ensure_paper_broker_connection(workspace_root)
-    return {
-        "connections": [_serialize_connection(connection, workspace_root) for connection in BrokerConnection.objects.prefetch_related("accounts").all()],
+    compact = bool(args.get("compact"))
+    redact = bool(args.get("redact"))
+    result = {
+        "connections": [
+            _serialize_connection(connection, workspace_root, compact=compact, redact=redact)
+            for connection in BrokerConnection.objects.prefetch_related("accounts").all()
+        ],
         "db_canonical": True,
-        "workspace_context": workspace_context_payload(workspace_root),
+        "compact": compact,
+        "redacted": redact,
     }
+    if not compact and not redact:
+        result["workspace_context"] = workspace_context_payload(workspace_root)
+    return result
 
 
 def get_broker_connection_status(workspace_root: Path | str | None, args: dict[str, Any]) -> dict[str, Any]:
     connection = _get_connection(workspace_root, args.get("broker_id") or args.get("broker_connection_id") or "paper-trading")
+    compact = bool(args.get("compact"))
+    redact = bool(args.get("redact"))
     source_status = broker_connection_provider_source_status(connection, workspace_root)
     if source_status.get("service_restart_required"):
         health = BrokerHealth("blocked", "broker provider source changed; restart TradingCodex service and revalidate connector", source_status)
@@ -1101,12 +1113,16 @@ def get_broker_connection_status(workspace_root: Path | str | None, args: dict[s
         adapter = adapter_for_connection(connection, workspace_root)
         health = adapter.health_check()
     _reconcile_validation_execution_status(connection, health, workspace_root, enable_trade_scopes=bool(args.get("promote_execution", True)))
-    return {
-        "connection": _serialize_connection(connection, workspace_root),
-        "health": asdict(health),
+    result = {
+        "connection": _serialize_connection(connection, workspace_root, compact=compact, redact=redact),
+        "health": _serialize_health(health, compact=compact, redact=redact),
         "db_canonical": True,
-        "workspace_context": workspace_context_payload(workspace_root),
+        "compact": compact,
+        "redacted": redact,
     }
+    if not compact and not redact:
+        result["workspace_context"] = workspace_context_payload(workspace_root)
+    return result
 
 
 def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -1627,20 +1643,26 @@ def _health_details_for_connection(connection: Any, message: str) -> dict[str, A
     }
 
 
-def _serialize_connection(connection: Any, workspace_root: Path | str | None = None) -> dict[str, Any]:
+def _serialize_connection(
+    connection: Any,
+    workspace_root: Path | str | None = None,
+    *,
+    compact: bool = False,
+    redact: bool = False,
+) -> dict[str, Any]:
     metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
     profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
     provider_source = broker_connection_provider_source_status(connection, workspace_root)
     provider_drifted = provider_source.get("drift_status") not in {"", "none", None}
     service_restart_required = bool(metadata.get("service_restart_required") or provider_source.get("service_restart_required"))
     locked_for_provider_source = bool(service_restart_required or provider_drifted)
-    return {
+    record = {
         "broker_id": connection.broker_id,
         "display_name": connection.display_name,
         "transport": connection.transport,
         "adapter_type": connection.adapter_type,
         "status": connection.status,
-        "credential_ref": connection.credential_ref,
+        "credential_ref": _redact_credential_ref(connection.credential_ref) if redact else connection.credential_ref,
         "capabilities": connection.capabilities,
         "enabled_read_scopes": connection.enabled_read_scopes,
         "enabled_trade_scopes": connection.enabled_trade_scopes,
@@ -1669,8 +1691,63 @@ def _serialize_connection(connection: Any, workspace_root: Path | str | None = N
             }
             for account in connection.accounts.all()
         ] if hasattr(connection, "accounts") else [],
-        "metadata": connection.metadata,
+        "metadata": _redact_sensitive_mapping(connection.metadata) if redact else connection.metadata,
     }
+    if compact:
+        return {
+            key: record[key]
+            for key in (
+                "broker_id",
+                "display_name",
+                "transport",
+                "adapter_type",
+                "status",
+                "credential_ref",
+                "enabled_read_scopes",
+                "enabled_trade_scopes",
+                "last_health_status",
+                "drift_status",
+                "trading_status",
+                "lifecycle_state",
+                "provider_id",
+                "service_restart_required",
+                "accounts_count",
+            )
+        }
+    return record
+
+
+def _serialize_health(health: BrokerHealth, *, compact: bool = False, redact: bool = False) -> dict[str, Any]:
+    record = asdict(health)
+    if compact or redact:
+        return {
+            "status": record.get("status", ""),
+            "message": record.get("message", ""),
+            "details_redacted": bool(record.get("details")) and redact,
+        }
+    return record
+
+
+def _redact_credential_ref(credential_ref: str) -> str:
+    if not credential_ref:
+        return ""
+    prefix = credential_ref.split(":", 1)[0] if ":" in credential_ref else "credential"
+    return f"redacted:{prefix}"
+
+
+def _redact_sensitive_mapping(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            lowered = str(key).lower()
+            if any(marker in lowered for marker in ("credential", "secret", "token", "api_key", "apikey", "password")):
+                redacted[key] = "<redacted>"
+            else:
+                redacted[key] = _redact_sensitive_mapping(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_sensitive_mapping(item) for item in value]
+    return value
 
 
 def _serialize_reconciliation(run: Any) -> dict[str, Any]:

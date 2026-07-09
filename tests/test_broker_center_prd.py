@@ -235,6 +235,42 @@ def create_approved_fake_live_ticket(workspace: Path, ticket_id: str, broker_id:
     return f"LIVE:{ticket_id}:{broker_id}:AAPL:buy:1.0"
 
 
+def test_status_and_broker_tools_support_compact_redacted_responses(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    broker_id = "redact-live"
+    try:
+        register_fake_live_connection(workspace, broker_id)
+
+        status = call_mcp_tool(workspace, "get_tradingcodex_status", {"principal_id": "head-manager", "compact": True, "redact": True})
+        assert status["status"] == "ok"
+        assert status["compact"] is True
+        assert status["redacted"] is True
+        assert "db_path" not in status
+        assert "workspace_context" not in status
+
+        listed = call_mcp_tool(workspace, "list_broker_connections", {"principal_id": "head-manager", "compact": True, "redact": True})
+        listed_live = next(connection for connection in listed["connections"] if connection["broker_id"] == broker_id)
+        assert listed["compact"] is True
+        assert listed["redacted"] is True
+        assert listed_live["credential_ref"] == "redacted:env"
+        assert "metadata" not in listed_live
+        assert "accounts" not in listed_live
+        assert "capability_profile" not in listed_live
+
+        detail = call_mcp_tool(workspace, "get_broker_connection_status", {"principal_id": "head-manager", "broker_id": broker_id, "compact": True, "redact": True})
+        assert detail["compact"] is True
+        assert detail["redacted"] is True
+        assert detail["connection"]["broker_id"] == broker_id
+        assert detail["connection"]["credential_ref"] == "redacted:env"
+        assert detail["health"]["status"] == "ok"
+        assert "details" not in detail["health"]
+    finally:
+        from tradingcodex_service import mcp_runtime
+
+        mcp_runtime._REGISTRY_SYNCED = False
+        mcp_runtime._REGISTRY_SYNCED_DB = ""
+
+
 def test_paper_broker_sync_creates_ledger_snapshot_and_reconciliation(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
 

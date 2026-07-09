@@ -630,31 +630,61 @@ def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
         raise ValueError("order_id, ticket_id, or broker_order_id is required")
     try:
         ticket = get_order_ticket_model(root, {**args, "ticket_id": order_id})
-        return {
+        return _shape_order_status_response(root, args, {
             "status": ticket.current_state,
             "ticket_id": ticket.ticket_id,
             "ticket": serialize_order_ticket(ticket, include_related=True),
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
-        }
+        })
     except ValueError:
         broker_order = _find_broker_order_for_active_profile(root, args, order_id)
         if broker_order is None:
-            return {
+            return _shape_order_status_response(root, args, {
                 "status": "unknown",
                 "order_id": order_id,
                 "reasons": ["no local order ticket or broker order matched"],
                 "db_canonical": True,
                 "workspace_context": workspace_context_payload(root),
-            }
-        return {
+            })
+        return _shape_order_status_response(root, args, {
             "status": broker_order.broker_status,
             "ticket_id": broker_order.ticket.ticket_id,
             "broker_order_id": broker_order.broker_order_id,
             "ticket": serialize_order_ticket(broker_order.ticket, include_related=True),
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
+        })
+
+
+def _shape_order_status_response(root: Path, args: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    compact = bool(args.get("compact"))
+    redact = bool(args.get("redact"))
+    if compact:
+        ticket = result.get("ticket") if isinstance(result.get("ticket"), dict) else {}
+        broker_orders = ticket.get("broker_orders") if isinstance(ticket.get("broker_orders"), list) else []
+        latest_broker_order = broker_orders[-1] if broker_orders else {}
+        compact_result = {
+            "status": result.get("status", ""),
+            "ticket_id": result.get("ticket_id", ""),
+            "order_id": result.get("order_id", ""),
+            "broker_order_id": result.get("broker_order_id") or latest_broker_order.get("broker_order_id", ""),
+            "broker_status": latest_broker_order.get("broker_status", ""),
+            "current_state": ticket.get("current_state", result.get("status", "")),
+            "reasons": result.get("reasons", []),
+            "db_canonical": True,
+            "compact": True,
+            "redacted": redact,
         }
+        return {key: value for key, value in compact_result.items() if value not in ("", [], None)}
+    shaped = dict(result)
+    shaped["compact"] = False
+    shaped["redacted"] = redact
+    if redact:
+        shaped.pop("workspace_context", None)
+    else:
+        shaped.setdefault("workspace_context", workspace_context_payload(root))
+    return shaped
 
 
 def void_approved_only_ticket(workspace_root: Path | str, ticket: Any, principal_id: str, args: dict[str, Any]) -> dict[str, Any]:

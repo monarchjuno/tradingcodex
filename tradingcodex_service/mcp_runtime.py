@@ -108,6 +108,12 @@ def object_schema(
     return json_object_schema(merged, required, additional_properties=additional_properties)
 
 
+VIEW_FLAGS_SCHEMA = {
+    "compact": {"type": "boolean"},
+    "redact": {"type": "boolean"},
+}
+
+
 APPROVAL_RECEIPT_SCHEMA = json_object_schema(
     {
         "id": {"type": "string", "minLength": 1, "maxLength": 180},
@@ -184,7 +190,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("get_tradingcodex_status"),
         handler_name="get_tradingcodex_status",
-        input_schema=object_schema(),
+        input_schema=object_schema(VIEW_FLAGS_SCHEMA),
     ),
     McpToolSpec(
         name="get_runtime_mode",
@@ -290,7 +296,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("get_order_status"),
         handler_name="get_order_status",
-        input_schema=object_schema({"order_id": {"type": "string"}, "ticket_id": {"type": "string"}, "broker_order_id": {"type": "string"}}, additional_properties=False),
+        input_schema=object_schema({"order_id": {"type": "string"}, "ticket_id": {"type": "string"}, "broker_order_id": {"type": "string"}, **VIEW_FLAGS_SCHEMA}, additional_properties=False),
         experimental=True,
     ),
     McpToolSpec(
@@ -318,7 +324,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("list_broker_connections"),
         handler_name="list_broker_connections",
-        input_schema=object_schema(),
+        input_schema=object_schema(VIEW_FLAGS_SCHEMA),
     ),
     McpToolSpec(
         name="get_broker_connection_status",
@@ -327,7 +333,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("get_broker_connection_status"),
         handler_name="get_broker_connection_status",
-        input_schema=object_schema({"broker_id": {"type": "string"}, "broker_connection_id": {"type": "string"}}),
+        input_schema=object_schema({"broker_id": {"type": "string"}, "broker_connection_id": {"type": "string"}, **VIEW_FLAGS_SCHEMA}),
     ),
     McpToolSpec(
         name="list_broker_adapter_providers",
@@ -907,7 +913,8 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
 
             result = dict(result)
             result.setdefault("db_canonical", True)
-            result.setdefault("workspace_context", persist_workspace_context_if_available(workspace_root))
+            if not result.get("compact") and not result.get("redacted"):
+                result.setdefault("workspace_context", persist_workspace_context_if_available(workspace_root))
         record_tool_call(workspace_root, name, principal_id, "ok", request_payload, result, started)
         return result
     except Exception as exc:
@@ -924,7 +931,7 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         from tradingcodex_service.application.runtime import persist_workspace_context_if_available, tradingcodex_db_path
         from tradingcodex_service.version import TRADINGCODEX_VERSION
 
-        return {
+        payload = {
             "status": "ok",
             "service": "tradingcodex",
             "version": TRADINGCODEX_VERSION,
@@ -932,6 +939,7 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
             "workspace_context": persist_workspace_context_if_available(workspace_root),
             "mcp_scope": "global-home" if safe_home_mcp_scope() else "project-scoped",
         }
+        return _shape_status_response(payload, args)
 
     def get_runtime_mode() -> dict[str, Any]:
         from tradingcodex_service.application.runtime_mode import get_runtime_mode_status
@@ -994,6 +1002,27 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
     if handler is None:
         raise ValueError(f"Unknown TradingCodex tool handler: {tool.handler_name}")
     return handler()
+
+
+def _shape_status_response(payload: dict[str, Any], args: dict[str, Any]) -> dict[str, Any]:
+    compact = bool(args.get("compact"))
+    redact = bool(args.get("redact"))
+    if compact:
+        return {
+            "status": payload.get("status", ""),
+            "service": payload.get("service", ""),
+            "version": payload.get("version", ""),
+            "mcp_scope": payload.get("mcp_scope", ""),
+            "compact": True,
+            "redacted": redact,
+        }
+    shaped = dict(payload)
+    shaped["compact"] = False
+    shaped["redacted"] = redact
+    if redact:
+        shaped.pop("db_path", None)
+        shaped.pop("workspace_context", None)
+    return shaped
 
 
 def default_principal_for_tool(tool: McpToolSpec) -> str:
