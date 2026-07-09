@@ -420,8 +420,15 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "content_hash": str(frontmatter.get("content_hash") or content_hash),
         "version": _int_value(frontmatter.get("version"), default=1),
         "parent_artifact_id": str(frontmatter.get("parent_artifact_id") or ""),
-        "updated_at": datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc),
-        "created_at": datetime.fromtimestamp(path.stat().st_ctime, tz=timezone.utc),
+        # JSON-safe ISO strings: raw datetimes break MCP serialization
+        # ("Object of type datetime is not JSON serializable") as soon as
+        # any consumer json.dumps the artifact listing.
+        "updated_at": datetime.fromtimestamp(
+            path.stat().st_mtime, tz=timezone.utc
+        ).isoformat(),
+        "created_at": datetime.fromtimestamp(
+            path.stat().st_ctime, tz=timezone.utc
+        ).isoformat(),
         "db_canonical": False,
         "file_sot": True,
         "workspace_native": True,
