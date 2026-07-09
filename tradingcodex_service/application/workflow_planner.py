@@ -190,8 +190,17 @@ def validate_workflow_plan(plan: dict[str, Any], *, intake: dict[str, Any] | Non
             errors.append("negated order/trading/execution scope cannot include execution-operator")
     if lane in {"connector_build", "head_manager_connector_operations", "head_manager_strategy_authoring", "secret_warning"} and all_roles:
         errors.append(f"{lane} lane must not dispatch investment roles")
-    if "execution-operator" in all_roles and lane != "order_ticket_approval_execution_gate":
-        errors.append("execution-operator is only valid in order_ticket_approval_execution_gate")
+    # execution_followup is a post-execution lane (status verify / sync /
+    # reconcile): execution-operator only refreshes state there — order
+    # submission remains gated per-call by approval receipts and policy at
+    # the service layer, so allowing the role here opens no order path.
+    if "execution-operator" in all_roles and lane not in {
+        "order_ticket_approval_execution_gate",
+        "execution_followup",
+    }:
+        errors.append(
+            "execution-operator is only valid in order_ticket_approval_execution_gate or execution_followup"
+        )
     if lane == "order_ticket_approval_execution_gate" and JUDGMENT_REVIEW_ROLE in all_roles:
         errors.append("order_ticket_approval_execution_gate must not dispatch judgment-reviewer")
     if "execution-operator" in all_roles and not any("execution" in item for item in blocked_actions):
