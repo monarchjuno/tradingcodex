@@ -2381,6 +2381,9 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
     }
     rejected = validate_workflow_plan(invalid)
     assert rejected["ok"] is False
+    assert rejected["diagnostics"]["status"] == "failed"
+    assert rejected["diagnostics"]["reason_code"] == "workflow_plan_invalid"
+    assert any(cause["code"] == "unknown_role" for cause in rejected["diagnostics"]["causes"])
     assert any("unknown role" in error for error in rejected["errors"])
     assert any("depends on unknown or later stage" in error for error in rejected["errors"])
     assert any("execution-operator is only valid" in error for error in rejected["errors"])
@@ -2460,6 +2463,30 @@ def test_dynamic_workflow_plan_validation_and_recording(tmp_path: Path) -> None:
         rejected_role = validate_workflow_plan(bad_plan, intake=intake)
         assert rejected_role["ok"] is False
         assert any(error_text in error for error in rejected_role["errors"])
+
+
+def test_workflow_plan_subagent_spawn_timeout_signals_inline_fallback(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+    request = "Analyze NVDA. No order, no trading, no valuation."
+    preview = build_deterministic_workflow_plan(workspace, request)
+    recorded = record_workflow_plan(workspace, preview)
+    state_path = workspace / recorded["loop_state_path"]
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    state["updated_at"] = "2026-07-09T00:00:00Z"
+    for task in state["pending_tasks"]:
+        task["created_at"] = "2026-07-09T00:00:00Z"
+        task["timeout_seconds"] = 1
+        task["spawn_deadline_at"] = "2026-07-09T00:00:01Z"
+    state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
+
+    plan_cli = json.loads(run(["./tcx", "subagents", "plan", request], workspace).stdout)
+
+    assert plan_cli["diagnostics"]["status"] == "failed"
+    assert plan_cli["diagnostics"]["reason_code"] == "subagent_spawn_timeout"
+    assert plan_cli["diagnostics"]["inline_fallback"]["recommended"] is True
+    assert plan_cli["diagnostics"]["inline_fallback"]["mode"] == "status_only_no_investment_analysis"
+    assert plan_cli["pending_tasks"][0]["status"] == "timed_out"
+    assert plan_cli["pending_tasks"][0]["failure"]["reason_code"] == "subagent_spawn_timeout"
 
 
 def test_workflow_and_decision_cli_surfaces(tmp_path: Path) -> None:

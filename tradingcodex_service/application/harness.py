@@ -76,6 +76,7 @@ from tradingcodex_service.application.workflow_routing import (
     strip_negated_action_phrases,
     strip_skill_invocation_tokens,
 )
+from tradingcodex_service.application.workflow_diagnostics import diagnose_workflow_loop_state
 
 
 
@@ -97,14 +98,14 @@ def read_workflow_loop_state(workspace_root: Path | str | None = None, workflow_
     root = Path(workspace_root or ".")
     if workflow_run_id:
         state = read_json(workflow_loop_state_path(root, workflow_run_id), {})
-        return state if isinstance(state, dict) else {}
+        return diagnose_workflow_loop_state(state) if isinstance(state, dict) and state else {}
     latest = read_json(root / LOOP_STATE_PATH, {})
     if isinstance(latest, dict):
         state_path = str(latest.get("state_path") or "")
         if state_path and state_path != LOOP_STATE_PATH:
             state = read_json(root / state_path, latest)
-            return state if isinstance(state, dict) else latest
-        return latest
+            return diagnose_workflow_loop_state(state) if isinstance(state, dict) and state else diagnose_workflow_loop_state(latest)
+        return diagnose_workflow_loop_state(latest) if latest else latest
     state = latest
     return state if isinstance(state, dict) else {}
 
@@ -130,6 +131,7 @@ def compact_workflow_loop_summary(state: dict[str, Any]) -> dict[str, Any]:
         "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
         "terminal_action": state.get("terminal_action", ""),
         "stop_reason": state.get("stop_reason", ""),
+        "diagnostics": state.get("diagnostics", {}),
         "state_mode": state.get("state_mode", "inspectable_assisted_loop"),
         "auto_spawn": False,
         "recursive_hook_dispatch": False,
@@ -172,6 +174,7 @@ def build_workflow_loop_preview(
         "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
         "terminal_action": state.get("terminal_action", ""),
         "stop_reason": state.get("stop_reason", ""),
+        "diagnostics": state.get("diagnostics", {}),
         "auto_spawn": False,
         "recursive_hook_dispatch": False,
     }

@@ -142,8 +142,13 @@ Generated workspaces contain:
   lives under `.tradingcodex/mainagent/workflows/<workflow_run_id>/loop-state.json`
   with `intake.json` and `workflow-plan.json` beside it. The state records
   validated stages, selected team, allowed follow-up team, loop policy, pending
-  tasks, planner decisions, escalation proposals, blocked actions, and stop reason
+  tasks, planner decisions, escalation proposals, blocked actions, stop reason,
+  and structured diagnostics
   without spawning subagents recursively
+- subagent spawn waits are bounded: pending tasks carry `created_at`,
+  `timeout_seconds`, and `spawn_deadline_at`; after timeout, CLI/API previews
+  surface `subagent_spawn_timeout` plus a status-only inline fallback signal
+  instead of leaving `head-manager` in unqualified waiting
 - `improve` ledger records under `.tradingcodex/mainagent/improve.jsonl`,
   plus incremental summaries and dedupe state in
   `.tradingcodex/mainagent/improve-index.json`, fed by artifact

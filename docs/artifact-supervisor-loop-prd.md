@@ -384,6 +384,13 @@ pending tasks, completed artifact summaries, planner decisions, escalation
 proposals, blocked actions, and stop reason. Full event history remains
 append-only audit JSONL.
 
+Loop state also carries structured `diagnostics` with `status`,
+`reason_code`, `causes`, `next_action`, and `inline_fallback`. If a pending
+subagent dispatch exceeds its `spawn_deadline_at`, the task becomes
+`timed_out`, the reason code is `subagent_spawn_timeout`, and the inline
+fallback is status-only: `head-manager` should report waiting/blocked retry
+guidance without filling fixed-role investment analysis inline.
+
 Subagent continuation is tracked by run id, role, and subagent session id. A
 subagent start can therefore mean either a new role-local session or a
 continuation/reuse of an active role session, without merging unrelated Codex

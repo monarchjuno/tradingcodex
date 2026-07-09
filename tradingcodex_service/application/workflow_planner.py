@@ -11,6 +11,11 @@ from tradingcodex_service.application.common import _unique, append_jsonl, read_
 from tradingcodex_service.application.harness import (
     build_workflow_intake_summary,
 )
+from tradingcodex_service.application.workflow_diagnostics import (
+    diagnose_workflow_loop_state,
+    pending_task_timeout_fields,
+    workflow_validation_diagnostics,
+)
 from tradingcodex_service.application.workflow_routing import (
     build_loop_policy,
     classify_starter_request,
@@ -200,6 +205,7 @@ def validate_workflow_plan(plan: dict[str, Any], *, intake: dict[str, Any] | Non
         "workflow_run_id": run_id,
         "lane": lane,
         "roles": _unique(all_roles),
+        "diagnostics": workflow_validation_diagnostics(errors, warnings),
     }
 
 
@@ -338,6 +344,7 @@ def _stop_condition(lane: str, blocked_actions: list[str]) -> str:
 
 def _initial_loop_state(plan: dict[str, Any], intake: dict[str, Any] | None) -> dict[str, Any]:
     run_id = str(plan["workflow_run_id"])
+    created_at = _now()
     pending_tasks = [
         {
             "task_id": f"{run_id}:{stage['stage_id']}",
@@ -348,10 +355,11 @@ def _initial_loop_state(plan: dict[str, Any], intake: dict[str, Any] | None) -> 
             "depends_on": stage.get("depends_on") or [],
             "planner_action": "dispatch_ready_stage",
             "delta_brief": stage.get("purpose", ""),
+            **pending_task_timeout_fields(created_at),
         }
         for stage in plan.get("stages") or []
     ]
-    return {
+    state = {
         "workflow_run_id": run_id,
         "lane": plan.get("lane", ""),
         "state_path": workflow_loop_relpath(run_id),
@@ -377,8 +385,9 @@ def _initial_loop_state(plan: dict[str, Any], intake: dict[str, Any] | None) -> 
         "state_mode": "validated_dynamic_workflow_plan",
         "auto_spawn": False,
         "recursive_hook_dispatch": False,
-        "updated_at": _now(),
+        "updated_at": created_at,
     }
+    return diagnose_workflow_loop_state(state, now_iso=created_at)
 
 
 def _compact_loop_state(state: dict[str, Any]) -> dict[str, Any]:
@@ -396,6 +405,7 @@ def _compact_loop_state(state: dict[str, Any]) -> dict[str, Any]:
         "loop_decisions": state.get("loop_decisions", [])[-12:],
         "blocked_actions": state.get("blocked_actions", []),
         "stop_reason": state.get("stop_reason", ""),
+        "diagnostics": state.get("diagnostics", {}),
         "state_mode": state.get("state_mode", "validated_dynamic_workflow_plan"),
         "auto_spawn": False,
         "recursive_hook_dispatch": False,

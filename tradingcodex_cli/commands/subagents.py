@@ -164,6 +164,7 @@ def _workflow_loop_plan(root: Path, request: str, installed: list[dict[str, str]
         "workflow_loop_run_state_path": loop_state.get("state_path", "") if isinstance(loop_state, dict) else "",
         "pending_tasks": loop_state.get("pending_tasks", []) if isinstance(loop_state, dict) else [],
         "stop_reason": loop_state.get("stop_reason", "") if isinstance(loop_state, dict) else "",
+        "diagnostics": loop_state.get("diagnostics", {}) if isinstance(loop_state, dict) else {},
         "unknown_agents": unknown,
         "thread_policy": thread_policy,
         "parallel_spawn_ok": not unknown and len(batches) <= 1,

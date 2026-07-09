@@ -22,6 +22,7 @@ if SOURCE_ROOT not in sys.path:
 os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", "{{PROJECT_DIR}}")
 
 from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS
+from tradingcodex_service.application.workflow_diagnostics import diagnose_workflow_loop_state
 from tradingcodex_service.application.workflow_planner import build_workflow_intake, record_workflow_intake
 from tradingcodex_cli.startup_status import build_server_status, fallback_server_status
 
@@ -257,6 +258,7 @@ def loop_state_path(run_id) -> Path:
 
 
 def compact_loop_summary(state: dict) -> dict:
+    state = diagnose_workflow_loop_state(state) if state else state
     pending = state.get("pending_tasks") if isinstance(state.get("pending_tasks"), list) else []
     completed = state.get("completed_artifacts") if isinstance(state.get("completed_artifacts"), list) else []
     decisions = state.get("loop_decisions") if isinstance(state.get("loop_decisions"), list) else []
@@ -271,6 +273,7 @@ def compact_loop_summary(state: dict) -> dict:
         "escalation_proposals": state.get("escalation_proposals", []) if isinstance(state.get("escalation_proposals"), list) else [],
         "blocked_actions": state.get("blocked_actions", []) if isinstance(state.get("blocked_actions"), list) else [],
         "stop_reason": state.get("stop_reason", ""),
+        "diagnostics": state.get("diagnostics", {}),
         "state_mode": state.get("state_mode", "inspectable_assisted_loop"),
         "auto_spawn": False,
         "recursive_hook_dispatch": False,

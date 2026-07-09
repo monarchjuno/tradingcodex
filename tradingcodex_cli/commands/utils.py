@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.application.common import _safe_read, read_json as _read_json, sanitize_id
+from tradingcodex_service.application.workflow_diagnostics import diagnose_workflow_loop_state
 from tradingcodex_service.application.agents import (
     build_projection_state,
     list_user_visible_skills,
@@ -53,13 +54,15 @@ def read_subagent_state(root: Path, run_id: str | None) -> dict[str, Any]:
 
 def read_loop_state(root: Path, run_id: str | None = None) -> dict[str, Any]:
     if run_id:
-        return _read_json(root / ".tradingcodex" / "mainagent" / "workflows" / sanitize_id(run_id) / "loop-state.json", {})
+        state = _read_json(root / ".tradingcodex" / "mainagent" / "workflows" / sanitize_id(run_id) / "loop-state.json", {})
+        return diagnose_workflow_loop_state(state) if isinstance(state, dict) and state else state
     latest_path = root / ".tradingcodex" / "mainagent" / "workflow-loop-state.json"
     latest = _read_json(latest_path, {})
     state_path = str(latest.get("state_path") or "") if isinstance(latest, dict) else ""
     if state_path and state_path != ".tradingcodex/mainagent/workflow-loop-state.json":
-        return _read_json(root / state_path, latest)
-    return latest
+        state = _read_json(root / state_path, latest)
+        return diagnose_workflow_loop_state(state) if isinstance(state, dict) and state else state
+    return diagnose_workflow_loop_state(latest) if isinstance(latest, dict) and latest else latest
 
 
 def skills_for_role(root: Path, role: str) -> list[str]:
