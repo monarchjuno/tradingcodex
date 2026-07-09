@@ -562,7 +562,15 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("list_order_tickets"),
         handler_name="list_order_tickets",
-        input_schema=object_schema({"state": {"type": "string"}, "status": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
+        input_schema=object_schema(
+            {
+                "state": {"type": "string"},
+                "status": {"type": "string"},
+                "symbol": ORDER_TICKET_SCHEMA["properties"]["symbol"],
+                "side": ORDER_TICKET_SCHEMA["properties"]["side"],
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            }
+        ),
     ),
     McpToolSpec(
         name="record_broker_mapping_review",

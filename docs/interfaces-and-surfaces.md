@@ -217,7 +217,9 @@ Django Ninja provides local/staff typed control APIs:
 - `POST /api/workflows/record` records a validated staged workflow plan and initializes loop state
 - `POST /api/policy/simulate`
 - `GET|POST /api/orders/tickets`; list responses are scoped to the active
-  profile (`portfolio_id`, `account_id`, `strategy_id`)
+  profile (`portfolio_id`, `account_id`, `strategy_id`). MCP
+  `list_order_tickets` can further filter by `state`/`status`, `symbol`,
+  and `side`.
 - `GET /api/orders/tickets/{ticket_id}`
 - `POST /api/orders/tickets/{ticket_id}/checks`
 - `POST /api/orders/tickets/{ticket_id}/approval-request` local control only; Codex risk-manager workflows should prefer MCP `request_order_approval`

@@ -381,6 +381,33 @@ def test_order_ticket_checks_approval_scope_submit_fill_and_duplicate_block(tmp_
     assert "already has an execution result" in "\n".join(duplicate["reasons"])
 
 
+def test_list_order_tickets_filters_by_symbol_and_side(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    for ticket_id, symbol, side in [
+        ("dot-buy", "KRW-DOT", "buy"),
+        ("dot-sell", "KRW-DOT", "sell"),
+        ("classys-buy", "352820", "buy"),
+    ]:
+        call_mcp_tool(
+            workspace,
+            "create_order_ticket",
+            {
+                "principal_id": "portfolio-manager",
+                "ticket_id": ticket_id,
+                "symbol": symbol,
+                "side": side,
+                "quantity": 1,
+                "order_type": "limit",
+                "limit_price": 1000,
+            },
+        )
+
+    result = call_mcp_tool(workspace, "list_order_tickets", {"symbol": "KRW-DOT", "side": "buy"})
+
+    assert [ticket["ticket_id"] for ticket in result["tickets"]] == ["dot-buy"]
+
+
 def test_order_ticket_preserves_free_text_without_changing_execution_hash(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     ensure_runtime_database(workspace)
@@ -472,6 +499,7 @@ def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Pat
     try:
         tools = handle_mcp_rpc(workspace, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
         tool_names = {tool["name"] for tool in tools["result"]["tools"]}
+        list_order_schema = next(tool for tool in tools["result"]["tools"] if tool["name"] == "list_order_tickets")["inputSchema"]
     finally:
         if previous is None:
             os.environ.pop("TRADINGCODEX_MCP_SAFE_TOOLS", None)
@@ -479,6 +507,7 @@ def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Pat
             os.environ["TRADINGCODEX_MCP_SAFE_TOOLS"] = previous
 
     assert {"list_broker_connections", "get_broker_connection_status", "list_order_tickets", "get_order_ticket", "list_reconciliation_runs"}.issubset(tool_names)
+    assert {"state", "status", "symbol", "side", "limit"}.issubset(list_order_schema["properties"])
     assert "sync_broker_account" not in tool_names
     assert "create_order_ticket" not in tool_names
     assert "request_order_approval" not in tool_names

@@ -494,6 +494,12 @@ def list_order_tickets(workspace_root: Path | str, args: dict[str, Any] | None =
     state = args.get("state") or args.get("status")
     if state:
         queryset = queryset.filter(current_state=state)
+    symbol = args.get("symbol")
+    if symbol:
+        queryset = queryset.filter(symbol=str(symbol).upper())
+    side = args.get("side")
+    if side:
+        queryset = queryset.filter(side=str(side).lower())
     return {
         "tickets": [serialize_order_ticket(ticket) for ticket in queryset[:limit]],
         "db_canonical": True,
