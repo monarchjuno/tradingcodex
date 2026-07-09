@@ -3188,6 +3188,27 @@ def test_workspace_path_inputs_are_contained(tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="escapes"):
             create_research_artifact(workspace, {"artifact_id": "symlink-read", "markdown_path": "trading/research/outside-link.md"})
 
+
+def test_head_manager_synthesis_defaults_to_head_manager_report_path(tmp_path: Path) -> None:
+    workspace = make_workspace(tmp_path)
+
+    from tradingcodex_service.application.research import create_research_artifact
+
+    stored = create_research_artifact(
+        workspace,
+        {
+            "artifact_id": "synthesis-workflow-20260709",
+            "artifact_type": "synthesis",
+            "role": "head-manager",
+            "title": "Workflow synthesis",
+            "markdown": "# Workflow synthesis\n\n[factual] Accepted artifacts are ready for synthesis.\n",
+        },
+    )
+
+    assert stored["export_path"] == "trading/reports/head-manager/synthesis-workflow-20260709.md"
+    assert (workspace / stored["export_path"]).exists()
+
+
 def test_mcp_runtime_rejects_schema_type_and_extra_fields(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path)
     extra = handle_mcp_rpc(workspace, {

@@ -64,20 +64,21 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
     if args.get("role") and not metadata.get("role"):
         metadata = {**metadata, "role": args.get("role")}
     created_by = str(args.get("created_by") or args.get("principal_id") or source_frontmatter.get("created_by") or "system")
+    role = _effective_research_role(args, metadata, source_frontmatter, created_by, artifact_type)
     existing = find_workspace_research_artifact(root, artifact_id)
     if existing and existing.get("content_hash") != content_hash and not args.get("_append_version"):
         raise ValueError("research artifact already exists in this workspace; use append_research_artifact_version to create a new version")
 
     existing_version = _int_value(existing.get("version") if existing else None, default=0)
     version = existing_version + 1 if args.get("_append_version") else existing_version or 1
-    export_path = str(args.get("export_path") or (existing.get("path") if existing else "") or default_research_export_path_from_values(artifact_id, artifact_type, metadata))
+    export_path = str(args.get("export_path") or (existing.get("path") if existing else "") or default_research_export_path_from_values(artifact_id, artifact_type, {**metadata, "role": role}))
     frontmatter = {
         **source_frontmatter,
         "artifact_id": artifact_id,
         "artifact_type": artifact_type,
         "universe": args.get("universe") or source_frontmatter.get("universe") or "public_equity",
         "workflow_type": args.get("workflow_type") or source_frontmatter.get("workflow_type") or "",
-        "role": args.get("role") or metadata.get("role") or source_frontmatter.get("role") or _role_alias_from_actor(created_by),
+        "role": role,
         "symbol": symbol,
         "title": title,
         "source_as_of": args.get("source_as_of") or source_frontmatter.get("source_as_of") or "",
@@ -520,6 +521,21 @@ def _role_alias_from_actor(actor: str) -> str:
     return actor.replace("-analyst", "").replace("-manager", "").replace("-operator", "")
 
 
+def _effective_research_role(
+    args: dict[str, Any],
+    metadata: dict[str, Any],
+    source_frontmatter: dict[str, Any],
+    created_by: str,
+    artifact_type: str,
+) -> str:
+    role = str(args.get("role") or metadata.get("role") or source_frontmatter.get("role") or "")
+    if role:
+        return role
+    if _is_head_manager_synthesis_type(artifact_type) and created_by == "head-manager":
+        return "head-manager"
+    return _role_alias_from_actor(created_by)
+
+
 def _source_snapshot_id(payload: dict[str, Any]) -> str:
     base = "-".join(
         filter(
@@ -540,9 +556,50 @@ def default_research_export_path_from_values(artifact_id: str, artifact_type: st
     role = metadata.get("role") if isinstance(metadata, dict) else ""
     if artifact_type == "evidence_pack":
         return f"trading/research/{stem}.evidence.md"
-    if role in {"fundamental", "technical", "news", "macro", "instrument", "valuation", "portfolio", "risk", "policy"}:
-        return f"trading/reports/{role}/{stem}.md"
+    report_role = _report_directory_for_role(str(role or ""))
+    if not report_role and _is_head_manager_synthesis_type(artifact_type):
+        report_role = "head-manager"
+    if report_role:
+        return f"trading/reports/{report_role}/{stem}.md"
     return f"trading/research/{stem}.md"
+
+
+def _report_directory_for_role(role: str) -> str:
+    role_key = role.strip().lower().replace("_", "-")
+    return {
+        "head-manager": "head-manager",
+        "fundamental": "fundamental",
+        "fundamental-analyst": "fundamental",
+        "technical": "technical",
+        "technical-analyst": "technical",
+        "news": "news",
+        "news-analyst": "news",
+        "macro": "macro",
+        "macro-analyst": "macro",
+        "instrument": "instrument",
+        "instrument-analyst": "instrument",
+        "valuation": "valuation",
+        "valuation-analyst": "valuation",
+        "portfolio": "portfolio",
+        "portfolio-manager": "portfolio",
+        "risk": "risk",
+        "risk-manager": "risk",
+        "policy": "policy",
+    }.get(role_key, "")
+
+
+def _is_head_manager_synthesis_type(artifact_type: str) -> bool:
+    artifact_key = artifact_type.strip().lower().replace("-", "_")
+    return artifact_key in {
+        "synthesis",
+        "synthesis_report",
+        "head_manager_synthesis",
+        "head_manager_synthesis_report",
+        "workflow_synthesis",
+        "workflow_synthesis_report",
+        "final_synthesis",
+        "final_synthesis_report",
+    }
 
 
 def default_evidence_run_card_path(related_artifact_path: str) -> str:
