@@ -47,6 +47,34 @@ def templates_dir() -> Path:
     return repo_root() / "workspace_templates"
 
 
+def read_locked_mcp_launcher(target: Path) -> str:
+    lock_path = target / ".tradingcodex" / "generated" / "module-lock.json"
+    if not lock_path.is_file():
+        return ""
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    return str(lock.get("tradingcodex_mcp_launcher") or "")
+
+
+def resolve_mcp_server_launch(target: Path) -> tuple[str, list[str], str]:
+    """Resolve the workspace MCP server command as (command, args, launcher).
+
+    Precedence: TRADINGCODEX_MCP_LAUNCHER env var (empty value explicitly
+    clears the pin) > launcher recorded in module-lock.json > stock uvx.
+    launcher is "" when using the stock command.
+    """
+    package_spec = os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex")
+    launcher = os.environ.get("TRADINGCODEX_MCP_LAUNCHER")
+    if launcher is None:
+        launcher = read_locked_mcp_launcher(target)
+    launcher = launcher.strip()
+    if launcher:
+        return launcher, [], launcher
+    return "uvx", ["--from", package_spec, "python", "-m", "tradingcodex_cli", "mcp", "stdio"], ""
+
+
 def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: bool = False, module_ids: list[str] | None = None) -> dict[str, Any]:
     target = Path(project_dir).resolve()
     registry = load_module_registry(templates_dir())
@@ -54,6 +82,7 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
     subagents = collect_template_subagent_names(modules)
     existing_manifest = read_workspace_manifest(target)
     workspace_id = str(existing_manifest.get("workspace_id") or f"tcxw_{uuid.uuid4().hex}")
+    mcp_command, mcp_args, mcp_launcher = resolve_mcp_server_launch(target)
     context = {
         "PROJECT_NAME": sanitize_project_name(target.name or "tradingcodex-workspace"),
         "PROJECT_DIR": str(target),
@@ -63,6 +92,9 @@ def bootstrap_workspace(project_dir: Path | str, force: bool = False, dry_run: b
         "GENERATED_AT": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "TRADINGCODEX_VERSION": TRADINGCODEX_VERSION,
         "TRADINGCODEX_MCP_PACKAGE_SPEC": os.environ.get("TRADINGCODEX_MCP_PACKAGE_SPEC", "tradingcodex"),
+        "TRADINGCODEX_MCP_COMMAND": json.dumps(mcp_command),
+        "TRADINGCODEX_MCP_ARGS": json.dumps(mcp_args),
+        "TRADINGCODEX_MCP_LAUNCHER": mcp_launcher,
         "TRADINGCODEX_HOME": str(tradingcodex_home()),
         "SUBAGENT_COUNT": str(len(subagents)),
     }
@@ -172,6 +204,7 @@ def write_generated_indexes(target: Path, modules: list[Module], context: dict[s
         "generated_at": context["GENERATED_AT"],
         "tradingcodex_version": context["TRADINGCODEX_VERSION"],
         "tradingcodex_package_spec": context["TRADINGCODEX_MCP_PACKAGE_SPEC"],
+        "tradingcodex_mcp_launcher": context.get("TRADINGCODEX_MCP_LAUNCHER", ""),
         "tradingcodex_home": context["TRADINGCODEX_HOME"],
         "modules": [
             {

@@ -47,8 +47,8 @@ Do not execute orders.
 """
 
 [mcp_servers.tradingcodex]
-command = "uvx"
-args = ["--refresh", "--from", "{{TRADINGCODEX_MCP_PACKAGE_SPEC}}", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+command = {{TRADINGCODEX_MCP_COMMAND}}
+args = {{TRADINGCODEX_MCP_ARGS}}
 enabled = true
 env = { TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1", TRADINGCODEX_SERVICE_ADDR = "127.0.0.1:48267", TRADINGCODEX_WORKSPACE_ROOT = "{{PROJECT_DIR}}" }
 enabled_tools = ["list_workflow_artifacts", "list_broker_connections", "get_broker_connection_status", "sync_broker_account", "list_reconciliation_runs", "get_positions", "get_portfolio_snapshot", "create_order_ticket", "run_order_checks", "get_order_ticket", "list_order_tickets", "validate_order_approval_crosswalk", "get_pre_approval_occupancy", "get_resting_lifecycle_panel", "record_audit_event"]

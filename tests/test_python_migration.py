@@ -657,6 +657,64 @@ def test_template_copy_skips_python_bytecode_cache(tmp_path: Path) -> None:
     assert not list(target.rglob("*.pyc"))
 
 
+def read_rendered_mcp_blocks(workspace: Path) -> dict[str, dict]:
+    blocks = {
+        "config.toml": tomllib.loads((workspace / ".codex" / "config.toml").read_text(encoding="utf-8"))["mcp_servers"]["tradingcodex"],
+    }
+    agent_files = sorted((workspace / ".codex" / "agents").glob("*.toml"))
+    assert agent_files
+    for agent_file in agent_files:
+        blocks[agent_file.name] = tomllib.loads(agent_file.read_text(encoding="utf-8"))["mcp_servers"]["tradingcodex"]
+    return blocks
+
+
+def test_bootstrap_uses_mcp_launcher_env_and_records_lock(tmp_path: Path, monkeypatch) -> None:
+    launcher = str(tmp_path / "bin" / "tcx-mcp-launcher")
+    monkeypatch.setenv("TRADINGCODEX_MCP_LAUNCHER", launcher)
+    workspace = tmp_path / "workspace"
+    bootstrap_workspace(workspace, force=True)
+    for name, mcp in read_rendered_mcp_blocks(workspace).items():
+        assert mcp["command"] == launcher, name
+        assert mcp["args"] == [], name
+    lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
+    assert lock["tradingcodex_mcp_launcher"] == launcher
+
+
+def test_bootstrap_without_launcher_keeps_stock_uvx_without_refresh(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("TRADINGCODEX_MCP_LAUNCHER", raising=False)
+    monkeypatch.delenv("TRADINGCODEX_MCP_PACKAGE_SPEC", raising=False)
+    workspace = tmp_path / "workspace"
+    bootstrap_workspace(workspace, force=True)
+    for name, mcp in read_rendered_mcp_blocks(workspace).items():
+        assert mcp["command"] == "uvx", name
+        assert mcp["args"] == ["--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"], name
+        assert "--refresh" not in mcp["args"], name
+    lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
+    assert lock["tradingcodex_mcp_launcher"] == ""
+
+
+def test_reattach_preserves_locked_launcher_without_env(tmp_path: Path, monkeypatch) -> None:
+    launcher = str(tmp_path / "bin" / "tcx-mcp-launcher")
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("TRADINGCODEX_MCP_LAUNCHER", launcher)
+    bootstrap_workspace(workspace, force=True)
+
+    monkeypatch.delenv("TRADINGCODEX_MCP_LAUNCHER")
+    bootstrap_workspace(workspace, force=True)
+    for name, mcp in read_rendered_mcp_blocks(workspace).items():
+        assert mcp["command"] == launcher, name
+        assert mcp["args"] == [], name
+    lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
+    assert lock["tradingcodex_mcp_launcher"] == launcher
+
+    monkeypatch.setenv("TRADINGCODEX_MCP_LAUNCHER", "")
+    bootstrap_workspace(workspace, force=True)
+    for name, mcp in read_rendered_mcp_blocks(workspace).items():
+        assert mcp["command"] == "uvx", name
+    lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
+    assert lock["tradingcodex_mcp_launcher"] == ""
+
+
 def test_workspace_template_module_contracts(tmp_path: Path) -> None:
     registry = load_module_registry(templates_dir())
     assert set(DEFAULT_MODULE_IDS).issubset(registry)
@@ -1191,7 +1249,8 @@ def test_install_docs_tell_agents_not_to_invent_workspace_paths() -> None:
     assert "tradingcodex-workspace" in generated_workspaces
 
 
-def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
+def test_python_generator_creates_workspace_contract(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("TRADINGCODEX_MCP_LAUNCHER", raising=False)
     workspace = make_workspace(tmp_path)
     assert (workspace / "pyproject.toml").exists()
     assert f'version = "{TRADINGCODEX_VERSION}"' in (workspace / "pyproject.toml").read_text(encoding="utf-8")
@@ -1479,7 +1538,7 @@ def test_python_generator_creates_workspace_contract(tmp_path: Path) -> None:
             if spec.scope == "subagent_role" and role not in spec.owner_roles:
                 for owner_role in spec.owner_roles:
                     assert filesystem_rules[f".tradingcodex/subagents/skills/{owner_role}/{skill}/**"] == "deny"
-    expected_tcx_mcp_args = ["--refresh", "--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
+    expected_tcx_mcp_args = ["--from", "tradingcodex", "python", "-m", "tradingcodex_cli", "mcp", "stdio"]
     root_mcp = root_config["mcp_servers"]["tradingcodex"]
     assert root_mcp["command"] == "uvx"
     assert root_mcp["args"] == expected_tcx_mcp_args

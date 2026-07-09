@@ -300,11 +300,19 @@ trusted by Codex.
 The generated TradingCodex MCP command uses:
 
 ```text
-uvx --refresh --from <package-spec> python -m tradingcodex_cli mcp stdio
+uvx --from <package-spec> python -m tradingcodex_cli mcp stdio
 ```
 
 The package spec is recorded during bootstrap so PyPI and GitHub-source
 installs keep the same MCP source without stale source-cache reuse.
+
+If `TRADINGCODEX_MCP_LAUNCHER` is set when attaching or updating, the
+generated MCP entries use that launcher path as `command` with empty `args`
+instead of the stock `uvx` command. The launcher is recorded in
+`.tradingcodex/generated/module-lock.json` (`tradingcodex_mcp_launcher`), so
+later attaches and updates preserve it without the environment variable.
+Setting `TRADINGCODEX_MCP_LAUNCHER=""` (empty) on attach clears the recorded
+launcher and restores the stock command.
 
 Codex project config should register only the `tradingcodex` MCP server.
 Generated permission profiles allow network access for public evidence
