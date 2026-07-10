@@ -330,6 +330,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "cancel_approved_order",
             "expire_stale_approved_orders",
             "refresh_broker_order_status",
+            "refresh_broker_order_statuses",
             "get_order_status",
             "get_order_ticket",
             "list_order_tickets",

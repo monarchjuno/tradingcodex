@@ -78,6 +78,8 @@ class FakeLiveBrokerAdapter(BrokerAdapter):
     submit_calls: list[dict] = []
     cancel_calls: list[str] = []
     status_calls: list[str] = []
+    batch_status_calls: list[list[str]] = []
+    missing_batch_ids: set[str] = set()
 
     def __init__(self, connection, workspace_root: Path | str | None = None) -> None:
         self.connection = connection
@@ -90,6 +92,8 @@ class FakeLiveBrokerAdapter(BrokerAdapter):
         cls.submit_calls = []
         cls.cancel_calls = []
         cls.status_calls = []
+        cls.batch_status_calls = []
+        cls.missing_batch_ids = set()
 
     def describe_capabilities(self) -> dict:
         metadata = self.connection.metadata if isinstance(self.connection.metadata, dict) else {}
@@ -159,6 +163,25 @@ class FakeLiveBrokerAdapter(BrokerAdapter):
             "fill_id": f"refresh-{broker_order_id}",
             "submitted_at": "2026-01-01T00:00:00Z",
         }
+
+    def get_order_statuses(self, broker_order_ids: list[str]) -> dict:
+        """Batch status: one call covers every requested id; ids missing from
+        this batch's mapping fall through as ``unknown`` so the caller can
+        distinguish a real broker miss from a crash."""
+        self.batch_status_calls.append(list(broker_order_ids))
+        results: dict = {}
+        for broker_order_id in broker_order_ids:
+            if self.missing_batch_ids and broker_order_id in self.missing_batch_ids:
+                continue
+            results[broker_order_id] = {
+                "status": "filled",
+                "broker_order_id": broker_order_id,
+                "filled_quantity": 1,
+                "average_price": 100,
+                "fill_id": f"refresh-{broker_order_id}",
+                "submitted_at": "2026-01-01T00:00:00Z",
+            }
+        return results
 
 
 def install_fake_live_provider() -> None:
@@ -842,6 +865,155 @@ def test_fake_live_provider_registration_gates_submit_and_records_fill_sync(tmp_
     assert FakeLiveBrokerAdapter.status_calls == [broker_order.broker_order_id]
 
 
+def test_refresh_broker_order_status_transitions_ticket_and_records_fill(tmp_path: Path, monkeypatch) -> None:
+    workspace = make_workspace(tmp_path)
+    ticket_id = f"fake-live-refresh-{uuid.uuid4().hex[:12]}"
+    broker_id = "fake-live-refresh"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    confirmation = create_approved_fake_live_ticket(workspace, ticket_id, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+
+    submitted = call_mcp_tool(
+        workspace,
+        "submit_approved_order",
+        {"principal_id": "execution-operator", "ticket_id": ticket_id, "live_confirmation": confirmation},
+    )
+    assert submitted["status"] == "accepted", submitted
+
+    broker_order_id = submitted["result"]["broker_order_id"]
+
+    refreshed = call_mcp_tool(
+        workspace,
+        "refresh_broker_order_status",
+        {"principal_id": "execution-operator", "broker_order_id": broker_order_id},
+    )
+    assert refreshed["status"] == "refreshed"
+    assert refreshed["broker_status"] == "filled"
+    assert refreshed["broker_order_id"] == broker_order_id
+    assert refreshed["ticket"]["current_state"] == "FILLED"
+    assert refreshed["ticket"]["broker_orders"][0]["broker_status"] == "filled"
+
+    from apps.orders.models import BrokerOrder, Fill, OrderEvent, OrderTicket
+
+    ticket = OrderTicket.objects.get(ticket_id=ticket_id)
+    assert ticket.current_state == "FILLED"
+    broker_order = BrokerOrder.objects.get(ticket=ticket, broker_order_id=broker_order_id)
+    assert broker_order.broker_status == "filled"
+    assert broker_order.last_seen_at is not None
+    assert broker_order.raw_status_payload_hash
+
+    fills = Fill.objects.filter(ticket=ticket, broker_order_id=broker_order_id)
+    assert fills.exists()
+
+    refresh_event = OrderEvent.objects.get(ticket=ticket, event_type="status_refreshed")
+    assert refresh_event.actor == "execution-operator"
+    assert refresh_event.payload["broker_order_id"] == broker_order_id
+    assert refresh_event.payload["broker_status"] == "filled"
+
+    assert FakeLiveBrokerAdapter.status_calls == [broker_order_id]
+
+
+def _submit_acked_live_ticket(workspace: Path, ticket_id: str, broker_id: str, monkeypatch) -> str:
+    confirmation = create_approved_fake_live_ticket(workspace, ticket_id, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+    submitted = call_mcp_tool(
+        workspace,
+        "submit_approved_order",
+        {"principal_id": "execution-operator", "ticket_id": ticket_id, "live_confirmation": confirmation},
+    )
+    assert submitted["status"] == "accepted", submitted
+    return submitted["result"]["broker_order_id"]
+
+
+def test_refresh_broker_order_statuses_batch_calls_adapter_once_per_connection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tradingcodex_service.application import orders as orders_module
+
+    workspace = make_workspace(tmp_path)
+    broker_id = "fake-live-batch"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+
+    ticket_a = f"batch-a-{uuid.uuid4().hex[:10]}"
+    ticket_b = f"batch-b-{uuid.uuid4().hex[:10]}"
+    ticket_c = f"batch-c-{uuid.uuid4().hex[:10]}"
+    bo_a = _submit_acked_live_ticket(workspace, ticket_a, broker_id, monkeypatch)
+    bo_b = _submit_acked_live_ticket(workspace, ticket_b, broker_id, monkeypatch)
+    bo_c = _submit_acked_live_ticket(workspace, ticket_c, broker_id, monkeypatch)
+
+    # Force one ticket's ref to be missing from the batch result.
+    FakeLiveBrokerAdapter.missing_batch_ids.add(bo_c)
+
+    payload = orders_module.refresh_broker_order_statuses(
+        workspace,
+        {"principal_id": "execution-operator", "ticket_ids": [ticket_a, ticket_b, ticket_c]},
+    )
+
+    assert payload["status"] == "batch_refreshed"
+    results_by_ticket = {r["ticket_id"]: r for r in payload["results"]}
+    assert set(results_by_ticket) == {ticket_a, ticket_b, ticket_c}
+
+    for ticket_id, broker_order_id in [(ticket_a, bo_a), (ticket_b, bo_b)]:
+        entry = results_by_ticket[ticket_id]
+        assert entry["status"] == "refreshed"
+        assert entry["broker_order_id"] == broker_order_id
+        assert entry["broker_status"] == "filled"
+
+    missing_entry = results_by_ticket[ticket_c]
+    assert missing_entry["status"] == "unknown"
+    assert missing_entry["broker_order_id"] == bo_c
+    assert missing_entry["broker_status"] == "unknown"
+
+    assert len(FakeLiveBrokerAdapter.batch_status_calls) == 1
+    assert sorted(FakeLiveBrokerAdapter.batch_status_calls[0]) == sorted([bo_a, bo_b, bo_c])
+
+    assert FakeLiveBrokerAdapter.status_calls == []
+
+
+def test_refresh_broker_order_statuses_batch_isolates_per_ticket_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    from tradingcodex_service.application import orders as orders_module
+
+    workspace = make_workspace(tmp_path)
+    broker_id = "fake-live-batch-fail"
+    FakeLiveBrokerAdapter.reset()
+    register_fake_live_connection(workspace, broker_id)
+    enable_live_policy(workspace, broker_id)
+    monkeypatch.setenv("TRADINGCODEX_ENABLE_LIVE_EXECUTION", "1")
+
+    ticket_ok = f"batch-ok-{uuid.uuid4().hex[:10]}"
+    ticket_bad = f"batch-bad-{uuid.uuid4().hex[:10]}"
+    bo_ok = _submit_acked_live_ticket(workspace, ticket_ok, broker_id, monkeypatch)
+    bo_bad = _submit_acked_live_ticket(workspace, ticket_bad, broker_id, monkeypatch)
+
+    real_apply = orders_module._apply_broker_status
+
+    def flaky_apply(root, ticket, broker_order, adapter_status, principal_id):
+        if broker_order.broker_order_id == bo_bad:
+            raise RuntimeError("simulated per-ticket apply failure")
+        return real_apply(root, ticket, broker_order, adapter_status, principal_id)
+
+    monkeypatch.setattr(orders_module, "_apply_broker_status", flaky_apply)
+
+    payload = orders_module.refresh_broker_order_statuses(
+        workspace,
+        {"principal_id": "execution-operator", "ticket_ids": [ticket_ok, ticket_bad]},
+    )
+
+    results_by_ticket = {r["ticket_id"]: r for r in payload["results"]}
+    assert results_by_ticket[ticket_ok]["status"] == "refreshed"
+    assert results_by_ticket[ticket_ok]["broker_order_id"] == bo_ok
+    assert results_by_ticket[ticket_bad]["status"] == "error"
+    assert results_by_ticket[ticket_bad]["broker_order_id"] == bo_bad
+    assert any("RuntimeError" in r for r in results_by_ticket[ticket_bad]["reasons"])
+
+
 def test_fake_live_provider_cancel_calls_provider_cancel_path(tmp_path: Path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
     ticket_id = f"fake-live-cancel-{uuid.uuid4().hex[:12]}"
@@ -1142,4 +1314,48 @@ def test_order_lineage_read_tools_are_role_scoped_and_read_only(tmp_path):
         assert "execution-operator" in tool_by_name[name]["annotations"]["allowed_roles"]
     assert tool_by_name["request_order_approval"]["annotations"]["requires_approval"] is True
     assert tool_by_name["submit_approved_order"]["annotations"]["readOnlyHint"] is False
+
+
+def test_refresh_broker_order_statuses_tool_is_registered_and_allowlisted(tmp_path: Path) -> None:
+    from tradingcodex_service.mcp_runtime import TOOL_SPECS
+    from tradingcodex_service.application.agents import AGENT_SPECS
+
+    make_workspace(tmp_path)
+
+    spec = next(s for s in TOOL_SPECS if s.name == "refresh_broker_order_statuses")
+    assert "execution-operator" in spec.allowed_roles
+    assert spec.handler_name == "refresh_broker_order_statuses"
+    assert spec.category == "execution"
+    assert spec.experimental is True
+    assert "ticket_ids" in spec.input_schema["properties"]
+    assert spec.input_schema.get("additionalProperties") is False
+
+    allowlist = AGENT_SPECS["execution-operator"].mcp_allowlist
+    assert "refresh_broker_order_statuses" in allowlist
+    assert "refresh_broker_order_status" in allowlist
+
+
+def test_refresh_broker_order_statuses_is_listed_in_static_execution_operator_template(tmp_path: Path) -> None:
+    from tradingcodex_service.application.agents import AGENT_SPECS
+    from tradingcodex_service.mcp_runtime import TOOL_SPECS
+
+    make_workspace(tmp_path)
+
+    template_path = (
+        Path(__file__).resolve().parents[1]
+        / "workspace_templates"
+        / "modules"
+        / "fixed-subagents"
+        / "files"
+        / ".codex"
+        / "agents"
+        / "execution-operator.toml"
+    )
+    text = template_path.read_text(encoding="utf-8")
+    assert '"refresh_broker_order_statuses"' in text
+    assert '"refresh_broker_order_status"' in text
+
+    spec = next(s for s in TOOL_SPECS if s.name == "refresh_broker_order_statuses")
+    assert "execution-operator" in spec.allowed_roles
+    assert "refresh_broker_order_statuses" in AGENT_SPECS["execution-operator"].mcp_allowlist
 

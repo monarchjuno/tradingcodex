@@ -942,6 +942,54 @@ def get_order_ticket(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
         "workspace_context": workspace_context_payload(workspace_root),
     }
 
+def _apply_broker_status(root: Path, ticket: Any, broker_order: Any, adapter_status: dict[str, Any], principal_id: str) -> str:
+    """Apply a broker adapter status to a local ticket + broker order (ROB-803).
+
+    Shared by the single-ticket refresh path and the batch refresh path so
+    status->state-transition, fill recording, broker_order mutation, and the
+    `status_refreshed` audit event stay identical. Returns the normalized
+    lowercase broker_status. Pure of any adapter call — the status dict is
+    passed in by the caller.
+    """
+    broker_status = str(adapter_status.get("status") or "unknown").lower()
+    broker_order.broker_status = broker_status
+    broker_order.last_seen_at = datetime.now(timezone.utc)
+    broker_order.raw_status_payload_hash = stable_hash(adapter_status)
+    metadata = dict(broker_order.metadata or {})
+    metadata["last_status_refresh"] = adapter_status
+    broker_order.metadata = metadata
+    broker_order.save(update_fields=["broker_status", "last_seen_at", "raw_status_payload_hash", "metadata"])
+    record_order_event(ticket, "status_refreshed", principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status, "adapter_status": adapter_status})
+    state_target = {
+        "filled": "FILLED",
+        "partially_filled": "PARTIALLY_FILLED",
+        "partial": "PARTIALLY_FILLED",
+        "canceled": "CANCELED",
+        "cancelled": "CANCELED",
+        "rejected": "REJECTED",
+        "expired": "EXPIRED",
+        "failed": "FAILED",
+    }.get(broker_status)
+    if state_target and ticket.current_state != state_target:
+        try:
+            transition_order_ticket(ticket, state_target, principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status})
+        except ValueError:
+            pass
+    if adapter_status.get("filled_quantity") and adapter_status.get("average_price"):
+        fill_payload = {
+            **adapter_status,
+            "broker_order_id": broker_order.broker_order_id,
+            "submitted_at": broker_order.submitted_at.isoformat() if broker_order.submitted_at else now_iso(),
+        }
+        _record_ticket_submit_result(root, order_payload_from_ticket(ticket), {"approved_by": "status-refresh"}, fill_payload, principal_id)
+        try:
+            from tradingcodex_service.application.brokers import sync_broker_account
+
+            sync_broker_account(root, {"broker_id": ticket.broker_connection.broker_id, "principal_id": principal_id})
+        except Exception:
+            pass
+    return broker_status
+
 def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
     ensure_runtime_database(root)
@@ -1000,43 +1048,7 @@ def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]
         return result
 
     adapter_status = adapter_for_connection(ticket.broker_connection, root).get_order_status(broker_order.broker_order_id)
-    broker_status = str(adapter_status.get("status") or "unknown").lower()
-    broker_order.broker_status = broker_status
-    broker_order.last_seen_at = datetime.now(timezone.utc)
-    broker_order.raw_status_payload_hash = stable_hash(adapter_status)
-    metadata = dict(broker_order.metadata or {})
-    metadata["last_status_refresh"] = adapter_status
-    broker_order.metadata = metadata
-    broker_order.save(update_fields=["broker_status", "last_seen_at", "raw_status_payload_hash", "metadata"])
-    record_order_event(ticket, "status_refreshed", principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status, "adapter_status": adapter_status})
-    state_target = {
-        "filled": "FILLED",
-        "partially_filled": "PARTIALLY_FILLED",
-        "partial": "PARTIALLY_FILLED",
-        "canceled": "CANCELED",
-        "cancelled": "CANCELED",
-        "rejected": "REJECTED",
-        "expired": "EXPIRED",
-        "failed": "FAILED",
-    }.get(broker_status)
-    if state_target and ticket.current_state != state_target:
-        try:
-            transition_order_ticket(ticket, state_target, principal_id, {"broker_order_id": broker_order.broker_order_id, "broker_status": broker_status})
-        except ValueError:
-            pass
-    if adapter_status.get("filled_quantity") and adapter_status.get("average_price"):
-        fill_payload = {
-            **adapter_status,
-            "broker_order_id": broker_order.broker_order_id,
-            "submitted_at": broker_order.submitted_at.isoformat() if broker_order.submitted_at else now_iso(),
-        }
-        _record_ticket_submit_result(root, order_payload_from_ticket(ticket), {"approved_by": "status-refresh"}, fill_payload, principal_id)
-        try:
-            from tradingcodex_service.application.brokers import sync_broker_account
-
-            sync_broker_account(root, {"broker_id": ticket.broker_connection.broker_id, "principal_id": principal_id})
-        except Exception:
-            pass
+    broker_status = _apply_broker_status(root, ticket, broker_order, adapter_status, principal_id)
     ticket.refresh_from_db()
     result = {
         "status": "refreshed",
@@ -1050,6 +1062,118 @@ def refresh_broker_order_status(workspace_root: Path | str, args: dict[str, Any]
     }
     write_audit_event(root, {"type": "broker_order_status.refreshed", "payload": result}, principal_id, "service")
     return result
+
+def refresh_broker_order_statuses(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
+    root = Path(workspace_root)
+    ensure_runtime_database(root)
+    from tradingcodex_service.application.brokers import adapter_for_connection, broker_connection_provider_review_reasons
+    from apps.orders.models import OrderTicket
+
+    principal_id = str(args.get("principal_id") or "execution-operator")
+    ticket_ids = list(args.get("ticket_ids") or [])
+    if ticket_ids:
+        tickets = list(
+            OrderTicket.objects.select_related("broker_connection")
+            .prefetch_related("broker_orders")
+            .filter(ticket_id__in=ticket_ids)
+        )
+    else:
+        portfolio_id, account_id, strategy_id = portfolio_keys(args, root)
+        tickets = list(
+            OrderTicket.objects.select_related("broker_connection")
+            .prefetch_related("broker_orders")
+            .filter(
+                portfolio_id=portfolio_id,
+                account_id=account_id,
+                strategy_id=strategy_id,
+            )
+            .exclude(current_state__in=["FILLED", "REJECTED", "CANCELED", "EXPIRED", "FAILED"])
+        )
+
+    by_conn: dict[Any, list[tuple[Any, Any]]] = {}
+    results: list[dict[str, Any]] = []
+    for ticket in tickets:
+        broker_order = ticket.broker_orders.order_by("-submitted_at", "-id").first()
+        if ticket.broker_connection is None:
+            results.append(
+                {
+                    "ticket_id": ticket.ticket_id,
+                    "status": "local-only",
+                    "reasons": ["ticket has no broker connection"],
+                }
+            )
+            continue
+        if broker_order is None:
+            results.append(
+                {
+                    "ticket_id": ticket.ticket_id,
+                    "status": "no_broker_order",
+                    "reasons": ["ticket has no broker order recorded yet"],
+                }
+            )
+            continue
+        by_conn.setdefault(ticket.broker_connection, []).append((ticket, broker_order))
+
+    for connection, pairs in by_conn.items():
+        source_reasons = broker_connection_provider_review_reasons(connection, root)
+        if source_reasons:
+            for ticket, broker_order in pairs:
+                results.append(
+                    {
+                        "ticket_id": ticket.ticket_id,
+                        "status": "blocked",
+                        "broker_order_id": broker_order.broker_order_id,
+                        "reasons": source_reasons,
+                    }
+                )
+            continue
+        adapter = adapter_for_connection(connection, root)
+        order_ids = [bo.broker_order_id for _t, bo in pairs]
+        try:
+            status_map = adapter.get_order_statuses(order_ids)
+        except Exception as exc:  # noqa: BLE001 — one connection's failure must not abort the batch
+            for ticket, broker_order in pairs:
+                results.append(
+                    {
+                        "ticket_id": ticket.ticket_id,
+                        "status": "error",
+                        "broker_order_id": broker_order.broker_order_id,
+                        "reasons": [f"batch refresh failed: {type(exc).__name__}"],
+                    }
+                )
+            continue
+        for ticket, broker_order in pairs:
+            adapter_status = status_map.get(broker_order.broker_order_id) or {"status": "unknown"}
+            try:
+                broker_status = _apply_broker_status(root, ticket, broker_order, adapter_status, principal_id)
+                ticket.refresh_from_db()
+                entry_status = "unknown" if broker_status == "unknown" else "refreshed"
+                results.append(
+                    {
+                        "ticket_id": ticket.ticket_id,
+                        "status": entry_status,
+                        "broker_order_id": broker_order.broker_order_id,
+                        "broker_status": broker_status,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001 — per-ticket isolation
+                results.append(
+                    {
+                        "ticket_id": ticket.ticket_id,
+                        "status": "error",
+                        "broker_order_id": broker_order.broker_order_id,
+                        "reasons": [f"apply failed: {type(exc).__name__}"],
+                    }
+                )
+
+    payload = {
+        "status": "batch_refreshed",
+        "results": results,
+        "db_canonical": True,
+        "workspace_context": workspace_context_payload(root),
+    }
+    write_audit_event(root, {"type": "broker_order_status.batch_refreshed", "payload": payload}, principal_id, "service")
+    return payload
 
 def get_order_status(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
