@@ -22,6 +22,7 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "get_positions",
     "get_portfolio_snapshot",
     "list_reconciliation_runs",
+    "list_unattributed_fills",
     "list_workflow_artifacts",
     "get_research_artifact",
     "list_research_artifacts",
@@ -511,6 +512,42 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         allowed_roles=roles_with_mcp_tool("list_reconciliation_runs"),
         handler_name="list_reconciliation_runs",
         input_schema=object_schema({"broker_id": {"type": "string"}, "limit": {"type": "integer", "minimum": 1, "maximum": 200}}),
+    ),
+    McpToolSpec(
+        name="list_unattributed_fills",
+        description="List broker fills discovered by sync that have no canonical order ticket, with linkage status so manual executions are never silently dropped.",
+        category="brokers",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("list_unattributed_fills"),
+        handler_name="list_unattributed_fills",
+        input_schema=object_schema(
+            {
+                "broker_id": {"type": "string"},
+                "broker_connection_id": {"type": "string"},
+                "broker_account_id": {"type": "string"},
+                "attribution_status": {"type": "string", "enum": ["unattributed", "linked"]},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 500},
+            }
+        ),
+    ),
+    McpToolSpec(
+        name="annotate_manual_execution",
+        description="Link an unattributed broker fill to an existing VOIDED order ticket as an evidence-backed manual execution; provenance stays manual and no canonical fill or broker order is fabricated.",
+        category="orders",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("annotate_manual_execution"),
+        handler_name="annotate_manual_execution",
+        input_schema=object_schema(
+            {
+                "fill_id": {"type": "string"},
+                "broker_order_id": {"type": "string"},
+                "ticket_id": {"type": "string"},
+                "order_ticket_id": {"type": "string"},
+                "evidence": {"type": "string"},
+                "cost_basis_price": {"type": "number"},
+            },
+            ["fill_id"],
+        ),
     ),
     McpToolSpec(
         name="create_order_ticket",
@@ -1013,7 +1050,7 @@ def call_mcp_tool(workspace_root: Path | str, name: str, args: dict[str, Any] | 
 
 
 def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str, Any], principal_id: str) -> dict[str, Any]:
-    from tradingcodex_service.application import audit, brokers, orders, order_lineage, policy, portfolio, research, resting_lifecycle
+    from tradingcodex_service.application import audit, brokers, manual_fills, orders, order_lineage, policy, portfolio, research, resting_lifecycle
     from apps.mcp import services as mcp_services
 
     def get_tradingcodex_status() -> dict[str, Any]:
@@ -1064,6 +1101,8 @@ def raw_call_tool(workspace_root: Path | str, tool: McpToolSpec, args: dict[str,
         "get_connector_build_status": lambda: brokers.get_connector_build_status(workspace_root, args),
         "sync_broker_account": lambda: brokers.sync_broker_account(workspace_root, with_principal),
         "list_reconciliation_runs": lambda: brokers.list_reconciliation_runs(workspace_root, args),
+        "list_unattributed_fills": lambda: manual_fills.list_unattributed_fills(workspace_root, args),
+        "annotate_manual_execution": lambda: manual_fills.annotate_manual_execution(workspace_root, with_principal),
         "create_order_ticket": lambda: orders.create_order_ticket(workspace_root, with_principal),
         "run_order_checks": lambda: orders.run_order_checks(workspace_root, with_principal),
         "request_order_approval": lambda: orders.request_order_approval(workspace_root, {**with_principal, "approved_by": args.get("approved_by") or principal_id}),

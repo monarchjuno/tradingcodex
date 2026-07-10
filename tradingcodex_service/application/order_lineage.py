@@ -10,13 +10,14 @@ from tradingcodex_service.application.portfolio import portfolio_keys
 from tradingcodex_service.application.runtime import ensure_runtime_database, workspace_context_payload
 
 
-TERMINAL_TICKET_STATES = {"FILLED", "REJECTED", "CANCELED", "EXPIRED", "FAILED"}
+TERMINAL_TICKET_STATES = {"FILLED", "REJECTED", "CANCELED", "EXPIRED", "FAILED", "VOIDED"}
 UNRESOLVED_TICKET_STATES = {"APPROVED", "RESERVED", "SUBMITTED", "ACKED", "PARTIALLY_FILLED", "NEEDS_REVIEW"}
 BROKER_TERMINAL_STATUSES = {"filled", "rejected", "canceled", "cancelled", "expired", "failed"}
 BROKER_UNRESOLVED_STATUSES = {"", "unknown", "open", "new", "submitted", "accepted", "acked", "pending", "partial", "partially_filled"}
 BROKER_ORDER_REQUIRED_STATES = {"APPROVED", "RESERVED", "SUBMITTED", "ACKED", "PARTIALLY_FILLED", "FILLED", "NEEDS_REVIEW"}
 REPLACEMENT_ORIGINAL_KEYS = ("original_ticket_id", "replaces_ticket_id", "replacement_of", "original_order_ticket_id")
-REPLACEMENT_CHILD_KEYS = ("replacement_ticket_id", "replacement_order_ticket_id", "replaced_by_ticket_id")
+REPLACEMENT_CHILD_KEYS = ("replacement_ticket_id", "replacement_order_ticket_id", "replaced_by_ticket_id", "superseded_by_ticket_id")
+MANUAL_EXECUTION_EVENT_TYPE = "manual_execution_linked"
 
 
 def validate_order_approval_crosswalk(workspace_root, args=None):
@@ -34,27 +35,38 @@ def validate_order_approval_crosswalk(workspace_root, args=None):
     ticket_id = str(args.get("ticket_id") or args.get("order_ticket_id") or args.get("order_id") or "")
     approval_receipt_id = str(args.get("approval_receipt_id") or args.get("receipt_id") or "")
     broker_order_id = str(args.get("broker_order_id") or "")
+    lookup_filters = {
+        key: value
+        for key, value in (("ticket_id", ticket_id), ("approval_receipt_id", approval_receipt_id), ("broker_order_id", broker_order_id))
+        if value
+    }
     if ticket_id:
         ticket_queryset = ticket_queryset.filter(ticket_id=ticket_id)
     if broker_order_id:
         ticket_queryset = ticket_queryset.filter(broker_orders__broker_order_id=broker_order_id)
 
-    tickets = list(ticket_queryset.distinct().order_by("-created_at", "-id")[: _limit(args)])
-    ticket_ids = {ticket.ticket_id for ticket in tickets}
-    approval_queryset = ApprovalReceipt.objects.all().order_by("-created_at", "-id")
-    if approval_receipt_id:
-        approval_queryset = approval_queryset.filter(receipt_id=approval_receipt_id)
-    elif ticket_ids:
-        approval_queryset = approval_queryset.filter(order_ticket_id__in=ticket_ids)
-    approvals = list(approval_queryset[: _limit(args)])
+    try:
+        tickets = _matched_tickets(ticket_queryset, args)
+        ticket_ids = {ticket.ticket_id for ticket in tickets}
+        approval_queryset = ApprovalReceipt.objects.all().order_by("-created_at", "-id")
+        if approval_receipt_id:
+            approval_queryset = approval_queryset.filter(receipt_id=approval_receipt_id)
+        elif lookup_filters or ticket_ids:
+            approval_queryset = approval_queryset.filter(order_ticket_id__in=ticket_ids)
+        approvals = list(approval_queryset[: _limit(args)])
 
-    if approval_receipt_id and not tickets:
-        approved_ticket_ids = [approval.order_ticket_id for approval in approvals if approval.order_ticket_id]
-        tickets = list(
-            OrderTicket.objects.select_related("broker_connection", "broker_account")
-            .prefetch_related("broker_orders", "fills", "events", "check_runs")
-            .filter(ticket_id__in=approved_ticket_ids)
-        )
+        if approval_receipt_id and not tickets:
+            approved_ticket_ids = [approval.order_ticket_id for approval in approvals if approval.order_ticket_id]
+            tickets = list(
+                OrderTicket.objects.select_related("broker_connection", "broker_account")
+                .prefetch_related("broker_orders", "fills", "events", "check_runs")
+                .filter(ticket_id__in=approved_ticket_ids)
+            )
+    except Exception as exc:
+        return _lookup_failed_payload(root, exc)
+
+    if lookup_filters and not tickets and not approvals:
+        return _no_match_payload(root, lookup_filters)
     ticket_by_id = {ticket.ticket_id: ticket for ticket in tickets}
     lineage_index = _lineage_index(portfolio_id, account_id, strategy_id)
 
@@ -132,6 +144,40 @@ def _limit(args):
     return max(1, min(int(args.get("limit") or 200), 500))
 
 
+def _matched_tickets(ticket_queryset, args):
+    return list(ticket_queryset.distinct().order_by("-created_at", "-id")[: _limit(args)])
+
+
+def _lookup_failed_payload(root, exc):
+    return {
+        "status": "error",
+        "success": False,
+        "error": "broker_order_lookup_failed",
+        "failure_reason": str(exc),
+        "terminal_inference_allowed": False,
+        "terminal_inference_blockers": ["broker_order_lookup_failed"],
+        "anomaly_counts": {},
+        "rows": [],
+        "db_canonical": True,
+        "workspace_context": workspace_context_payload(root),
+    }
+
+
+def _no_match_payload(root, lookup_filters):
+    return {
+        "status": "no_match",
+        "no_match": True,
+        "no_match_reasons": [f"no order ticket or approval matched {key}={value}" for key, value in lookup_filters.items()],
+        "filters": dict(lookup_filters),
+        "terminal_inference_allowed": False,
+        "terminal_inference_blockers": ["no_match"],
+        "anomaly_counts": {},
+        "rows": [],
+        "db_canonical": True,
+        "workspace_context": workspace_context_payload(root),
+    }
+
+
 def _crosswalk_row(approval, ticket, lineage_index):
     broker_orders = list(ticket.broker_orders.all())
     broker_order_ids = [broker_order.broker_order_id for broker_order in broker_orders if broker_order.broker_order_id]
@@ -181,7 +227,7 @@ def _missing_ticket_row(approval):
         "time_in_force": "",
         "estimated_notional": float(approval.max_notional or 0),
         "currency": "",
-        "replacement_lineage": {"original_ticket_id": "", "replacement_ticket_ids": [], "path": [approval.order_ticket_id] if approval.order_ticket_id else []},
+        "replacement_lineage": {"original_ticket_id": "", "replacement_ticket_ids": [], "manual_executions": [], "path": [approval.order_ticket_id] if approval.order_ticket_id else []},
         "latest_status": {"ticket_state": "MISSING", "broker_status": "", "source": "approval", "source_timestamp": approval.created_at.isoformat()},
         "ticket": {},
         "anomalies": ["id_mismatch"],
@@ -207,6 +253,8 @@ def _row_anomalies(approval, ticket, broker_orders, lineage):
         anomalies.append("duplicate_replacement")
     if lineage["replacement_ticket_ids"] and ticket.current_state not in TERMINAL_TICKET_STATES:
         anomalies.append("stale_original")
+    if ticket.current_state == "VOIDED" and not lineage["replacement_ticket_ids"] and not lineage.get("manual_executions"):
+        anomalies.append("voided_without_successor")
     if _is_unresolved_unknown(ticket, broker_orders):
         anomalies.append("unresolved_acked_or_unknown")
     return sorted(set(anomalies))
@@ -276,14 +324,37 @@ def _lineage_for_ticket(ticket, lineage_index):
     replacements_by_original = lineage_index.get("replacements_by_original", {})
     original = original_by_replacement.get(ticket.ticket_id, "")
     replacement_ids = list(replacements_by_original.get(ticket.ticket_id, []))
+    manual_executions = _manual_execution_nodes(ticket)
     path = [original, ticket.ticket_id] if original else [ticket.ticket_id]
     if replacement_ids:
         path.extend(replacement_ids)
+    path.extend(node["node_id"] for node in manual_executions)
     return {
         "original_ticket_id": original,
         "replacement_ticket_ids": replacement_ids,
+        "manual_executions": manual_executions,
         "path": [item for item in path if item],
     }
+
+
+def _manual_execution_nodes(ticket):
+    nodes = []
+    for event in ticket.events.all():
+        if event.event_type != MANUAL_EXECUTION_EVENT_TYPE:
+            continue
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        fill_id = str(payload.get("fill_id") or "")
+        nodes.append({
+            "node_type": "manual_execution",
+            "node_id": f"manual_execution:{fill_id}" if fill_id else f"manual_execution:event-{event.pk}",
+            "fill_id": fill_id,
+            "broker_order_id": str(payload.get("broker_order_id") or ""),
+            "provenance": "manual",
+            "linked_by": event.actor,
+            "linked_at": event.created_at.isoformat() if event.created_at else "",
+            "evidence": payload.get("evidence") or "",
+        })
+    return nodes
 
 
 def _extract_first_value(ticket, keys):

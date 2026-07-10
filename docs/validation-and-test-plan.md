@@ -157,6 +157,19 @@ Verify at least:
 - Crosswalk tests must cover missing broker order ids, duplicate replacement
   lineage, stale originals, and unresolved `ACKED` / broker `unknown` rows that
   set `terminal_inference_allowed: false`.
+- Crosswalk lookups are fail-closed: a broker-order lookup failure returns
+  `status: error` with `error: broker_order_lookup_failed`, a failure reason,
+  and empty rows; a filtered lookup that matches nothing returns
+  `status: no_match` with empty rows and never falls back to unrelated
+  approvals; a `VOIDED` ticket with no replacement or manual-execution
+  successor raises the `voided_without_successor` anomaly.
+- Unattributed broker fills discovered by `sync_broker_account` are exposed
+  explicitly (`unattributed_fills`, `list_unattributed_fills`) and persisted as
+  ledger events; `annotate_manual_execution` links a fill to an existing
+  `VOIDED` ticket only with explicit evidence and matching
+  symbol/side/currency, records provenance `manual`, computes realized amounts
+  from broker fill data, and never fabricates canonical fills or broker
+  orders.
 - Occupancy tests must cover approved-not-submitted rows, unresolved unknown
   rows, conservative reserved notional, and overlap disposition of `blocked` or
   `conservative_exclusion` before approval creation.

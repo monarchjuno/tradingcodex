@@ -298,6 +298,8 @@ Minimum MCP tools:
 - `validate_order_approval_crosswalk`
 - `get_pre_approval_occupancy`
 - `get_resting_lifecycle_panel`
+- `list_unattributed_fills`
+- `annotate_manual_execution`
 - `submit_approved_order`
 - `cancel_approved_order`
 - `refresh_broker_order_status`

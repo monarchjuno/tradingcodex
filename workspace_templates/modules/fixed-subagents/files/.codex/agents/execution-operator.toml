@@ -63,6 +63,8 @@ enabled_tools = [
   "validate_order_approval_crosswalk",
   "get_pre_approval_occupancy",
   "get_resting_lifecycle_panel",
+  "list_unattributed_fills",
+  "annotate_manual_execution",
   "list_broker_connections",
   "get_broker_connection_status",
   "list_reconciliation_runs",

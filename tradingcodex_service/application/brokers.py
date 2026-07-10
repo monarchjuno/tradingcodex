@@ -71,6 +71,8 @@ class FillDTO:
     currency: str = "KRW"
     fee: float = 0
     filled_at: str = ""
+    symbol: str = ""
+    side: str = ""
 
 
 @dataclass(frozen=True)
@@ -1140,6 +1142,7 @@ def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] 
     requested_account = str(args.get("broker_account_id") or args.get("account_id") or "")
     synced_accounts: list[dict[str, Any]] = []
     warnings: list[str] = []
+    unattributed_fills: list[dict[str, Any]] = []
     cash_count = 0
     positions_count = 0
     try:
@@ -1171,6 +1174,17 @@ def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] 
                 sync_run_id=sync_run.id,
             )
             reconciliation = create_reconciliation_summary(connection, broker_account, snapshot, cash, positions)
+            from tradingcodex_service.application.manual_fills import record_unattributed_fills
+
+            fill_scan = record_unattributed_fills(
+                workspace_root,
+                connection=connection,
+                broker_account=broker_account,
+                adapter=adapter,
+                sync_run_id=sync_run.id,
+            )
+            unattributed_fills.extend(fill_scan["rows"])
+            warnings.extend(fill_scan["warnings"])
             cash_count += len(cash)
             positions_count += len(positions)
             synced_accounts.append(
@@ -1208,6 +1222,8 @@ def sync_broker_account(workspace_root: Path | str | None, args: dict[str, Any] 
         "sync_run_id": sync_run.id,
         "accounts": synced_accounts,
         "warnings": warnings,
+        "unattributed_fills": unattributed_fills,
+        "unattributed_fill_count": len(unattributed_fills),
         "db_canonical": True,
         "workspace_context": workspace_context_payload(workspace_root),
     }
