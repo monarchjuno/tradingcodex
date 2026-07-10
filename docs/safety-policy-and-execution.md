@@ -66,6 +66,26 @@ terminal-refresh failure, or age threshold. Metadata-free legacy check tables
 remain accepted for backward compatibility, but approval responses must surface
 a warning instead of silently implying freshness.
 
+Approval-wait session cutoffs extend the same `approval_table_meta` mechanism
+for tickets that carry `session_close_at` expiry metadata (for example a US DAY
+order closing at 05:00 KST; market close times are derived from the ticket, not
+hardcoded). `invalidates_on` then also lists `session_revalidation_window`,
+`resting_day_cutoff`, and `session_close_cutoff`, and the meta carries a
+`session_deadline` block with `revalidation_due_at` (T-60),
+`resting_day_cutoff_at` (T-30), `latest_safe_submit_at` (T-15), and a
+versioned `cutoff_policy_id`. From T-60 an approval table built earlier must be
+revalidated and re-presented (`recheck_required` with a `re_present` payload —
+exact ticket id and order payload hash, remaining minutes, next action; never
+auto-approve or auto-submit). From T-30 new approval receipts for resting DAY
+orders return `approval_wait_cutoff`; immediate execution order types remain
+allowed until T-15. From T-15 all new DAY approvals and submits fail closed,
+existing receipts are invalidated, the `approval_wait.cutoff` event is written
+to the audit log, and only a next-session successor proposal — requiring a new
+approval and a new LIVE confirmation — is allowed; the original ticket is never
+silently reused or auto-recreated. Receipt `expires_at`/`valid_until` are
+clamped to `latest_safe_submit_at`. Tickets without `session_close_at` keep the
+existing behavior and surface a warning that session cutoffs are not enforced.
+
 | Approval | `ApprovalReceipt` | `risk-manager` | Bind approval to exact order payload hash, broker/account, max notional/price, order type, time-in-force, and expiry. |
 | Execution | `submit_approved_order` through TradingCodex MCP | `execution-operator` | Revalidate the order ticket payload and approval receipt in MCP. |
 | Audit/postmortem | audit event, execution result, postmortem | MCP/head-manager | Record rejects, approvals, executions, and policy decisions. |

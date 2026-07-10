@@ -169,6 +169,7 @@ ORDER_TICKET_SCHEMA = json_object_schema(
         "limit_price": {"type": "number", "exclusiveMinimum": 0},
         "stop_price": {"type": "number", "exclusiveMinimum": 0},
         "time_in_force": {"type": "string", "minLength": 1, "maxLength": 32},
+        "session_close_at": {"type": "string", "minLength": 1, "maxLength": 80},
         "currency": {"type": "string", "minLength": 1, "maxLength": 16},
         "broker_id": {"type": "string", "minLength": 1, "maxLength": 120},
         "broker_connection_id": {"type": "string", "minLength": 1, "maxLength": 120},
@@ -551,7 +552,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="create_order_ticket",
-        description="Create a draft-only canonical order ticket from explicit fields or natural language without broker submission.",
+        description="Create a draft-only canonical order ticket from explicit fields or natural language without broker submission. Optional session_close_at (ISO-8601, e.g. US DAY close 05:00 KST) enables approval-wait session cutoffs (T-60 revalidate/re-present, T-30 resting DAY block, T-15 absolute DAY block).",
         category="orders",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("create_order_ticket"),

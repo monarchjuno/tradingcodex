@@ -25,7 +25,13 @@ Approval path:
    check output, inspect machine-readable approval table metadata:
    - `valid_until`
    - `invalidates_on`: quote drift, cash delta, order-status delta,
-     replacement-ticket creation, terminal-refresh failure, age threshold
+     replacement-ticket creation, terminal-refresh failure, age threshold,
+     and — when the ticket carries `session_close_at` — session cutoffs
+     (`session_revalidation_window`, `resting_day_cutoff`,
+     `session_close_cutoff`)
+   - `session_deadline` (when present): `session_close_at`,
+     `revalidation_due_at` (T-60), `resting_day_cutoff_at` (T-30),
+     `latest_safe_submit_at` (T-15), and `cutoff_policy_id`
    - per-row `quote_as_of`, `cash_as_of`, and `order_status_as_of`
    - cash-reserve stress line with pre-batch orderable, total notional,
      fee/tax reserve, post-batch residual, and residual warning threshold
@@ -40,6 +46,25 @@ Approval path:
 
 Do not create an approval receipt when the latest approval table is stale; use
 `request_order_approval` only after the recheck passes.
+
+Session-deadline behavior for tickets with `session_close_at` (derived from the
+ticket's expiry metadata, e.g. US DAY close 05:00 KST — never hardcode market
+close times):
+
+- From T-60 (`revalidation_due_at`), a table built before that point requires a
+  read-only revalidation and one re-present; `request_order_approval` returns
+  `recheck_required` with a `re_present` payload (exact ticket id, order payload
+  hash, remaining minutes, next action). Never auto-approve or auto-submit.
+- From T-30 (`resting_day_cutoff_at`), new approval receipts for resting DAY
+  orders are blocked; the gate returns `approval_wait_cutoff`. Immediate
+  execution order types remain allowed until T-15.
+- From T-15 (`latest_safe_submit_at`), all new DAY approvals and submits are
+  blocked, existing receipts are invalidated, and only a next-session successor
+  proposal (with a new approval and a new LIVE confirmation) is allowed. Do not
+  silently reuse or auto-recreate the ticket after cutoff.
+- Receipt `expires_at`/`valid_until` are clamped to `latest_safe_submit_at`.
+- Tickets without `session_close_at` keep the existing flow and surface a
+  warning that session cutoffs are not enforced.
 
 Reject path:
 

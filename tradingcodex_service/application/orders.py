@@ -71,6 +71,20 @@ APPROVAL_TABLE_INVALIDATES_ON = (
     "terminal_refresh_failed",
     "age_threshold",
 )
+APPROVAL_WAIT_CUTOFF_POLICY = {
+    "policy_id": "approval-wait-session-cutoff",
+    "policy_version": 1,
+    "revalidate_minutes_before_close": 60,
+    "resting_day_block_minutes_before_close": 30,
+    "absolute_block_minutes_before_close": 15,
+}
+APPROVAL_TABLE_SESSION_CUTOFF_INVALIDATES_ON = (
+    "session_revalidation_window",
+    "resting_day_cutoff",
+    "session_close_cutoff",
+)
+APPROVAL_WAIT_NO_SESSION_META_WARNING = "order ticket has no session_close_at metadata; approval-wait session cutoffs are not enforced"
+RESTING_ORDER_TYPES = {"limit", "stop", "stop_limit"}
 ORDER_TICKET_FREE_TEXT_FIELDS = ("thesis", "strategy", "rationale", "notes", "decision_summary", "source_artifact")
 
 def order_ticket_free_text_from_args(args: dict[str, Any]) -> dict[str, str]:
@@ -144,7 +158,10 @@ def validate_approval_receipt(workspace_root: Path | str, args: dict[str, Any]) 
             reasons.append(f"approval table freshness could not resolve order ticket: {exc}")
     elif "approval_table_meta" not in receipt:
         warnings.append("legacy approval receipt has no approval_table_meta")
-    return {"valid": not reasons, "reasons": reasons, "warnings": warnings, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
+        session = _session_deadline_evaluation(order, {})
+        reasons.extend(session["reasons"])
+        warnings.extend(session["warnings"])
+    return {"valid": not reasons, "reasons": list(dict.fromkeys(reasons)), "warnings": list(dict.fromkeys(warnings)), "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
 
 def _create_order_approval_receipt(
     workspace_root: Path | str,
@@ -173,12 +190,18 @@ def _create_order_approval_receipt(
     if approved_by == order.get("created_by"):
         raise ValueError("order creator cannot approve the same order")
     created = datetime.now(timezone.utc)
+    receipt_expiry = created + timedelta(hours=expires_hours)
+    session_deadline = _order_session_deadline(order)
+    if session_deadline and not session_deadline.get("invalid") and str(order.get("time_in_force") or "").lower() == "day":
+        latest_safe_submit_at = _parse_datetime(session_deadline["latest_safe_submit_at"])
+        if latest_safe_submit_at is not None:
+            receipt_expiry = min(receipt_expiry, latest_safe_submit_at)
     receipt = {
         "id": f"approval-{sanitize_id(order['id'])}-{created.strftime('%Y%m%dT%H%M%S%fZ')}",
         "approved_by": approved_by,
         "valid": True,
         "created_at": created.isoformat().replace("+00:00", "Z"),
-        "expires_at": (created + timedelta(hours=expires_hours)).isoformat().replace("+00:00", "Z"),
+        "expires_at": _iso_utc(receipt_expiry),
         "exact_order_hash": stable_hash(order),
         "order_ticket_id": order.get("order_ticket_id") or order.get("id", ""),
         "broker_connection_id": order.get("broker_connection_id") or order.get("broker", ""),
@@ -188,7 +211,7 @@ def _create_order_approval_receipt(
         "max_slippage_bps": order.get("max_slippage_bps", 0),
         "approved_order_type": order.get("order_type") or "limit",
         "approved_time_in_force": order.get("time_in_force") or "day",
-        "valid_until": (created + timedelta(hours=expires_hours)).isoformat().replace("+00:00", "Z"),
+        "valid_until": _iso_utc(receipt_expiry),
         "quote_as_of_requirement": order.get("quote_as_of_requirement", ""),
         "policy_decision": validation["policy"],
     }
@@ -244,6 +267,16 @@ def submit_approved_order(workspace_root: Path | str, args: dict[str, Any]) -> d
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
         }
+        receipt_meta = receipt.get("approval_table_meta") if isinstance(receipt.get("approval_table_meta"), dict) else {}
+        session = _session_deadline_evaluation(order, receipt_meta)
+        if session["cutoff_stage"] in {"resting_day_cutoff", "session_close_cutoff"}:
+            rejected["cutoff_stage"] = session["cutoff_stage"]
+            rejected["session_deadline"] = session["session_deadline"]
+            if session["cutoff_stage"] == "session_close_cutoff" and order.get("id"):
+                rejected["invalidated_approval_receipts"] = invalidate_approval_receipts_for_ticket(
+                    root, str(order["id"]), principal_id, {"mode": "approval_wait_cutoff", **session["session_deadline"]}
+                )
+            write_audit_event(root, {"type": "approval_wait.cutoff", "payload": rejected}, principal_id=principal_id, source="mcp")
         write_audit_event(root, {"type": "submit_approved_order.rejected", "payload": rejected}, principal_id=principal_id, source="mcp")
         return rejected
     adapter_reasons = _adapter_preflight_reasons(root, order, args)
@@ -520,14 +553,82 @@ def _cash_reserve_stress(root: Path, ticket: Any, order: dict[str, Any], adapter
         "residual_warning": (post_batch_residual < threshold) if side == "buy" else False,
     }
 
-def _build_approval_table_meta(root: Path, ticket: Any, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
-    created = datetime.now(timezone.utc)
-    snapshot = _approval_table_current_snapshot(root, ticket, order, adapter)
+def _deadline_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+def _iso_utc(moment: datetime) -> str:
+    return moment.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+def _order_session_deadline(order: dict[str, Any]) -> dict[str, Any] | None:
+    raw = order.get("session_close_at")
+    if not raw:
+        return None
+    policy = APPROVAL_WAIT_CUTOFF_POLICY
+    policy_id = f"{policy['policy_id']}-v{policy['policy_version']}"
+    close = _parse_datetime(str(raw))
+    if close is None:
+        return {"session_close_at": str(raw), "invalid": True, "cutoff_policy_id": policy_id}
     return {
+        "session_close_at": _iso_utc(close),
+        "revalidation_due_at": _iso_utc(close - timedelta(minutes=policy["revalidate_minutes_before_close"])),
+        "resting_day_cutoff_at": _iso_utc(close - timedelta(minutes=policy["resting_day_block_minutes_before_close"])),
+        "latest_safe_submit_at": _iso_utc(close - timedelta(minutes=policy["absolute_block_minutes_before_close"])),
+        "cutoff_policy_id": policy_id,
+    }
+
+def _session_deadline_evaluation(order: dict[str, Any], meta: dict[str, Any] | None) -> dict[str, Any]:
+    deadline = _order_session_deadline(order)
+    if deadline is None:
+        return {"reasons": [], "warnings": [APPROVAL_WAIT_NO_SESSION_META_WARNING], "session_deadline": {}, "cutoff_stage": ""}
+    if deadline.get("invalid"):
+        return {
+            "reasons": ["order session_close_at is not a valid ISO-8601 datetime"],
+            "warnings": [],
+            "session_deadline": deadline,
+            "cutoff_stage": "invalid_session_close",
+        }
+    now = _deadline_now()
+    close = _parse_datetime(deadline["session_close_at"])
+    session_deadline = {**deadline, "remaining_minutes_to_close": int((close - now).total_seconds() // 60)}
+    reasons: list[str] = []
+    stage = ""
+    if str(order.get("time_in_force") or "").lower() == "day":
+        latest_safe = _parse_datetime(deadline["latest_safe_submit_at"])
+        resting_cutoff = _parse_datetime(deadline["resting_day_cutoff_at"])
+        revalidation_due = _parse_datetime(deadline["revalidation_due_at"])
+        meta_created = _parse_datetime((meta or {}).get("created_at"))
+        if now >= latest_safe:
+            stage = "session_close_cutoff"
+            reasons.append("session-close-cutoff invalidated approval table: past latest safe submit time (T-15); all new DAY submits are blocked until the next session")
+        elif now >= resting_cutoff and str(order.get("order_type") or "limit").lower() in RESTING_ORDER_TYPES:
+            stage = "resting_day_cutoff"
+            reasons.append("resting-day-cutoff invalidated approval table: past resting DAY cutoff (T-30); propose a next-session successor instead")
+        elif now >= revalidation_due and (meta_created is None or meta_created < revalidation_due):
+            stage = "session_revalidation_window"
+            reasons.append("session-revalidation-window invalidated approval table: approval table predates the T-60 revalidation window; re-run order checks and re-present")
+    return {"reasons": reasons, "warnings": [], "session_deadline": session_deadline, "cutoff_stage": stage}
+
+def _approval_wait_re_present(ticket_id: str, order: dict[str, Any], session_deadline: dict[str, Any], next_action: str) -> dict[str, Any]:
+    return {
+        "ticket_id": ticket_id,
+        "order_payload_hash": stable_hash(order),
+        "remaining_minutes_to_close": session_deadline.get("remaining_minutes_to_close"),
+        "fill_chance_note": "resting DAY fill chance degrades as the session close approaches",
+        "next_action": next_action,
+    }
+
+def _build_approval_table_meta(root: Path, ticket: Any, order: dict[str, Any], adapter: Any | None) -> dict[str, Any]:
+    created = _deadline_now()
+    snapshot = _approval_table_current_snapshot(root, ticket, order, adapter)
+    session_deadline = _order_session_deadline(order)
+    invalidates_on = list(APPROVAL_TABLE_INVALIDATES_ON)
+    if session_deadline and not session_deadline.get("invalid"):
+        invalidates_on.extend(APPROVAL_TABLE_SESSION_CUTOFF_INVALIDATES_ON)
+    meta = {
         "schema_version": 1,
         "created_at": created.isoformat().replace("+00:00", "Z"),
         "valid_until": (created + timedelta(minutes=APPROVAL_TABLE_TTL_MINUTES)).isoformat().replace("+00:00", "Z"),
-        "invalidates_on": list(APPROVAL_TABLE_INVALIDATES_ON),
+        "invalidates_on": invalidates_on,
         "rows": [
             {
                 "ticket_id": ticket.ticket_id,
@@ -543,6 +644,9 @@ def _build_approval_table_meta(root: Path, ticket: Any, order: dict[str, Any], a
         "cash_reserve_stress": _cash_reserve_stress(root, ticket, order, adapter),
         "terminal_refresh_status": "ok",
     }
+    if session_deadline and not session_deadline.get("invalid"):
+        meta["session_deadline"] = session_deadline
+    return meta
 
 def run_order_checks(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
@@ -646,22 +750,28 @@ def _approval_table_freshness(
 ) -> dict[str, Any]:
     meta = _approval_table_meta_from_check_runs(check_runs)
     if not meta:
+        session = _session_deadline_evaluation(order, {})
         return {
-            "fresh": True,
+            "fresh": not session["reasons"],
             "legacy": True,
-            "warnings": ["legacy approval table has no machine-readable validity metadata"],
-            "reasons": [],
+            "warnings": ["legacy approval table has no machine-readable validity metadata", *session["warnings"]],
+            "reasons": session["reasons"],
             "approval_table_meta": {},
+            "session_deadline": session["session_deadline"],
+            "cutoff_stage": session["cutoff_stage"],
         }
     reasons: list[str] = []
     warnings: list[str] = []
+    session = _session_deadline_evaluation(order, meta)
+    reasons.extend(session["reasons"])
+    warnings.extend(session["warnings"])
     valid_until = _parse_datetime(meta.get("valid_until"))
     if meta.get("valid_until") and valid_until is None:
         reasons.append("approval table valid_until is not a valid date")
-    if valid_until and valid_until <= datetime.now(timezone.utc):
+    if valid_until and valid_until <= _deadline_now():
         reasons.append("approval table valid_until is expired")
     created_at = _parse_datetime(meta.get("created_at"))
-    if created_at and datetime.now(timezone.utc) - created_at > timedelta(minutes=APPROVAL_TABLE_TTL_MINUTES):
+    if created_at and _deadline_now() - created_at > timedelta(minutes=APPROVAL_TABLE_TTL_MINUTES):
         reasons.append("approval table age threshold is exceeded")
     invalidated_by = meta.get("invalidated_by") if isinstance(meta.get("invalidated_by"), list) else []
     for event in invalidated_by:
@@ -707,9 +817,11 @@ def _approval_table_freshness(
     return {
         "fresh": not reasons,
         "legacy": False,
-        "warnings": warnings,
+        "warnings": list(dict.fromkeys(warnings)),
         "reasons": list(dict.fromkeys(reasons)),
         "approval_table_meta": meta,
+        "session_deadline": session["session_deadline"],
+        "cutoff_stage": session["cutoff_stage"],
     }
 
 
@@ -736,6 +848,32 @@ def request_order_approval(workspace_root: Path | str, args: dict[str, Any]) -> 
         return {"status": "rejected", "ticket_id": ticket.ticket_id, "reasons": ["fail check prevents approval"], "db_canonical": True, "workspace_context": workspace_context_payload(root)}
     order = order_payload_from_ticket(ticket)
     freshness = _approval_table_freshness(root, ticket, order, latest_checks)
+    cutoff_stage = str(freshness.get("cutoff_stage") or "")
+    session_deadline = freshness.get("session_deadline") or {}
+    if cutoff_stage in {"resting_day_cutoff", "session_close_cutoff"}:
+        result = {
+            "status": "approval_wait_cutoff",
+            "ticket_id": ticket.ticket_id,
+            "order_ticket_id": ticket.ticket_id,
+            "reasons": freshness["reasons"],
+            "cutoff_stage": cutoff_stage,
+            "session_deadline": session_deadline,
+            "re_present": _approval_wait_re_present(
+                ticket.ticket_id,
+                order,
+                session_deadline,
+                "propose a next-session successor ticket with a new approval and a new LIVE confirmation; do not silently reuse or auto-recreate this ticket",
+            ),
+            "approval_table_freshness": freshness,
+            "db_canonical": True,
+            "workspace_context": workspace_context_payload(root),
+        }
+        if cutoff_stage == "session_close_cutoff":
+            result["invalidated_approval_receipts"] = invalidate_approval_receipts_for_ticket(
+                root, ticket.ticket_id, principal_id, {"mode": "approval_wait_cutoff", **session_deadline}
+            )
+        write_audit_event(root, {"type": "approval_wait.cutoff", "payload": result}, principal_id=principal_id, source="service")
+        return result
     if not freshness["fresh"]:
         result = {
             "status": "recheck_required",
@@ -746,6 +884,14 @@ def request_order_approval(workspace_root: Path | str, args: dict[str, Any]) -> 
             "db_canonical": True,
             "workspace_context": workspace_context_payload(root),
         }
+        if session_deadline:
+            result["session_deadline"] = session_deadline
+            result["re_present"] = _approval_wait_re_present(
+                ticket.ticket_id,
+                order,
+                session_deadline,
+                "run_order_checks to re-present a refreshed approval table before requesting approval again",
+            )
         write_audit_event(root, {"type": "approval.recheck_required", "payload": result}, principal_id=principal_id, source="service")
         return result
     result = _create_order_approval_receipt(
@@ -1370,6 +1516,10 @@ def normalize_order_ticket_fields(root: Path, args: dict[str, Any]) -> dict[str,
     fields.setdefault("currency", "KRW")
     fields.setdefault("order_type", "limit")
     fields.setdefault("time_in_force", "day")
+    if fields.get("session_close_at"):
+        if _parse_datetime(str(fields["session_close_at"])) is None:
+            raise ValueError("session_close_at is not a valid ISO-8601 datetime")
+        fields["session_close_at"] = str(fields["session_close_at"])
     fields.setdefault("created_at", datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"))
     fields.setdefault("created_by", args.get("principal_id") or "portfolio-manager")
     return fields
@@ -1424,6 +1574,8 @@ def canonical_order_from_fields(fields: dict[str, Any]) -> dict[str, Any]:
         "order_type": str(fields.get("order_type") or "limit"),
         "time_in_force": str(fields.get("time_in_force") or "day"),
     }
+    if fields.get("session_close_at"):
+        order["session_close_at"] = str(fields["session_close_at"])
     try:
         from tradingcodex_service.application.brokers import canonical_order_from_order
 
