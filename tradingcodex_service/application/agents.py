@@ -328,6 +328,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "validate_approval_receipt",
             "submit_approved_order",
             "cancel_approved_order",
+            "expire_stale_approved_orders",
             "refresh_broker_order_status",
             "get_order_status",
             "get_order_ticket",

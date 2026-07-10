@@ -31,6 +31,8 @@ Approved-only tickets with no broker order or fills can be locally voided. The
 service invalidates active approval receipts and later submit attempts must
 fail before connection use.
 
+Approved-only DAY tickets whose `session_close_at` has passed with no broker order or fill can be locally expired through `expire_stale_approved_orders`. Evidence gate: APPROVED + no broker orders/fills + valid DAY session metadata + session close passed; never reaches broker-reached (ACKED+) tickets. Expiry invalidates approval receipts, the submit gate fails closed with `ticket_expired_no_resubmit`, and `superseded_by_ticket_id` records crosswalk lineage only — no auto-resubmit or receipt succession.
+
 ## Required Blocks
 
 TradingCodex must block direct live broker requests, raw external broker/execution/secret/policy proxies, self-issued approvals, non-risk-role approvals, restricted-symbol orders, approval hash mismatches, expired approvals, over-scope submissions, duplicate submissions, duplicate order ids with different payloads, global exposure of approval/execution tools, raw secrets in outputs, and live execution when any live gate is missing.

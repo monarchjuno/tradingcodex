@@ -65,6 +65,10 @@ close times):
 - Receipt `expires_at`/`valid_until` are clamped to `latest_safe_submit_at`.
 - Tickets without `session_close_at` keep the existing flow and surface a
   warning that session cutoffs are not enforced.
+- An approved DAY ticket past session close with no broker order or fill is
+  locally expired (`ticket_expired_no_resubmit`); re-entry requires a fresh
+  successor ticket (new order checks, new approval, new LIVE confirmation), not
+  reuse of the expired receipt.
 
 Reject path:
 

@@ -151,6 +151,24 @@ voided through the service layer. Local void invalidates active approval
 receipts, records an order event plus audit event, and blocks later submission
 with a terminal-state reason.
 
+### Local expire for approved-only tickets past session close
+
+`expire_stale_approved_orders` transitions an approved-only DAY ticket from
+`APPROVED` to `EXPIRED` once its `session_close_at` has passed and there is no
+broker order or fill on the ticket. This closes the write-side gap where an
+approved-but-never-submitted live ticket would otherwise remain `APPROVED`
+forever with a still-valid approval receipt.
+
+The transition is evidence-gated and never applies to a ticket the broker has
+seen: `EXPIRED` is only reachable from `APPROVED`, so ACKED-or-beyond tickets are
+resolved by broker refresh/reconcile only. Expiry invalidates every active
+approval receipt (`mode: local_session_expiry`), and the submit gate then fails
+closed with `ticket_expired_no_resubmit`. A successor requires fresh order
+checks, a new approval, and a new LIVE confirmation — the tool never reuses or
+auto-recreates the ticket; supplying `superseded_by_ticket_id` only records
+lineage for the approval→terminal crosswalk. The tool runs single-ticket (with
+`ticket_id`) or as an idempotent background sweep over the active profile.
+
 Signed broker credential failures are execution blockers, not execution
 attempts. The connector remains read-only with no enabled trade scopes, exposes
 only secret-free diagnostics such as `credential_validation_details`, and
