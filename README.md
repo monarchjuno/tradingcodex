@@ -16,7 +16,7 @@ uncertainty, and a report saved in your own workspace.
 **Ask naturally. Watch the team work. Keep the evidence.** Trading actions stay
 behind explicit policy, approval, idempotency, broker, and audit gates.
 
-[Quick start](#quick-start) · [Run your first analysis](#run-your-first-analysis) · [See what you get](#what-you-get) · [Safety](#safety-you-do-not-have-to-remember) · [Docs](docs/README.md)
+[User guide](https://monarchjuno.github.io/tradingcodex/) · [Quick start](#quick-start) · [Run your first analysis](#run-your-first-analysis) · [See what you get](#what-you-get) · [Safety](#safety-you-do-not-have-to-remember) · [Docs](docs/README.md)
 
 ## What You Get
 

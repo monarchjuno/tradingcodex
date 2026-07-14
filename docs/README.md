@@ -4,6 +4,8 @@ This directory is the human-readable source of truth linked from the public `REA
 
 Use these docs when you want the deeper "why" behind TradingCodex behavior. Coding agents should use `openwiki/` for fast source navigation, then return here before changing durable product behavior.
 
+New to TradingCodex? Start with the [User Guide](https://monarchjuno.github.io/tradingcodex/) for setup, a first analysis, the workbench, and everyday safety boundaries.
+
 ## How To Read These Docs
 
 | Reader goal | Start with | Then read |
