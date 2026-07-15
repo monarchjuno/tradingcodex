@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -9,11 +11,15 @@ from importlib.metadata import PackageNotFoundError, version as distribution_ver
 from pathlib import Path
 from typing import Any
 
+from packaging.version import InvalidVersion, Version
+
 from tradingcodex_service.application.agents import (
     AGENT_SPECS,
     EXPECTED_SKILLS,
     EXPECTED_SUBAGENTS,
+    MINIMUM_CODEX_VERSION,
     MODEL_POLICY_MANIFEST_PATH,
+    REFERENCE_CODEX_VERSION,
     SKILL_SPECS,
     build_projection_state,
     inspect_skill_projection,
@@ -41,17 +47,23 @@ from tradingcodex_cli.commands.utils import (
 from tradingcodex_cli.generator import generated_python_path_is_ephemeral
 from tradingcodex_service.version import TRADINGCODEX_VERSION
 
-def doctor(root: Path, layer: str) -> None:
+def doctor(root: Path, layer: str, *, verbose: bool = False) -> None:
     allowed = {"all", "codex-native", "guidance", "enforcement", "information-barrier", "improvement", "mcp", "service"}
     if layer not in allowed:
         raise ValueError(f'unknown layer "{layer}"')
-    checks = []
-    checks.extend(_central_service_checks(root))
-    checks.extend(_guidance_checks(root))
-    checks.extend(_enforcement_checks(root))
-    checks.extend(_information_barrier_checks(root))
-    checks.extend(_improvement_checks(root))
-    checks.extend(_mcp_checks(root))
+    checks = [*_central_service_checks(root)]
+    layer_checks = {
+        "guidance": _guidance_checks,
+        "enforcement": _enforcement_checks,
+        "information-barrier": _information_barrier_checks,
+        "improvement": _improvement_checks,
+        "mcp": _mcp_checks,
+    }
+    if layer in {"all", "codex-native"}:
+        for build_checks in layer_checks.values():
+            checks.extend(build_checks(root))
+    elif layer != "service":
+        checks.extend(layer_checks[layer](root))
     checks = [
         check
         for check in checks
@@ -60,23 +72,63 @@ def doctor(root: Path, layer: str) -> None:
         or (layer == "codex-native" and check.get("codexNative"))
         or (check.get("globalPreflight") and not check["ok"])
     ]
-    failed = 0
+    failed = sum(
+        1 for check in checks if not check["ok"] and not check.get("warn")
+    )
     print("TradingCodex Harness\n")
-    for check in checks:
-        status = "WARN" if check.get("warn") else "PASS" if check["ok"] else "FAIL"
-        if not check["ok"] and not check.get("warn"):
-            failed += 1
-        print(f"{status.ljust(4)} {check['layer'].ljust(20)} {check['name']} - {check['detail']}")
+    if verbose:
+        for check in checks:
+            _print_check(check)
+    else:
+        _print_check_summary(checks)
+        issues = [
+            check for check in checks if check.get("warn") or not check["ok"]
+        ]
+        if issues:
+            print("\nAttention:")
+            for check in issues:
+                _print_check(check)
+        print("\nRun the workspace launcher with `doctor --verbose` for every check.")
     if failed:
         print(f"TradingCodex doctor failed: {failed} check(s) failed", file=sys.stderr)
         sys.exit(1)
     print("\nTradingCodex doctor passed")
+
+
+def _check_status(check: dict[str, Any]) -> str:
+    return "WARN" if check.get("warn") else "PASS" if check["ok"] else "FAIL"
+
+
+def _print_check(check: dict[str, Any]) -> None:
+    status = _check_status(check)
+    print(
+        f"{status.ljust(4)} {check['layer'].ljust(20)} "
+        f"{check['name']} - {check['detail']}"
+    )
+
+
+def _print_check_summary(checks: list[dict[str, Any]]) -> None:
+    layers: dict[str, list[dict[str, Any]]] = {}
+    for check in checks:
+        layers.setdefault(str(check["layer"]), []).append(check)
+    for layer, layer_items in layers.items():
+        passed = sum(1 for check in layer_items if _check_status(check) == "PASS")
+        warned = sum(1 for check in layer_items if _check_status(check) == "WARN")
+        failed = sum(1 for check in layer_items if _check_status(check) == "FAIL")
+        status = "FAIL" if failed else "WARN" if warned else "PASS"
+        detail = f"{passed} passed"
+        if warned:
+            detail += f", {warned} warning(s)"
+        if failed:
+            detail += f", {failed} failed"
+        print(f"{status.ljust(4)} {layer.ljust(20)} {detail}")
 
 def _guidance_checks(root: Path) -> list[dict[str, Any]]:
     thread_policy = read_thread_policy(root)
     roster_size = len(list_subagents(root))
     return [
         path_check(root, "guidance", "AGENTS.md installed", "AGENTS.md", True),
+        _codex_cli_runtime_check(),
         text_check(root, "guidance", "head-manager model instructions file configured", ".codex/config.toml", 'model_instructions_file = "prompts/base_instructions/head-manager.md"', True),
         text_check(root, "guidance", "head-manager instructions installed", ".codex/prompts/base_instructions/head-manager.md", "You are the `head-manager` agent", True),
         *_launcher_checks(root),
@@ -84,12 +136,91 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         text_check(root, "guidance", "session context configured", ".codex/hooks/tradingcodex_hook.py", "tradingcodex-session-context", True),
         text_check(root, "guidance", "three-plane routing configured", ".codex/prompts/base_instructions/head-manager.md", "TradingCodex has three planes", True),
         text_check(root, "guidance", "build gate configured", ".codex/prompts/base_instructions/head-manager.md", "Use `$tcx-build` only when it is the exact physical first line", True),
+        text_check(root, "guidance", "brain management gate configured", ".agents/skills/tcx-brain/SKILL.md", "exact physical first line\n   `$tcx-brain`", True),
+        text_check(root, "guidance", "strategy management gate configured", ".agents/skills/tcx-strategy/SKILL.md", "physical first line `$tcx-strategy`", True),
+        text_check(root, "guidance", "research profile keeps runtime state denied", ".codex/config.toml", '".tradingcodex" = "deny"', True),
+        text_check(root, "guidance", "strategy lifecycle MCP configured", ".codex/config.toml", '"manage_strategy"', True),
+        text_check(root, "guidance", "brain lifecycle MCP configured", ".codex/config.toml", '"manage_investment_brain"', True),
         text_check(root, "guidance", "compact context discipline configured", ".codex/prompts/base_instructions/head-manager.md", "# Context Discipline", True),
-        {"layer": "guidance", "name": "subagent scheduler ceiling is independent of roster", "ok": 1 < thread_policy["max_threads"] < roster_size, "codexNative": True, "detail": f"max_threads={thread_policy['max_threads']}, subagents={roster_size}"},
+        {"layer": "guidance", "name": "subagent scheduler ceiling is independent of roster", "ok": 1 < thread_policy["max_threads"] < roster_size, "codexNative": True, "detail": f"v2_session_threads={thread_policy['max_concurrent_threads_per_session']}, child_threads={thread_policy['max_threads']}, subagents={roster_size}"},
         {"layer": "guidance", "name": "subagent recursion remains disabled", "ok": thread_policy["max_depth"] == 1, "codexNative": True, "detail": f"max_depth={thread_policy['max_depth']}"},
         *_fixed_role_dispatch_checks(root),
         *_model_policy_checks(root),
     ]
+
+
+def _codex_cli_runtime_check() -> dict[str, Any]:
+    executable = shutil.which("codex")
+    if not executable:
+        return {
+            "layer": "guidance",
+            "name": "Codex CLI reference version",
+            "ok": False,
+            "warn": True,
+            "codexNative": True,
+            "detail": f"not found on PATH; required>={MINIMUM_CODEX_VERSION}, reference={REFERENCE_CODEX_VERSION}",
+        }
+    try:
+        result = subprocess.run(
+            [executable, "--version"],
+            text=True,
+            capture_output=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {
+            "layer": "guidance",
+            "name": "Codex CLI reference version",
+            "ok": False,
+            "warn": True,
+            "codexNative": True,
+            "detail": f"unable to inspect {executable}: {exc}",
+        }
+    output = " ".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+    match = re.search(r"\bcodex-cli\s+([^\s]+)", output)
+    if result.returncode != 0 or not match:
+        return {
+            "layer": "guidance",
+            "name": "Codex CLI reference version",
+            "ok": False,
+            "warn": True,
+            "codexNative": True,
+            "detail": f"unrecognized `codex --version` output from {executable}: {output or 'empty'}",
+        }
+    installed = match.group(1)
+    try:
+        parsed = Version(installed)
+        minimum = Version(MINIMUM_CODEX_VERSION)
+        reference = Version(REFERENCE_CODEX_VERSION)
+    except InvalidVersion:
+        return {
+            "layer": "guidance",
+            "name": "Codex CLI reference version",
+            "ok": False,
+            "warn": True,
+            "codexNative": True,
+            "detail": f"non-PEP-440 Codex version: {installed}",
+        }
+    compatible = parsed >= minimum
+    differs_from_reference = parsed != reference
+    reference_note = ""
+    if compatible and parsed < reference:
+        reference_note = "; compatible but older than reference; upgrade before release validation"
+    elif parsed > reference:
+        reference_note = "; newer client requires harness revalidation"
+    return {
+        "layer": "guidance",
+        "name": "Codex CLI reference version",
+        "ok": compatible,
+        "warn": compatible and differs_from_reference,
+        "codexNative": True,
+        "detail": (
+            f"installed={installed}, required>={MINIMUM_CODEX_VERSION}, "
+            f"reference={REFERENCE_CODEX_VERSION}"
+            + reference_note
+        ),
+    }
 
 
 def _launcher_checks(root: Path) -> list[dict[str, Any]]:
@@ -172,8 +303,11 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
     multi_agent_v2 = features.get("multi_agent_v2") if isinstance(features.get("multi_agent_v2"), dict) else {}
     exact_runtime = (
         features.get("multi_agent") is True
+        and multi_agent_v2.get("enabled") is True
+        and multi_agent_v2.get("max_concurrent_threads_per_session") == 7
         and multi_agent_v2.get("hide_spawn_agent_metadata") is False
         and multi_agent_v2.get("tool_namespace") == "agents"
+        and "max_threads" not in (config.get("agents") or {})
     )
     prompt_path = root / ".codex" / "prompts" / "base_instructions" / "head-manager.md"
     prompt = prompt_path.read_text(encoding="utf-8") if prompt_path.is_file() else ""
@@ -193,6 +327,8 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
             "codexNative": True,
             "detail": (
                 f"multi_agent={features.get('multi_agent')}, "
+                f"multi_agent_v2={multi_agent_v2.get('enabled')}, "
+                f"session_threads={multi_agent_v2.get('max_concurrent_threads_per_session')}, "
                 f"hide_spawn_agent_metadata={multi_agent_v2.get('hide_spawn_agent_metadata')}, "
                 f"tool_namespace={multi_agent_v2.get('tool_namespace')}"
             ),
@@ -539,7 +675,7 @@ def _codex_mcp_config_checks(root: Path) -> list[dict[str, Any]]:
             "name": "TradingCodex MCP autostarts local service",
             "ok": root_mcp.get("env", {}).get("TRADINGCODEX_MCP_AUTOSTART_SERVICE") == "1",
             "codexNative": True,
-            "detail": "MCP env enables workbench/service autostart" if root_mcp.get("env", {}).get("TRADINGCODEX_MCP_AUTOSTART_SERVICE") == "1" else "missing TRADINGCODEX_MCP_AUTOSTART_SERVICE=1",
+            "detail": "MCP env enables viewer/service autostart" if root_mcp.get("env", {}).get("TRADINGCODEX_MCP_AUTOSTART_SERVICE") == "1" else "missing TRADINGCODEX_MCP_AUTOSTART_SERVICE=1",
         },
         {
             "layer": "enforcement",
@@ -630,9 +766,123 @@ def _information_barrier_checks(root: Path) -> list[dict[str, Any]]:
 
 def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks = _skill_projection_checks(root)
+    project_config = root / ".codex" / "config.toml"
+    try:
+        project_config_text = project_config.read_text(encoding="utf-8")
+        project_config_data = tomllib.loads(project_config_text)
+    except Exception:
+        project_config_text = ""
+        project_config_data = {}
+    permissions = project_config_data.get("permissions", {})
+    research = permissions.get("trading-research", {})
+    build = permissions.get("trading-build", {})
+    research_filesystem = research.get("filesystem", {})
+    build_filesystem = build.get("filesystem", {})
+    research_workspace = research_filesystem.get(":workspace_roots", {})
+    build_workspace = build_filesystem.get(":workspace_roots", {})
+    shell_environment = project_config_data.get("shell_environment_policy", {})
+    scratch = shell_environment.get("set", {}).get("TRADINGCODEX_SCRATCH", "")
+    project_mcp = project_config_data.get("mcp_servers", {}).get("tradingcodex", {})
+    service_home = project_mcp.get("env", {}).get("TRADINGCODEX_HOME", "")
+    attached_python = project_mcp.get("command", "")
+    configured_codex_home = str(os.environ.get("CODEX_HOME") or "").strip()
+    active_codex_home = str(
+        (
+            Path(configured_codex_home).expanduser()
+            if configured_codex_home
+            else Path.home() / ".codex"
+        ).resolve(strict=False)
+    )
+    active_codex_proxy = str(Path(active_codex_home) / "proxy")
+    active_codex_standalone = str(Path(active_codex_home) / "packages" / "standalone")
+    split_profile_ok = bool(scratch) and all(
+        (
+            project_config_data.get("default_permissions") == "trading-research",
+            research.get("extends") == ":workspace",
+            research_filesystem.get(scratch) == "write",
+            research_filesystem.get(":tmpdir") == "deny",
+            research_filesystem.get(":slash_tmp") == "deny",
+            bool(service_home) and research_filesystem.get(service_home) == "deny",
+            bool(attached_python) and research_filesystem.get(attached_python) == "deny",
+            research_filesystem.get("~/.codex") == "deny",
+            research_filesystem.get("~/.codex/proxy") == "read",
+            research_filesystem.get("~/.codex/packages/standalone") == "read",
+            research_filesystem.get(active_codex_home) == "deny",
+            research_filesystem.get(active_codex_proxy) == "read",
+            research_filesystem.get(active_codex_standalone) == "read",
+            research_filesystem.get("~/.ssh") == "deny",
+            research_workspace.get(".") == "write",
+            research_workspace.get(".git") == "read",
+            research_workspace.get(".gitignore") == "read",
+            research_workspace.get(".codex") == "deny",
+            ".codex/proxy" not in research_workspace,
+            research_workspace.get(".agents") == "read",
+            research_workspace.get("AGENTS.md") == "read",
+            research_workspace.get("tcx") == "read",
+            research_workspace.get("tcx.cmd") == "read",
+            research_workspace.get("trading") == "read",
+            research_workspace.get("trading/research") == "deny",
+            research.get("network", {}).get("enabled") is True,
+            research.get("network", {}).get("allow_local_binding") is False,
+            research.get("network", {}).get("domains", {}).get("*") == "allow",
+            build.get("extends") == ":workspace",
+            build_filesystem.get(scratch) == "write",
+            build_filesystem.get(":tmpdir") == "deny",
+            build_filesystem.get(":slash_tmp") == "deny",
+            bool(service_home) and build_filesystem.get(service_home) == "deny",
+            bool(attached_python) and build_filesystem.get(attached_python) == "deny",
+            build_filesystem.get("~/.codex") == "deny",
+            build_filesystem.get("~/.codex/proxy") == "read",
+            build_filesystem.get("~/.codex/packages/standalone") == "read",
+            build_filesystem.get(active_codex_home) == "deny",
+            build_filesystem.get(active_codex_proxy) == "read",
+            build_filesystem.get(active_codex_standalone) == "read",
+            build_filesystem.get("~/.ssh") == "deny",
+            build_workspace.get(".") == "write",
+            build_workspace.get(".codex") == "deny",
+            build_workspace.get("trading/research") == "deny",
+            build.get("network", {}).get("enabled") is False,
+            project_config_data.get("features", {}).get("network_proxy") is True,
+            shell_environment.get("inherit") == "core",
+            shell_environment.get("set", {}).get("TMPDIR") == scratch,
+            shell_environment.get("set", {}).get("TEMP") == scratch,
+            shell_environment.get("set", {}).get("TMP") == scratch,
+            "TRADINGCODEX_HOME" not in shell_environment.get("include_only", []),
+            "*TOKEN*" in shell_environment.get("exclude", []),
+        )
+    )
+    checks.extend([
+        text_check(root, "improvement", "native Research permission profile is default", ".codex/config.toml", 'default_permissions = "trading-research"', True),
+        text_check(root, "improvement", "native Build permission profile is installed", ".codex/config.toml", "[permissions.trading-build.filesystem]", True),
+        {
+            "layer": "improvement",
+            "name": "legacy sandbox mode is absent",
+            "ok": "sandbox_mode" not in project_config_text,
+            "codexNative": True,
+            "detail": "custom permission profiles remain authoritative" if "sandbox_mode" not in project_config_text else "sandbox_mode overrides custom permission profiles",
+        },
+        {
+            "layer": "improvement",
+            "name": "native Research and Build authority is split",
+            "ok": split_profile_ok,
+            "codexNative": True,
+            "detail": "Research writes user-owned paths outside trading and uses public network; Build opens controlled trading writes offline, with shared sensitive denials" if split_profile_ok else "permission profile, network proxy, scratch, or shell-environment contract mismatch",
+        },
+    ])
     for subagent in EXPECTED_SUBAGENTS:
         checks.append(path_check(root, "improvement", f"subagent installed: {subagent}", f".codex/agents/{subagent}.toml", True))
-        checks.append(text_check(root, "improvement", f"subagent read-only sandbox: {subagent}", f".codex/agents/{subagent}.toml", 'sandbox_mode = "read-only"', True))
+        subagent_path = root / ".codex" / "agents" / f"{subagent}.toml"
+        try:
+            subagent_text = subagent_path.read_text(encoding="utf-8")
+        except Exception:
+            subagent_text = ""
+        checks.append({
+            "layer": "improvement",
+            "name": f"subagent inherits native permission profile: {subagent}",
+            "ok": bool(subagent_text) and "sandbox_mode" not in subagent_text,
+            "codexNative": True,
+            "detail": "inherits the parent Research permission profile" if subagent_text and "sandbox_mode" not in subagent_text else "legacy sandbox override present or role config missing",
+        })
     for skill in EXPECTED_SKILLS:
         checks.append(path_check(root, "improvement", f"skill installed: {skill}", _skill_check_path(skill), False))
     checks.append(path_check(root, "improvement", "agent index projected", ".tradingcodex/generated/agent-index.json", False))
@@ -687,6 +937,8 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
         })
     checks.append(path_check(root, "improvement", "forecast ledger directory installed", "trading/forecasts", False))
     checks.append(text_check(root, "improvement", "build skill installed", ".agents/skills/tcx-build/SKILL.md", "exact physical first line `$tcx-build`", False))
+    checks.append(text_check(root, "improvement", "brain skill uses direct managed turn", ".agents/skills/tcx-brain/SKILL.md", "do not wrap it in `$tcx-build`", False))
+    checks.append(text_check(root, "improvement", "strategy skill uses direct managed turn", ".agents/skills/tcx-strategy/SKILL.md", "do not wrap it in `$tcx-build`", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))
     return checks
 

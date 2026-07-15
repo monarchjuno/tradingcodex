@@ -1,6 +1,6 @@
 # Safety And Execution
 
-Use this page before changing policy, permissions, approvals, broker connectors, order tickets, execution, workbench process/auth boundaries, external MCP, secret handling, or audit. Human-facing rules live in [docs/safety-policy-and-execution.md](../docs/safety-policy-and-execution.md) and [docs/guardrails.md](../docs/guardrails.md).
+Use this page before changing policy, permissions, approvals, broker connectors, order tickets, execution, viewer read/auth boundaries, external MCP, secret handling, or audit. Human-facing rules live in [docs/safety-policy-and-execution.md](../docs/safety-policy-and-execution.md) and [docs/guardrails.md](../docs/guardrails.md).
 
 ## Approved Action Boundary
 
@@ -55,7 +55,7 @@ MCP input. The proof is not model-visible and cannot be supplied directly.
 
 If proof has been consumed while the canonical result remains `authorizing`,
 Stop/new-turn cleanup never resets or retries the effect. The session blocks a
-new Build or order-sensitive prompt until terminal, while ordinary research
+new managed workspace or order-sensitive prompt until terminal, while ordinary research
 may continue and inspect canonical status.
 
 Codex app Scheduled Tasks submit their saved prompt on each scheduled turn.
@@ -66,20 +66,32 @@ optional execution tasks; only the last category includes the exact first line,
 and the saved runtime prompt never invokes `tcx-automate` recursively.
 
 The in-memory mandate signature is field-integrity defense, not same-user OS
-attestation. Native project config explicitly enables hooks, disables unified execution and interactive
-action features. The hook matches legacy `Bash` and current
-`exec_command`/`write_stdin` tools in both pre-use and permission events,
-blocks general/interpreter/interactive execution, and permits only exact
-managed skill/reference reads. That containment prevents model-launched Python
-from minting or bypassing a mandate.
+attestation. Native project config explicitly enables hooks, disables unified
+execution and interactive action features, and defaults to the custom
+`trading-research` profile. General shell/Python and credential-free public
+HTTP plus user-owned file changes outside `trading/` are available, while the
+profile keeps `trading/` read-only and denies generated control files, the
+TradingCodex home/DB/runtime, protected workspace state, credentials,
+local/private destinations, and Unix sockets. It extends the built-in native
+`:workspace` profile, applies more-specific read/deny
+overrides, denies the broad temp roots, reopens an exact scratch child as the
+shell temp directory, and enables Codex's network proxy for
+the public-only command network policy. Only the installed standalone Codex
+runtime is reopened read-only beneath the otherwise denied Codex home so native
+file tools work without exposing auth/config/session state. The shell environment excludes
+secret, token, and broker variables. The hook matches legacy `Bash` and current
+`exec_command`/`write_stdin` events and retains semantic blocks for interactive
+sessions, credentials, state mutation, publication, and order effects. This
+OS-level authority separation, rather than an interpreter ban, prevents
+model-launched Python from reading or bypassing a mandate.
 
 Codex loads the project config, TradingCodex MCP server, and hooks only after
 the attached workspace is trusted. If it is untrusted or managed policy forces
 hooks off, native execution is unavailable and must not fall back to shell,
 public MCP, REST, generic CLI, or a model-selected path.
 
-Malformed reserved prompts, subagent turns, Workbench preview/start/follow-up,
-and retired `$execute-paper-order` invocations fail closed. Public REST and
+Malformed reserved prompts, subagent turns, and retired
+`$execute-paper-order` invocations fail closed. Public REST and
 generic CLI expose no submit, cancel, or status-refresh mutation. Fixed roles
 have no execution tool. Root Head Manager lists only the protected grant
 consumer, which direct MCP callers cannot use without current hook proof.
@@ -132,9 +144,8 @@ mutations, direct protected-tool calls without hook proof, raw secrets in
 outputs, malformed or non-root native mandates/grants, and live execution when
 any live gate is missing.
 
-Workbench preview, start, and follow-up requests must reject all three reserved
-native execution tokens as well as order drafting, approval, execution, cancellation,
-broker mutation, and secret handling before starting Codex.
+The workspace viewer has no prompt or mutation input and therefore cannot carry
+reserved native execution tokens or start Codex.
 
 ## Broker And External MCP Posture
 
@@ -151,61 +162,48 @@ prompts.
 
 Raw broker API keys, tokens, account credentials, and secrets must not appear in repository files, generated workspace files, prompts, shell output, product web, Admin exports, API responses, MCP responses, audit payloads, starter prompts, generated docs, or research artifacts.
 
-## Workbench Process Boundary
+## Workspace Viewer Boundary
 
-Only the CSRF-protected scope-preview, run-start, and follow-up POSTs have a
-narrow local-profile exception: loopback may use them without staff/API-key authentication. Remote
-always requires authentication, and every other mutation is unchanged. This is
-bounded analysis-process authority, not generic loopback mutation authority.
-
-The runner uses fixed argv, `shell=False`, a vetted attached-workspace cwd,
-one project-wide read-only filesystem sandbox, `approval_policy="never"`,
-disabled command networking, unified-exec, and interactive action features,
-forced hooks, ignored user config, an explicit registry-owned orchestrator/xhigh
-Head Manager selector, fully verified generated config/prompts/core
-skills/runtime,
-a fail-closed analysis tool/MCP allowlist, a stripped secret-like environment,
-and one active process per run. Django starts the generated `head-manager`, not
-fixed roles. Head Manager and spawned fixed roles share the same read-only
-sandbox, and authenticated service/MCP tools own durable writes. Head Manager
-interprets the request and dynamically selects/revises exact fixed roles. The
-service records only a lightweight `begin_analysis_run` provenance binding and
-authenticated research artifacts; it does not classify meaning, compile a DAG,
-or schedule roles. Persist/return only normalized, redacted,
-allowlisted public state—never
-raw reasoning, tool inputs/outputs, stderr, or raw final output. Each process has
-a fixed 30-minute elapsed timeout that terminates and reaps the process and
-records a redacted failure; there is no user-triggered web cancel, and the
-timeout does not widen any financial execution gate.
+The product web is GET-only and read-only. It selects a registered attached
+workspace, displays sanitized workspace, skill, artifact, and system state, and
+does not start a Codex process or mutate service/workspace state. There is no
+loopback mutation exception. Native Codex, MCP identity checks, policy,
+approval, idempotency, broker, and audit remain the only action path.
 Artifact writes are authenticated-role-bound, stage gates are ordered, research
 roots reject symlinks, and terminal state must match append-only event replay.
-Build authorization is a DB-canonical current-turn intent grant. A root native
-prompt must start with the exact physical first line `$tcx-build`; the hook
-binds the grant to workspace/session/turn/cwd/prompt and supplies one-time proof
-to protected DB-backed build MCP calls. Connector scaffold rendering is
+Workspace authorization is a DB-canonical, capability-scoped current-turn
+intent grant. A root native prompt starts with exact `$tcx-build`, `$tcx-brain`,
+or `$tcx-strategy`; the hook binds the grant to
+workspace/session/turn/cwd/prompt/scope and supplies one-time proof
+to protected DB-backed Build calls and scoped Brain/Strategy lifecycle MCP
+calls. Connector scaffold rendering is
 read-only and content-addressed; it returns target content/hash and only
 preimage existence/hash/size metadata, while actual workspace edits use native
 `apply_patch`. Agent MCP exposes no
 connector `connect` or write-style `scaffold` tool. It never elevates the actual
 Codex sandbox. Codex Plan mode cannot issue or use the grant, and its
-issue-time permission mode must still match when a tool is used.
-Workbench and subagents cannot inherit it, and every mutating follow-up or
-Automation run needs a fresh marker. Never combine it with
-`$tcx-order-allow`. Persistent `tcx mode` is retired, old `mode.json` state is
+issue-time permission mode must still match when a tool is used. The browser
+viewer cannot request it, subagents cannot inherit it, and every mutating follow-up or
+Automation run needs a fresh marker. Never combine Build, Brain, Strategy, or
+order markers. Persistent `tcx mode` is retired, old `mode.json` state is
 ignored, and direct operator CLI mutation remains a separate authority.
 External MCP import/register/check/discover/review and permission approve/deny
 require an interactive user terminal and are blocked from Head Manager's
-Build-turn MCP and shell paths. Prefer `workspace-write` for normal Build edits. A read-only turn
-cannot make native workspace-file edits but may render/read and call the
-specifically proof-protected canonical DB services; Plan mode blocks Build
-entirely. The generated Build command lane admits only native `apply_patch`,
-exact workspace reads/listing, trusted workspace-launcher subcommands, and
-isolated provider `py_compile`. It blocks general shell,
-scripts, interpreters, `pytest`, and build/test runners; full tests and smokes
-run in an explicit operator or maintainer terminal. Hook/runtime state,
+Build-turn MCP and shell paths. Normal Build edits require a fresh root turn in
+`trading-build`. That profile permits ordinary workspace-local shell, Python,
+tests, and `apply_patch`, but disables network and denies the TradingCodex
+home/DB/runtime, credentials, audit, approval, and order state. Plan mode
+blocks all managed workspace grants. Trusted Build-only workspace-launcher commands and protected MCP
+calls retain their exact grant/proof gates. Hook/runtime state,
 credential paths, and the managed `.gitignore` remain protected from direct
 Build edits. For recurring Build
 Automation, use an isolated worktree or workspace and retain a reviewable diff.
+Brain and Strategy management remain in `trading-research`; their direct exact
+markers permit only the matching native source/staging path plus
+`manage_investment_brain` or `manage_strategy`. Research keeps the lifecycle
+launcher and attached runtime denied. These scopes cannot authorize Build,
+each other, credentials, global config, publication, or orders. Plan
+mode and subagents cannot issue or use these grants.
 Unstarted protected-call reservations expire after
 two minutes, while a service-started call completes before deferred Stop or
 new-turn revocation becomes terminal. Protected MCP proof enforcement is
@@ -234,6 +232,5 @@ When changing this area, inspect:
 - `tradingcodex_service/application/brokers.py`
 - `tradingcodex_service/mcp_runtime.py`
 - order/policy/broker/API/CLI tests
-- workbench CSRF/auth, subprocess, redaction, concurrency, and analysis-only
-  negative tests
+- viewer read-auth, registered-workspace, sanitization, and no-mutation tests
 - generated role allowlists and prompts for authority drift

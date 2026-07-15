@@ -7,8 +7,7 @@ ownership, service-layer use cases, runtime planes, and core model ownership.
 
 ```text
 Browser / multiple Codex projects / subagents / local CLI
-  -> React skill-first workbench, stdio MCP bridge, or service API
-  -> bounded codex exec supervision for web-started analysis only
+  -> read-only React workspace viewer, stdio MCP bridge, or service API
 Native root Codex action prompt
   -> deterministic UserPromptSubmit parser -> native execution gateway
 Native root Codex Build prompt
@@ -20,10 +19,9 @@ Both service-facing paths
 ```
 
 The app boundary is modular-monolith ownership, not a distributed-service
-boundary. Admin, Ninja, MCP, CLI, generated hooks, and the React workbench call
-shared application services for durable behavior. A workbench run invokes the
-same generated `head-manager` through bounded `codex exec`; Django does not
-implement a second role scheduler or directly spawn fixed roles.
+boundary. Admin, Ninja, MCP, CLI, generated hooks, and the React viewer call
+shared application services for durable behavior. Django does not launch Codex,
+implement a second role scheduler, or directly spawn fixed roles.
 
 TradingCodex is the top-level investment OS. Its core kernel owns scope,
 evidence, point-in-time, uncertainty, artifact, forecast, policy, approval,
@@ -63,7 +61,7 @@ tradingcodex_service/
     harness.py
     analysis_runs.py
     investment_brains.py
-    workbench.py
+    viewer.py
     workspace_git.py
     workspaces.py
     health.py
@@ -109,7 +107,7 @@ directly.
 | Plane | Responsibility | Durable state |
 | --- | --- | --- |
 | Codex control plane | Role prompts, hooks, skills, dynamic Head Manager coordination, lightweight run bindings, generated project config, exact immediate-action interception, and `$tcx-order-allow` turn-grant admission/proof injection | Generated workspace files and Codex session state |
-| Django service plane | Policy, brokers, orders, approvals, portfolio, audit, harness, MCP registry, External MCP Gate, Admin, REST, React asset serving, bounded workbench process supervision, and file-native research indexing | Central Django DB for non-research runtime records plus operational process state |
+| Django service plane | Policy, brokers, orders, approvals, portfolio, audit, harness, MCP registry, External MCP Gate, Admin, REST, read-only React viewing, and file-native research indexing | Central Django DB for non-research runtime records plus operational service state |
 | Workspace system plane | Agent TOML, skill files, research markdown, schemas, local wrapper, MCP config, artifact directories | Codex-native workspace files and provenance |
 
 The control plane can request actions. The service plane decides and records
@@ -130,7 +128,7 @@ Control-plane maintainability depends on clear ownership:
 - `.codex/hooks/*` owns transport/run binding, exact explicit extension syntax
   reporting, hook audit, guidance context, and deterministic interception of
   the three literal root-native execution tokens plus the exact-first-line
-  `$tcx-build` contract. It does not classify natural language, select roles,
+  `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` contracts. It does not classify natural language, select roles,
   or build a DAG. The two complete immediate action
   protocols create a mandate and call the service-owned execution gateway
   before a model runs. Exact-first-line `$tcx-order-allow` instead issues/revokes a
@@ -140,17 +138,20 @@ Control-plane maintainability depends on clear ownership:
   parser, workspace-bound immediate mandate, `OrderTurnGrant`
   issue/reservation/consumption/revocation, `native-user` authorization, safe
   result projection, and dispatch into the canonical order services.
-- `tradingcodex_service/application/build_gateway.py` owns exact `$tcx-build`
-  parsing, DB-canonical workspace/session/turn/cwd/prompt grants, protected-call
+- `tradingcodex_service/application/build_gateway.py` owns exact `$tcx-build`,
+  `$tcx-brain`, and `$tcx-strategy` parsing, DB-canonical scoped
+  workspace/session/turn/cwd/prompt grants, protected-call
   proof reservation and consumption, expiry/revocation, and redacted audit. It
-  does not elevate the Codex sandbox or grant execution authority.
+  does not elevate the Codex sandbox or grant execution authority. The
+  compatibility-named `BuildTurnGrant` records `build`, `brain`, or `strategy`
+  authority scope.
 - `.tradingcodex/config.yaml` owns the exact workspace execution-policy input;
   `.tradingcodex/policies/restricted-list.yaml` adds the file-native restricted
   list to the canonical DB list. There are no generated principal, role,
   capability, access-policy, or information-barrier authority copies.
 - `tradingcodex_service/application/*` owns durable service behavior used by
   CLI, API, MCP, web, Admin, and generated hooks.
-- `frontend/*` owns workbench presentation and client interaction; its committed
+- `frontend/*` owns read-only viewer presentation and client interaction; its committed
   build is generated output, not a second business-logic layer.
 - `tradingcodex_service/application/agents.py` is the service registry for
   role labels, display groups, handoff contracts, forbidden action summaries,
@@ -177,8 +178,10 @@ Control-plane maintainability depends on clear ownership:
 Adding a future subagent should therefore add or update the role registry,
 role TOML, role-skill projection, MCP allowlist, docs, and tests together
 instead of burying role-specific behavior inside generic skills. Analysis
-filesystem posture remains one project-wide read-only setting rather than a
-per-role profile.
+filesystem posture remains one project-wide `trading-research` profile rather
+than per-role filesystem authority. A separate user-selected `trading-build`
+profile is reserved for root Build turns and never propagates through analysis
+dispatch.
 
 ## Central DB Ownership
 
@@ -210,7 +213,7 @@ Overrides:
 selection without probing alternate locations. `TRADINGCODEX_DB_NAME` remains
 an independent DB-only override; v1 does not move or merge runtime homes.
 
-`TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workbench for file-native
+`TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workspace for file-native
 agent, skill, and research state and supplies workspace provenance. It is not a
 DB selector or paper-account identifier. `.tradingcodex/workspace.json` stores
 the immutable workspace id; `path_hash` remains path provenance and may change
@@ -265,7 +268,7 @@ Interfaces must call shared service functions rather than duplicating durable
 logic. This applies to:
 
 - product web routes
-- bounded workbench run endpoints and process supervision
+- read-only viewer snapshot and detail endpoints
 - Django Admin default model registry
 - Django Ninja endpoints
 - MCP tool handlers
@@ -283,30 +286,12 @@ exact root native prompt -> deterministic hook parse -> native-user permission
 
 Policy and approval are revalidated immediately before non-live connection use.
 
-Workbench-run use cases are deliberately narrower than the general API. They
-assemble a skill-first snapshot, read skill/artifact/run detail, preview the
-canonical skill-expanded scope, start one analysis-only `codex exec` process,
-and resume that same Codex thread for a
-follow-up. Initial and follow-up requests reject order drafting, approval,
-execution, cancellation, broker mutation, and secret handling. The subprocess
-uses a fixed argument vector with `shell=False`, a vetted attached workspace as
-its working directory, a project-wide read-only filesystem sandbox,
-`approval_policy="never"`, disabled sandbox command networking, ignored user
-config, and disabled interactive browser/computer/app/image features. The same
-sandbox applies to Head Manager and spawned fixed roles; authenticated
-service/MCP tools own durable writes. Secret-like environment variables are
-removed. Generated launchers/hooks and the canonical MCP server are verified;
-a fail-closed PreToolUse analysis allowlist blocks arbitrary
-shell, file, connector, broker, order, and external MCP actions. Only normalized,
-redacted, allowlisted JSONL events and public analysis-run projections become workbench state;
-reasoning, tool inputs/outputs, stderr, and raw final output are not persisted or
-returned. Final output requires sealed run lineage, authenticated artifact
-receipts, accepted handoff readiness, the applicable quality gate, and complete
-hash-bound inputs. One process may be active per run. A fixed 30-minute elapsed
-timeout terminates and reaps stalled initial or resumed processes and records a
-redacted failure. There is no user-triggered web cancellation control.
-Workbench preview, start, and follow-up additionally reject all three reserved
-native execution tokens before launching Codex.
+The product web assembles a read-only selected-workspace snapshot and reads
+sanitized skill and artifact detail. Workspace ids must resolve through the
+registered workspace store and invalid or stale selections fail closed. The
+browser has no preview, run-start, follow-up, cancellation, skill-management,
+or Codex subprocess path. Native Codex owns agent execution; authenticated
+service and MCP calls retain durable-state and execution boundaries.
 
 ## Service Use Cases
 
@@ -425,13 +410,13 @@ producer, exact inputs, and Brain/Strategy/Investor Context lineage. Synthesis,
 forecasts, and Decision Memory reverify receipts instead of trusting Markdown
 frontmatter or caller-supplied lineage.
 
-Web-started runs add only operational metadata and normalized event projections
-beside the lightweight run under
-`.tradingcodex/mainagent/runs/<analysis-run-id>/`. They do not add raw
-stderr, reasoning, tool payload, or raw final-output files. Reader-facing final
-analysis remains an ordinary accepted workspace artifact, such as the existing
-head-manager report path, and gains no order or execution authority from its
-web origin.
+The viewer adds no run state beside the lightweight native run under
+`.tradingcodex/mainagent/runs/<analysis-run-id>/` and launches no Codex process.
+It reads canonical activity and accepted artifacts through the shared service
+layer without exposing raw stderr, reasoning, tool payloads, or raw final
+output. Reader-facing final analysis remains an ordinary accepted workspace
+artifact, such as the existing Head Manager report path, and gains no order or
+execution authority from browser display.
 
 Read-only/status use cases:
 
@@ -458,7 +443,7 @@ Read-only/status use cases:
 | `OrderCheckRun` | Schema, policy, cash/position, market, broker-validation, and risk check results. |
 | `ApprovalReceipt` | Approval evidence, approver, exact order payload hash, broker/account scope, and policy context. |
 | `OrderTurnGrant` | Single-use workspace/session/turn/prompt/mode admission, reservation, proof binding, consumption, expiry, and revocation state. |
-| `BuildTurnGrant` | Multi-use current-turn workspace/session/turn/cwd/prompt admission plus per-protected-call proof reservation, consumption, expiry, and revocation state. |
+| `BuildTurnGrant` | Compatibility-named multi-use workspace/session/turn/cwd/prompt grant with explicit `build`, `brain`, or `strategy` authority scope, plus protected-call reservation, expiry, revocation, and cross-scope denial state. |
 | `OrderEvent` | Order ticket state and broker timeline events. |
 | `BrokerOrder` | Broker-side order id and status mapping. |
 | `Fill` | Fill quantity/price/fee record linked to an order ticket. |

@@ -4,7 +4,7 @@ This directory is the human-readable source of truth linked from the public `REA
 
 Use these docs when you want the deeper "why" behind TradingCodex behavior. Coding agents should use `openwiki/` for fast source navigation, then return here before changing durable product behavior.
 
-New to TradingCodex? Start with the [User Guide](https://monarchjuno.github.io/tradingcodex/) for setup, a first analysis, the workbench, and everyday safety boundaries.
+New to TradingCodex? Start with the [User Guide](https://monarchjuno.github.io/tradingcodex/) for setup, a first analysis, the workspace viewer, and everyday safety boundaries.
 
 ## How To Read These Docs
 
@@ -28,10 +28,11 @@ New to TradingCodex? Start with the [User Guide](https://monarchjuno.github.io/t
 | `README.md` | New users and evaluators | Product summary, installation path, feature overview, and links into these docs. |
 | `installation.md` | Operators | Setup, update, installer, MCP/service startup, and smoke checks. |
 | `docs/` | Humans and maintainers | Durable product source of truth and deeper design rationale. |
+| `guidebook/` | End users | Static task-first user guide published to GitHub Pages; it summarizes common journeys and links back to canonical detail. |
 | `openwiki/` | Coding agents | Fast repository map and edit/validation routing. |
 | `AGENTS.md` | Coding agents | Hard rules, setup guard, coding rules, and validation requirements. |
 
-If these layers disagree, treat `docs/` as the durable product intent and fix the mismatch deliberately. Do not let hidden behavior drift live only in code, tests, prompts, skills, hooks, or generated templates.
+If these layers disagree, treat `docs/` as the durable product intent and fix the mismatch deliberately. Changes to a user-visible setup, task, skill, viewer, recovery, provider, or order journey also require a `guidebook/` update in the same change. Do not let hidden behavior drift live only in code, tests, prompts, skills, hooks, or generated templates.
 
 ## Core Documents
 
@@ -92,6 +93,7 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 | Django apps, models, service-layer contracts, central DB ownership, or runtime topology | `system-architecture.md` |
 | Product web, Admin, REST, MCP, CLI, or generated wrapper behavior | `interfaces-and-surfaces.md` |
 | Workspace templates, bootstrap, hooks, project MCP config, generated files, or update behavior | `generated-workspaces.md` |
+| User-facing setup, everyday task, skill, viewer, recovery, provider, or order onboarding journey | The owning canonical topic document plus `guidebook/` |
 | Test expectations, smoke flows, validation commands, or regression scenarios | `validation-and-test-plan.md` |
 | Packaging, installer, release automation, versioning, or distribution boundary | `deployment.md`, `installation.md` |
 | License, contribution, trademark, generated workspace ownership, or commercialization boundary | `licensing-and-commercialization.md` |
@@ -105,5 +107,5 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 | Keep `README.md` concise | The public README should explain the product and route readers here instead of duplicating every rule. |
 | Keep OpenWiki agent-focused | `openwiki/` should help agents work efficiently and link back to these docs for durable explanations. |
 | Keep product language English | TradingCodex product copy, generated workspace guidance, Admin UI, CLI help, role prompts, durable docs, and examples are written in English unless a reviewed localization layer is being built. |
-| Product web is skill-first | The `/` React workbench starts bounded analysis through the same generated `head-manager`, exposes normalized run/evidence state, and never widens role, MCP, policy, approval, or execution authority. |
+| Product web is read-only | The `/` React viewer exposes Library, Skills, and System for a registered selected workspace. Native Codex owns analysis and the viewer exposes no mutation path. |
 | Open-core boundary is explicit | Apache-2.0 covers the repository open core; trademarks and official commercial offerings remain separately governed. |

@@ -2,18 +2,21 @@ from __future__ import annotations
 
 import os
 import json
+import http.client
 import ipaddress
 import signal
 import re
 import shlex
 import shutil
 import socket
+import socketserver
 import subprocess
 import sys
 import time
 import urllib.request
-from urllib.error import HTTPError
 from pathlib import Path
+
+from django.core.servers.basehttp import WSGIServer
 
 from tradingcodex_cli.versioning import version_less_than as _version_less_than
 from tradingcodex_service.application.common import paths_equivalent
@@ -25,19 +28,43 @@ from tradingcodex_service.version import TRADINGCODEX_VERSION
 DEFAULT_SERVICE_HOST = "127.0.0.1"
 DEFAULT_SERVICE_PORT = 48267
 DEFAULT_SERVICE_ADDR = f"{DEFAULT_SERVICE_HOST}:{DEFAULT_SERVICE_PORT}"
+DEFAULT_SERVICE_START_TIMEOUT = 30.0
+DEFAULT_SERVICE_HEALTH_TIMEOUT = 2.0
 DEFAULT_SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_SERVICE_LOG_BACKUPS = 3
+_LOOPBACK_HTTP_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class NonResolvingWSGIServer(WSGIServer):
+    """Bind without a reverse-DNS lookup for the local server name."""
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
+        self.setup_environ()
+
+
+def configured_service_addr() -> str:
+    return str(os.environ.get("TRADINGCODEX_SERVICE_ADDR") or "").strip() or DEFAULT_SERVICE_ADDR
 
 
 def maybe_autostart_service(workspace_root: Path, source_root: Path | None = None) -> bool:
     if os.environ.get("TRADINGCODEX_MCP_AUTOSTART_SERVICE", "").lower() not in {"1", "true", "yes", "on"}:
         return False
-    addr = os.environ.get("TRADINGCODEX_SERVICE_ADDR", DEFAULT_SERVICE_ADDR)
-    timeout = float(os.environ.get("TRADINGCODEX_MCP_AUTOSTART_TIMEOUT", "8"))
+    addr = configured_service_addr()
+    timeout = float(os.environ.get("TRADINGCODEX_MCP_AUTOSTART_TIMEOUT", str(DEFAULT_SERVICE_START_TIMEOUT)))
     return ensure_service_up(workspace_root, addr=addr, source_root=source_root, timeout=timeout)
 
 
-def ensure_service_up(workspace_root: Path, addr: str = DEFAULT_SERVICE_ADDR, source_root: Path | None = None, timeout: float = 8.0) -> bool:
+def ensure_service_up(
+    workspace_root: Path,
+    addr: str | None = None,
+    source_root: Path | None = None,
+    timeout: float = DEFAULT_SERVICE_START_TIMEOUT,
+) -> bool:
+    addr = addr or configured_service_addr()
     assert_service_binding_allowed(addr)
     host, port = _parse_addr(addr)
     if _tcp_open(host, port) and _compatible_service(host, port):
@@ -47,17 +74,36 @@ def ensure_service_up(workspace_root: Path, addr: str = DEFAULT_SERVICE_ADDR, so
             return False
         if _tcp_open(host, port):
             _replace_stale_tradingcodex_service_or_raise(host, port, timeout=timeout)
-        _start_service(workspace_root, addr, source_root)
+        process = _start_service(workspace_root, addr, source_root)
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if _tcp_open(host, port) and _compatible_service(host, port):
                 return True
+            if process is not None and process.poll() is not None:
+                break
             time.sleep(0.2)
-    _assert_compatible_service(host, port)
+    if _tcp_open(host, port) and _compatible_service(host, port):
+        return True
+    if process is not None and process.poll() is None:
+        _terminate_failed_startup(process)
+    try:
+        _assert_compatible_service(host, port)
+    except RuntimeError as exc:
+        process_state = (
+            f"exited with code {process.returncode}"
+            if process is not None and process.poll() is not None
+            else "is still running"
+        )
+        startup_tail = _service_startup_log_tail() or "(no startup output)"
+        raise RuntimeError(
+            f"{exc} Detached service process {process_state}. "
+            f"Redacted startup output: {startup_tail}"
+        ) from exc
     return False
 
 
-def compatible_service_running(addr: str = DEFAULT_SERVICE_ADDR) -> bool:
+def compatible_service_running(addr: str | None = None) -> bool:
+    addr = addr or configured_service_addr()
     assert_service_binding_allowed(addr)
     host, port = _parse_addr(addr)
     if not _tcp_open(host, port):
@@ -66,7 +112,8 @@ def compatible_service_running(addr: str = DEFAULT_SERVICE_ADDR) -> bool:
     return True
 
 
-def stop_service(addr: str = DEFAULT_SERVICE_ADDR, timeout: float = 5.0) -> bool:
+def stop_service(addr: str | None = None, timeout: float = 5.0) -> bool:
+    addr = addr or configured_service_addr()
     host, port = _parse_addr(addr)
     normalized_addr = f"{host}:{port}"
     if not _is_loopback_host(host):
@@ -92,7 +139,8 @@ def stop_service(addr: str = DEFAULT_SERVICE_ADDR, timeout: float = 5.0) -> bool
     raise RuntimeError(f"Timed out stopping TradingCodex service on {normalized_addr}.")
 
 
-def service_status(addr: str = DEFAULT_SERVICE_ADDR) -> dict:
+def service_status(addr: str | None = None) -> dict:
+    addr = addr or configured_service_addr()
     host, port = _parse_addr(addr)
     normalized_addr = f"{host}:{port}"
     url = service_http_url(normalized_addr)
@@ -149,31 +197,64 @@ def service_status(addr: str = DEFAULT_SERVICE_ADDR) -> dict:
     return status
 
 
-def service_http_url(addr: str = DEFAULT_SERVICE_ADDR) -> str:
+def service_http_url(addr: str | None = None) -> str:
+    addr = addr or configured_service_addr()
     host, port = _parse_addr(addr)
     return f"http://{host}:{port}/"
 
 
-def _start_service(workspace_root: Path, addr: str, source_root: Path | None) -> None:
+def open_loopback_url(url: str, *, timeout: float):
+    """Open a loopback service URL without consulting host proxy settings."""
+
+    return _LOOPBACK_HTTP_OPENER.open(url, timeout=timeout)
+
+
+def _start_service(
+    workspace_root: Path,
+    addr: str,
+    source_root: Path | None,
+) -> subprocess.Popen[bytes]:
     run_dir = tradingcodex_state_dir() / "run"
     run_dir.mkdir(parents=True, exist_ok=True)
+    startup_log = run_dir / "service-startup.log"
     env = os.environ.copy()
+    env.setdefault("PYTHONFAULTHANDLER", "1")
     env.setdefault("DJANGO_SETTINGS_MODULE", "tradingcodex_service.settings")
     env.setdefault("TRADINGCODEX_WORKSPACE_ROOT", str(workspace_root.resolve()))
     if source_root:
         current = env.get("PYTHONPATH")
         env["PYTHONPATH"] = str(source_root.resolve()) + (f"{os.pathsep}{current}" if current else "")
     platform_kwargs = _detached_process_kwargs()
-    subprocess.Popen(
-        [sys.executable, "-m", "tradingcodex_cli", "service", "runserver", addr, "--noreload"],
-        cwd=workspace_root,
-        env=env,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        close_fds=True,
-        **platform_kwargs,
-    )
+    with startup_log.open("wb") as output:
+        return subprocess.Popen(
+            [sys.executable, "-m", "tradingcodex_cli", "service", "runserver", addr, "--noreload"],
+            cwd=workspace_root,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            close_fds=True,
+            **platform_kwargs,
+        )
+
+
+def _terminate_failed_startup(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        if os.name != "nt" and hasattr(signal, "SIGABRT"):
+            process.send_signal(signal.SIGABRT)
+        else:
+            process.terminate()
+        process.wait(timeout=2)
+        return
+    except (OSError, subprocess.TimeoutExpired):
+        pass
+    try:
+        process.kill()
+        process.wait(timeout=2)
+    except (OSError, subprocess.TimeoutExpired):
+        pass
 
 
 def _detached_process_kwargs(platform_name: str | None = None) -> dict:
@@ -196,8 +277,11 @@ def _parse_addr(addr: str) -> tuple[str, int]:
 
 def _tcp_open(host: str, port: int) -> bool:
     try:
-        with socket.create_connection((host, port), timeout=0.25):
-            return True
+        with socket.create_connection((host, port), timeout=0.25) as connection:
+            local_port = int(connection.getsockname()[1])
+            # macOS can self-connect when the target is an unbound port in its
+            # ephemeral range. That is a client socket, not a listening service.
+            return local_port != port
     except OSError:
         return False
 
@@ -251,22 +335,19 @@ def _assert_compatible_service(host: str, port: int) -> None:
 
 
 def _service_health(host: str, port: int) -> dict:
-    ready_url = f"http://{host}:{port}/api/health/ready"
+    connection = http.client.HTTPConnection(host, port, timeout=DEFAULT_SERVICE_HEALTH_TIMEOUT)
     try:
-        with urllib.request.urlopen(ready_url, timeout=0.5) as response:
-            payload = response.read().decode("utf-8")
+        connection.request("GET", "/api/health/ready")
+        response = connection.getresponse()
+        if response.status not in {200, 503}:
+            return {}
+        payload = response.read().decode("utf-8")
         data = json.loads(payload)
         return data if isinstance(data, dict) else {}
-    except HTTPError as exc:
-        if exc.code == 503:
-            try:
-                data = json.loads(exc.read().decode("utf-8"))
-                return data if isinstance(data, dict) else {}
-            except Exception:
-                return {}
-        return {}
     except Exception:
         return {}
+    finally:
+        connection.close()
 
 
 def _service_log_status() -> dict:
@@ -295,7 +376,23 @@ def _service_log_status() -> dict:
         "max_bytes": int(os.environ.get("TRADINGCODEX_SERVICE_LOG_MAX_BYTES", DEFAULT_SERVICE_LOG_MAX_BYTES)),
         "max_backups": int(os.environ.get("TRADINGCODEX_SERVICE_LOG_BACKUPS", DEFAULT_SERVICE_LOG_BACKUPS)),
         "last_error": last_error,
+        "startup_path": str(run_dir / "service-startup.log"),
+        "startup_tail": _service_startup_log_tail(),
     }
+
+
+def _service_startup_log_tail() -> str:
+    path = tradingcodex_state_dir() / "run" / "service-startup.log"
+    if not path.exists():
+        return ""
+    try:
+        from tradingcodex_service.log_safety import redact_log_text
+
+        with path.open("rb") as handle:
+            handle.seek(max(0, path.stat().st_size - 65_536))
+            return redact_log_text(handle.read().decode("utf-8", errors="replace"))[-4000:]
+    except OSError:
+        return ""
 
 
 def _service_pids(host: str, port: int, health: dict) -> list[int]:

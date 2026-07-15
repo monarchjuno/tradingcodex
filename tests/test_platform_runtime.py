@@ -150,6 +150,50 @@ def test_v1_update_preserves_managed_codex_mcp_servers(monkeypatch: pytest.Monke
     assert lock["generated_files"][".codex/config.toml"]["sha256"] == hashlib.sha256(config_path.read_bytes()).hexdigest()
 
 
+def test_v1_update_respects_workspace_ownership_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path / "home"))
+    bootstrap_workspace(workspace)
+
+    generated_agents = workspace / "AGENTS.md"
+    expected_generated_agents = generated_agents.read_bytes()
+    generated_agents.write_text("user edit in a generated file\n", encoding="utf-8")
+
+    preserved = {
+        ".tradingcodex/agent-instructions/head-manager.md": "Prefer concise user summaries.\n",
+        ".tradingcodex/user/customization.json": '{"version": 1, "theme": "user"}\n',
+        "investment-brains/investment-brain-user/notes.md": "User-authored Brain source notes.\n",
+        "trading/research/user-artifact.md": "Research artifact.\n",
+        "trading/decisions/user-decision.md": "Decision artifact.\n",
+        "trading/forecasts/user-forecast.json": "{}\n",
+        ".tradingcodex/mainagent/runs/run-user/run.json": "{}\n",
+        "user-notes.md": "Ordinary user file.\n",
+    }
+    for relative, body in preserved.items():
+        path = workspace / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(body, encoding="utf-8")
+    preserved_bytes = {
+        relative: (workspace / relative).read_bytes()
+        for relative in preserved
+    }
+
+    bootstrap_workspace(workspace, update=True)
+
+    assert generated_agents.read_bytes() == expected_generated_agents
+    for relative, expected in preserved_bytes.items():
+        assert (workspace / relative).read_bytes() == expected, relative
+    projected_prompt = (
+        workspace / ".codex/prompts/base_instructions/head-manager.md"
+    ).read_text(encoding="utf-8")
+    assert "Prefer concise user summaries." in projected_prompt
+    lock = read_module_lock(workspace)
+    assert set(preserved).isdisjoint(lock["generated_files"])
+
+
 def test_v1_update_preflights_retired_generated_file_conflicts(tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     bootstrap_workspace(workspace)
@@ -189,6 +233,11 @@ def test_v1_update_migrates_legacy_core_skill_paths_without_aliases(tmp_path: Pa
         ".agents/skills/plan-workflow/SKILL.md": ".agents/skills/tcx-plan/SKILL.md",
         ".agents/skills/decision-memory/SKILL.md": ".agents/skills/tcx-memory/SKILL.md",
         ".agents/skills/order-allow/SKILL.md": ".agents/skills/tcx-order-allow/SKILL.md",
+        ".agents/skills/tcx-brain-create/SKILL.md": ".agents/skills/tcx-brain/SKILL.md",
+        ".agents/skills/tcx-brain-create/agents/openai.yaml": ".agents/skills/tcx-brain/agents/openai.yaml",
+        ".agents/skills/tcx-brain-create/references/bundle-contract.md": (
+            ".agents/skills/tcx-brain/references/bundle-contract.md"
+        ),
         ".tradingcodex/subagents/skills/shared/collect-evidence/SKILL.md": (
             ".tradingcodex/subagents/skills/shared/tcx-evidence/SKILL.md"
         ),
@@ -372,7 +421,9 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     workspace = tmp_path / "Workspace With Spaces"
     home = tmp_path / "Application Support" / "Trader's Home"
     package_spec = str(tmp_path / "Wheel Package & Cache" / "tradingcodex-1.0.0-py3-none-any.whl")
+    codex_home = tmp_path / "Codex State With Spaces"
     monkeypatch.setenv("TRADINGCODEX_HOME", str(home))
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
     monkeypatch.delenv("TRADINGCODEX_HOME_SOURCE", raising=False)
     monkeypatch.delenv("TRADINGCODEX_DB_NAME", raising=False)
     monkeypatch.setenv("TRADINGCODEX_MCP_PACKAGE_SPEC", package_spec)
@@ -398,6 +449,57 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     assert len(parsed) == 10
     root_mcp = parsed[0]["mcp_servers"]["tradingcodex"]
     assert parsed[0]["features"]["hooks"] is True
+    assert parsed[0]["features"]["network_proxy"] is True
+    assert parsed[0]["default_permissions"] == "trading-research"
+    assert "sandbox_mode" not in parsed[0]
+    assert all("sandbox_mode" not in config for config in parsed)
+    assert parsed[0]["permissions"]["trading-research"]["extends"] == ":workspace"
+    assert parsed[0]["permissions"]["trading-build"]["extends"] == ":workspace"
+    research_workspace = parsed[0]["permissions"]["trading-research"]["filesystem"][":workspace_roots"]
+    assert research_workspace["."] == "write"
+    assert research_workspace[".git"] == "read"
+    assert research_workspace[".gitignore"] == "read"
+    assert research_workspace[".agents"] == "read"
+    assert research_workspace["AGENTS.md"] == "read"
+    assert research_workspace["tcx"] == "read"
+    assert research_workspace["tcx.cmd"] == "read"
+    assert research_workspace["trading"] == "read"
+    assert research_workspace[".tradingcodex"] == "deny"
+    assert ".tradingcodex/cli.py" not in research_workspace
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/cli.py"] == "read"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"]["."] == "write"
+    assert {"manage_strategy", "manage_investment_brain"}.issubset(root_mcp["enabled_tools"])
+    scratch = parsed[0]["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"]
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][scratch] == "write"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][":tmpdir"] == "deny"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][":slash_tmp"] == "deny"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][":tmpdir"] == "deny"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][":slash_tmp"] == "deny"
+    assert parsed[0]["shell_environment_policy"]["set"]["TMPDIR"] == scratch
+    assert parsed[0]["shell_environment_policy"]["set"]["TEMP"] == scratch
+    assert parsed[0]["shell_environment_policy"]["set"]["TMP"] == scratch
+    shell_visible = set(parsed[0]["shell_environment_policy"]["include_only"]) | set(
+        parsed[0]["shell_environment_policy"]["set"]
+    )
+    assert {
+        "TRADINGCODEX_HOME",
+        "TRADINGCODEX_HOME_SOURCE",
+        "TRADINGCODEX_DB_NAME",
+        "TRADINGCODEX_PYTHON",
+        "TRADINGCODEX_SERVICE_ADDR",
+        "TRADINGCODEX_WORKSPACE_ROOT",
+    }.isdisjoint(shell_visible)
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"]["~/.codex"] == "deny"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"]["~/.codex/proxy"] == "read"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"]["~/.codex/packages/standalone"] == "read"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][str(codex_home.resolve())] == "deny"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][str(codex_home.resolve() / "proxy")] == "read"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"][str(codex_home.resolve() / "packages" / "standalone")] == "read"
+    assert parsed[0]["permissions"]["trading-research"]["filesystem"]["~/.ssh"] == "deny"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][str(codex_home.resolve())] == "deny"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][str(codex_home.resolve() / "proxy")] == "read"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"]["~/.codex/packages/standalone"] == "read"
+    assert parsed[0]["permissions"]["trading-build"]["network"]["enabled"] is False
     assert all(
         config["mcp_servers"]["tradingcodex"]["cwd"] == str(workspace.resolve())
         for config in parsed
@@ -409,6 +511,8 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     )
     assert root_mcp["env"]["TRADINGCODEX_HOME"] == str(home.resolve())
     assert root_mcp["env"]["TRADINGCODEX_HOME_SOURCE"] == "environment_override"
+    assert root_mcp["env"]["TRADINGCODEX_WORKSPACE_ROOT"] == str(workspace.resolve())
+    assert root_mcp["env"]["TRADINGCODEX_SERVICE_ADDR"]
     assert Path(root_mcp["command"]).absolute() == attached_python.absolute()
     assert root_mcp["args"] == ["-m", "tradingcodex_cli", "mcp", "stdio"]
     assert all(config["mcp_servers"]["tradingcodex"]["required"] is True for config in parsed)
@@ -422,6 +526,9 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     assert module_lock["home_source"] == "environment_override"
     assert (workspace / "tcx").is_file()
     assert (workspace / "tcx.cmd").is_file()
+    assert 'if [ "$(pwd -P)" != "$TRADINGCODEX_ROOT" ]; then' in (
+        workspace / "tcx"
+    ).read_text(encoding="utf-8")
     assert b"\r\n" not in (workspace / "tcx").read_bytes()
     if os.name != "nt":
         assert os.access(workspace / "tcx", os.X_OK)
@@ -630,6 +737,27 @@ def test_runtime_provisioning_failure_precedes_git_and_gitignore_mutation(
     assert gitignore.read_bytes() == before
     assert not (workspace / ".git").exists()
     assert not (workspace / ".tradingcodex").exists()
+
+
+def test_local_runtime_snapshot_excludes_stale_build_products(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    (source / "apps/harness/migrations").mkdir(parents=True)
+    (source / "apps/harness/migrations/0001_v1_initial.py").write_text(
+        "INITIAL = True\n",
+        encoding="utf-8",
+    )
+    (source / "build/lib/apps/harness/migrations").mkdir(parents=True)
+    (source / "build/lib/apps/harness/migrations/0002_stale.py").write_text(
+        "STALE = True\n",
+        encoding="utf-8",
+    )
+    (source / "pyproject.toml").write_text("[build-system]\n", encoding="utf-8")
+
+    snapshot = generator._snapshot_local_runtime_source(source, tmp_path)
+
+    assert (snapshot / "apps/harness/migrations/0001_v1_initial.py").is_file()
+    assert not (snapshot / "build").exists()
+    assert not any(path.name == "0002_stale.py" for path in snapshot.rglob("*.py"))
 
 
 def test_missing_uv_fails_before_workspace_mutation(
@@ -1059,10 +1187,14 @@ def test_windows_drive_paths_render_as_valid_toml_yaml_json(tmp_path: Path) -> N
         "TRADINGCODEX_MCP_PACKAGE_SPEC": "tradingcodex==1.0.0",
         "TRADINGCODEX_PACKAGE_SOURCE_KIND": "persistent",
         "TRADINGCODEX_WORKSPACE_ROOT": r"C:\Workspaces\Trading Codex",
+        "TRADINGCODEX_SCRATCH_PATH": r"C:\Users\Ada Lovelace\AppData\Local\Temp\tradingcodex-scratch-v1\tcxw_portable",
         "TRADINGCODEX_HOME": r"C:\Users\Ada Lovelace\AppData\Local\TradingCodex",
         "TRADINGCODEX_HOME_SOURCE": "platform_default",
         "TRADINGCODEX_DB_PATH": r"C:\Users\Ada Lovelace\AppData\Local\TradingCodex\state\tradingcodex.sqlite3",
         "TRADINGCODEX_DB_SOURCE": "home_default",
+        "CODEX_HOME_PATH": r"C:\Users\Ada Lovelace\.codex",
+        "CODEX_HOME_PROXY_PATH": r"C:\Users\Ada Lovelace\.codex\proxy",
+        "CODEX_HOME_STANDALONE_PATH": r"C:\Users\Ada Lovelace\.codex\packages\standalone",
         "TRADINGCODEX_SERVICE_ADDR": "127.0.0.1:48267",
         "TRADINGCODEX_HOOK_COMMAND": r".\tcx.cmd __hook",
         "TRADINGCODEX_WORKSPACE_LAUNCHER": r".\tcx.cmd",

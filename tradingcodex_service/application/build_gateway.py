@@ -22,6 +22,14 @@ from tradingcodex_service.application.runtime import (
 
 
 BUILD_SKILL = "$tcx-build"
+MANAGED_SKILL_SCOPES = {
+    "$tcx-brain": "brain",
+    "$tcx-strategy": "strategy",
+}
+AUTHORITY_SCOPE_MARKERS = {
+    "build": BUILD_SKILL,
+    **{scope: marker for marker, scope in MANAGED_SKILL_SCOPES.items()},
+}
 BUILD_TURN_PROOF_FIELD = "_build_turn_proof"
 BUILD_TURN_GRANT_TTL = timedelta(hours=1)
 BUILD_RESERVATION_TTL = timedelta(minutes=2)
@@ -40,6 +48,15 @@ BUILD_PROTECTED_MCP_TOOLS = frozenset(
         "validate_broker_connector_build",
     }
 )
+MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES = {
+    "manage_investment_brain": "brain",
+    "manage_strategy": "strategy",
+}
+WORKSPACE_PROTECTED_MCP_TOOL_SCOPES = {
+    **{tool_name: "build" for tool_name in BUILD_PROTECTED_MCP_TOOLS},
+    **MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES,
+}
+WORKSPACE_PROTECTED_MCP_TOOLS = frozenset(WORKSPACE_PROTECTED_MCP_TOOL_SCOPES)
 
 _MAX_BUILD_PROMPT_BYTES = 20_000
 _MAX_BINDING_LENGTH = 200
@@ -49,7 +66,7 @@ _FINISH_STATUSES = frozenset({"ok", "error"})
 
 
 class BuildInvocationError(ValueError):
-    """Raised when a reserved Build invocation or binding is malformed."""
+    """Raised when a reserved workspace invocation or binding is malformed."""
 
 
 def parse_build_invocation(prompt: Any) -> bool | None:
@@ -77,12 +94,68 @@ def parse_build_invocation(prompt: Any) -> bool | None:
         physical = line[:-1] if line.endswith("\r") else line
         if any(
             physical == token or physical.startswith(token + " ")
-            for token in ("$tcx-order-allow", "$tcx-order-submit", "$tcx-order-cancel")
+            for token in (
+                "$tcx-brain",
+                "$tcx-strategy",
+                "$tcx-order-allow",
+                "$tcx-order-submit",
+                "$tcx-order-cancel",
+            )
         ):
-            raise BuildInvocationError("$tcx-build cannot be combined with an order execution marker")
+            raise BuildInvocationError(
+                "$tcx-build cannot be combined with a managed-skill or order marker"
+            )
     if len(raw.encode("utf-8")) > _MAX_BUILD_PROMPT_BYTES:
         raise BuildInvocationError("$tcx-build prompt is too long")
     return True
+
+
+def parse_managed_skill_invocation(prompt: Any) -> str | None:
+    """Return the capability scope for one exact managed-skill first line."""
+
+    raw = str(prompt or "")
+    if not raw:
+        return None
+    first_line, separator, remainder = raw.partition("\n")
+    physical_line = first_line[:-1] if first_line.endswith("\r") else first_line
+    marker = next(
+        (
+            candidate
+            for candidate in MANAGED_SKILL_SCOPES
+            if raw.lstrip().startswith(candidate)
+            or physical_line.strip() == candidate
+            or physical_line.strip().startswith(candidate + " ")
+        ),
+        "",
+    )
+    if not marker:
+        return None
+    if physical_line != marker:
+        raise BuildInvocationError(
+            f"{marker} must be the exact physical first line with no flags or surrounding whitespace"
+        )
+    if not separator or not remainder.strip():
+        raise BuildInvocationError(f"{marker} requires a non-empty request after its first line")
+    incompatible_markers = {
+        BUILD_SKILL,
+        *MANAGED_SKILL_SCOPES,
+        "$tcx-order-allow",
+        "$tcx-order-submit",
+        "$tcx-order-cancel",
+    }
+    incompatible_markers.discard(marker)
+    for line in remainder.splitlines():
+        physical = line[:-1] if line.endswith("\r") else line
+        if any(
+            physical == token or physical.startswith(token + " ")
+            for token in incompatible_markers
+        ):
+            raise BuildInvocationError(
+                f"{marker} cannot be combined with another managed, Build, or order marker"
+            )
+    if len(raw.encode("utf-8")) > _MAX_BUILD_PROMPT_BYTES:
+        raise BuildInvocationError(f"{marker} prompt is too long")
+    return MANAGED_SKILL_SCOPES[marker]
 
 
 def issue_build_turn_grant(
@@ -99,21 +172,75 @@ def issue_build_turn_grant(
 
     if parse_build_invocation(prompt) is None:
         return None
+    return _issue_workspace_turn_grant(
+        workspace_root,
+        prompt,
+        session_id=session_id,
+        turn_id=turn_id,
+        cwd=cwd,
+        issued_at=issued_at,
+        permission_mode=permission_mode,
+        authority_scope="build",
+        marker=BUILD_SKILL,
+    )
+
+
+def issue_managed_skill_turn_grant(
+    workspace_root: Path | str,
+    prompt: Any,
+    *,
+    session_id: Any,
+    turn_id: Any,
+    cwd: Path | str | None = None,
+    issued_at: datetime | None = None,
+    permission_mode: Any = "",
+) -> dict[str, Any] | None:
+    """Issue one capability-scoped grant from an exact managed-skill turn."""
+
+    authority_scope = parse_managed_skill_invocation(prompt)
+    if authority_scope is None:
+        return None
+    marker = AUTHORITY_SCOPE_MARKERS[authority_scope]
+    return _issue_workspace_turn_grant(
+        workspace_root,
+        prompt,
+        session_id=session_id,
+        turn_id=turn_id,
+        cwd=cwd,
+        issued_at=issued_at,
+        permission_mode=permission_mode,
+        authority_scope=authority_scope,
+        marker=marker,
+    )
+
+
+def _issue_workspace_turn_grant(
+    workspace_root: Path | str,
+    prompt: Any,
+    *,
+    session_id: Any,
+    turn_id: Any,
+    cwd: Path | str | None,
+    issued_at: datetime | None,
+    permission_mode: Any,
+    authority_scope: str,
+    marker: str,
+) -> dict[str, Any]:
     root = Path(workspace_root).resolve()
     if cwd is None or not str(cwd).strip():
-        raise PermissionError("$tcx-build requires the generated workspace root cwd")
+        raise PermissionError(f"{marker} requires the generated workspace root cwd")
     try:
         resolved_cwd = Path(cwd).resolve()
     except (OSError, RuntimeError, ValueError) as exc:
-        raise PermissionError("$tcx-build workspace cwd is invalid") from exc
+        raise PermissionError(f"{marker} workspace cwd is invalid") from exc
     if resolved_cwd != root:
-        raise PermissionError("$tcx-build must originate from the generated workspace root")
+        raise PermissionError(f"{marker} must originate from the generated workspace root")
     session_hash = _secret_hash(_validate_binding_value("session_id", session_id))
     turn_hash = _secret_hash(_validate_binding_value("turn_id", turn_id))
     prompt_hash = hashlib.sha256(str(prompt).encode("utf-8")).hexdigest()
     normalized_permission_mode = _normalize_permission_mode(permission_mode)
     if normalized_permission_mode == "plan":
-        raise PermissionError("$tcx-build is unavailable while Codex is in Plan mode")
+        raise PermissionError(f"{marker} managed changes are unavailable while Codex is in Plan mode")
     now = _aware_datetime(issued_at)
     expires_at = now + BUILD_TURN_GRANT_TTL
     context = workspace_context_payload(root)
@@ -121,7 +248,7 @@ def issue_build_turn_grant(
 
     from apps.harness.models import BuildTurnGrant
 
-    lock_name = f"build-turn-{context['path_hash']}-{session_hash}"
+    lock_name = f"workspace-turn-{context['path_hash']}-{session_hash}"
     with workspace_file_lock(root, lock_name):
         return _issue_build_turn_grant_locked(
             root,
@@ -131,6 +258,8 @@ def issue_build_turn_grant(
             turn_hash=turn_hash,
             prompt_hash=prompt_hash,
             permission_mode=normalized_permission_mode,
+            authority_scope=authority_scope,
+            marker=marker,
             now=now,
             expires_at=expires_at,
         )
@@ -145,6 +274,8 @@ def _issue_build_turn_grant_locked(
     turn_hash: str,
     prompt_hash: str,
     permission_mode: str,
+    authority_scope: str,
+    marker: str,
     now: datetime,
     expires_at: datetime,
 ) -> dict[str, Any]:
@@ -164,24 +295,26 @@ def _issue_build_turn_grant_locked(
             )
         )
         if len(same_turn) > 1:  # pragma: no cover - protected by the DB constraint
-            error = "the current turn has multiple Build grants"
+            error = "the current turn has multiple workspace grants"
         elif same_turn:
             candidate = same_turn[0]
             if candidate.status in {grant_model.STATUS_REVOKED, grant_model.STATUS_EXPIRED}:
-                error = "the current turn already has a terminal $tcx-build grant"
+                error = f"the current turn already has a terminal {marker} grant"
             elif candidate.expires_at <= now:
                 if (
                     candidate.status == grant_model.STATUS_RESERVED
                     and candidate.service_started_at is not None
                 ):
                     _request_revoke_after_finish(root, candidate, now, reason="expired")
-                    error = "the protected Build call is still in flight on an expired grant"
+                    error = "the protected workspace call is still in flight on an expired grant"
                 else:
                     _expire_grant(candidate, now)
                     expired.append(candidate)
-                    error = "$tcx-build grant is expired for this turn"
+                    error = f"{marker} grant is expired for this turn"
             elif candidate.prompt_sha256 != prompt_hash:
-                error = "the current turn is already bound to another $tcx-build prompt"
+                error = f"the current turn is already bound to another {marker} prompt"
+            elif _grant_authority_scope(candidate) != authority_scope:
+                error = "the current turn is already bound to another workspace authority scope"
             elif permission_mode != "unknown" and _grant_permission_mode(candidate) not in {"unknown", permission_mode}:
                 error = "the current turn is already bound to another Codex permission mode"
             else:
@@ -206,7 +339,7 @@ def _issue_build_turn_grant_locked(
                 reason = "expired" if candidate.expires_at <= now else "superseded_by_new_turn"
                 _request_revoke_after_finish(root, candidate, now, reason=reason)
                 if not (same_turn and candidate.pk == same_turn[0].pk):
-                    error = "the previous protected Build call is still in flight"
+                    error = "the previous protected workspace call is still in flight"
                 continue
             if candidate.expires_at <= now:
                 _expire_grant(candidate, now)
@@ -231,7 +364,8 @@ def _issue_build_turn_grant_locked(
 
         if not error and grant is None:
             grant = grant_model.objects.create(
-                grant_id="build-turn-" + secrets.token_urlsafe(24),
+                grant_id=f"{authority_scope}-turn-" + secrets.token_urlsafe(24),
+                authority_scope=authority_scope,
                 status=grant_model.STATUS_ACTIVE,
                 workspace_id=str(context["workspace_id"]),
                 workspace_path_hash=str(context["path_hash"]),
@@ -240,14 +374,18 @@ def _issue_build_turn_grant_locked(
                 prompt_sha256=prompt_hash,
                 issued_at=now,
                 expires_at=expires_at,
-                metadata={"multi_use": True, "permission_mode": permission_mode},
+                metadata={
+                    "multi_use": True,
+                    "permission_mode": permission_mode,
+                    "entrypoint": marker,
+                },
             )
             write_audit_event_required(
                 root,
                 "native-user",
                 "native-hook",
                 {
-                    "type": "build.turn_grant.issued",
+                    "type": _grant_audit_action(grant, "issued"),
                     "resource": grant.grant_id,
                     "decision": "issued",
                     "payload": _grant_audit_metadata(grant),
@@ -257,7 +395,7 @@ def _issue_build_turn_grant_locked(
     if error:
         raise PermissionError(error)
     if grant is None:  # pragma: no cover - defensive guard
-        raise PermissionError("$tcx-build grant could not be established")
+        raise PermissionError(f"{marker} grant could not be established")
     return _grant_projection(grant)
 
 
@@ -270,17 +408,19 @@ def authorize_local_build_tool(
     tool_input: Mapping[str, Any],
     *,
     permission_mode: Any = "",
+    required_scope: str = "build",
 ) -> dict[str, Any]:
-    """Authorize and audit one non-MCP local tool use without consuming the grant."""
+    """Authorize one local tool against the exact capability-scoped turn."""
 
     root = Path(workspace_root).resolve()
     session_hash = _secret_hash(_validate_binding_value("session_id", session_id))
     turn_hash = _secret_hash(_validate_binding_value("turn_id", turn_id))
     tool_use_hash = _secret_hash(_validate_binding_value("tool_use_id", tool_use_id))
     canonical_tool = _canonical_tool_name(tool_name)
+    canonical_scope = _canonical_authority_scope(required_scope)
     normalized_permission_mode = _normalize_permission_mode(permission_mode)
-    if canonical_tool in BUILD_PROTECTED_MCP_TOOLS:
-        raise BuildInvocationError("protected Build MCP tools require a reserved hook-owned proof")
+    if canonical_tool in WORKSPACE_PROTECTED_MCP_TOOLS:
+        raise BuildInvocationError("protected workspace MCP tools require a reserved hook-owned proof")
     arguments_hash = _build_arguments_hash(tool_input)
     now = django_timezone.now()
     context = workspace_context_payload(root)
@@ -301,22 +441,25 @@ def authorize_local_build_tool(
             )
         )
         if len(grants) != 1:
-            error = "the current root turn has no unique active $tcx-build grant"
+            error = f"the current root turn has no unique active {_scope_marker(canonical_scope)} grant"
         else:
             grant = grants[0]
+            scope_error = _grant_scope_error(grant, canonical_scope)
             permission_error = _grant_permission_mode_error(grant, normalized_permission_mode)
-            if permission_error:
+            if scope_error:
+                error = scope_error
+            elif permission_error:
                 error = permission_error
             elif grant.status == BuildTurnGrant.STATUS_RESERVED and grant.service_started_at is not None:
-                error = "another protected Build tool is already in flight for this turn"
+                error = "another protected workspace tool is already in flight for this turn"
             elif grant.expires_at <= now:
                 _expire_grant(grant, now)
                 _write_terminal_audit(root, [grant], status="expired", reason="expired")
-                error = "$tcx-build grant is expired"
+                error = f"{_scope_marker(canonical_scope)} grant is expired"
             else:
                 _recover_abandoned_reservation(root, grant, now)
                 if grant.status == BuildTurnGrant.STATUS_RESERVED:
-                    error = "another protected Build tool is already in flight for this turn"
+                    error = "another protected workspace tool is already in flight for this turn"
                 else:
                     grant.use_count += 1
                     grant.last_used_at = now
@@ -326,7 +469,7 @@ def authorize_local_build_tool(
                         "native-user",
                         "native-hook",
                         {
-                            "type": "build.turn_grant.tool_allowed",
+                            "type": _grant_audit_action(grant, "tool_allowed"),
                             "resource": grant.grant_id,
                             "decision": "allowed",
                             "payload": {
@@ -341,7 +484,7 @@ def authorize_local_build_tool(
     if error:
         raise PermissionError(error)
     if grant is None:  # pragma: no cover - defensive guard
-        raise PermissionError("$tcx-build grant is unavailable")
+        raise PermissionError(f"{_scope_marker(canonical_scope)} grant is unavailable")
     return _grant_projection(grant)
 
 
@@ -353,6 +496,7 @@ def validate_local_build_permission(
     tool_input: Mapping[str, Any],
     *,
     permission_mode: Any = "",
+    required_scope: str = "build",
 ) -> dict[str, Any]:
     """Validate a local Build permission request without consuming tool use."""
 
@@ -364,6 +508,7 @@ def validate_local_build_permission(
         tool_input,
         permission_mode=permission_mode,
         protected_mcp=False,
+        required_scope=required_scope,
     )
 
 
@@ -376,16 +521,22 @@ def validate_build_mcp_permission(
     *,
     permission_mode: Any = "",
 ) -> dict[str, Any]:
-    """Validate protected MCP intent before Codex presents permission UI."""
+    """Validate scoped protected MCP intent before Codex presents permission UI.
+
+    The public name remains for generated-hook compatibility.
+    """
+
+    canonical_tool = _canonical_protected_tool_name(tool_name)
 
     return _validate_build_permission(
         workspace_root,
         session_id,
         turn_id,
-        tool_name,
+        canonical_tool,
         tool_input,
         permission_mode=permission_mode,
         protected_mcp=True,
+        required_scope=_protected_tool_scope(canonical_tool),
     )
 
 
@@ -398,6 +549,7 @@ def _validate_build_permission(
     *,
     permission_mode: Any,
     protected_mcp: bool,
+    required_scope: str,
 ) -> dict[str, Any]:
     """Validate a Build permission request without reserving or counting use.
 
@@ -416,8 +568,9 @@ def _validate_build_permission(
         else _canonical_tool_name(tool_name)
     )
     normalized_permission_mode = _normalize_permission_mode(permission_mode)
-    if not protected_mcp and canonical_tool in BUILD_PROTECTED_MCP_TOOLS:
-        raise BuildInvocationError("protected Build MCP tools require a reserved hook-owned proof")
+    canonical_scope = _canonical_authority_scope(required_scope)
+    if not protected_mcp and canonical_tool in WORKSPACE_PROTECTED_MCP_TOOLS:
+        raise BuildInvocationError("protected workspace MCP tools require a reserved hook-owned proof")
     _build_arguments_hash(tool_input)
     now = django_timezone.now()
     context = workspace_context_payload(root)
@@ -438,26 +591,29 @@ def _validate_build_permission(
             )
         )
         if len(grants) != 1:
-            error = "the current root turn has no unique active $tcx-build grant"
+            error = f"the current root turn has no unique active {_scope_marker(canonical_scope)} grant"
         else:
             grant = grants[0]
+            scope_error = _grant_scope_error(grant, canonical_scope)
             permission_error = _grant_permission_mode_error(grant, normalized_permission_mode)
-            if permission_error:
+            if scope_error:
+                error = scope_error
+            elif permission_error:
                 error = permission_error
             elif grant.status == BuildTurnGrant.STATUS_RESERVED and grant.service_started_at is not None:
-                error = "another protected Build tool is already in flight for this turn"
+                error = "another protected workspace tool is already in flight for this turn"
             elif grant.expires_at <= now:
                 _expire_grant(grant, now)
                 _write_terminal_audit(root, [grant], status="expired", reason="expired")
-                error = "$tcx-build grant is expired"
+                error = f"{_scope_marker(canonical_scope)} grant is expired"
             else:
                 _recover_abandoned_reservation(root, grant, now)
                 if grant.status == BuildTurnGrant.STATUS_RESERVED:
-                    error = "another protected Build tool is already in flight for this turn"
+                    error = "another protected workspace tool is already in flight for this turn"
     if error:
         raise PermissionError(error)
     if grant is None:  # pragma: no cover - defensive guard
-        raise PermissionError("$tcx-build grant is unavailable")
+        raise PermissionError(f"{_scope_marker(canonical_scope)} grant is unavailable")
     return _grant_projection(grant)
 
 
@@ -471,13 +627,18 @@ def reserve_build_turn_use(
     *,
     permission_mode: Any = "",
 ) -> str:
-    """Reserve the grant for one protected MCP call and return an unpersisted proof."""
+    """Reserve the matching workspace grant for one protected MCP call.
+
+    The public name remains for generated-hook compatibility.
+    """
 
     root = Path(workspace_root).resolve()
     session_hash = _secret_hash(_validate_binding_value("session_id", session_id))
     turn_hash = _secret_hash(_validate_binding_value("turn_id", turn_id))
     tool_use_hash = _secret_hash(_validate_binding_value("tool_use_id", tool_use_id))
     canonical_tool = _canonical_protected_tool_name(tool_name)
+    required_scope = _protected_tool_scope(canonical_tool)
+    marker = _scope_marker(required_scope)
     normalized_permission_mode = _normalize_permission_mode(permission_mode)
     arguments_hash = _build_arguments_hash(args)
     proof = secrets.token_urlsafe(32)
@@ -499,22 +660,25 @@ def reserve_build_turn_use(
             )
         )
         if len(grants) != 1:
-            error = "the current root turn has no unique active $tcx-build grant"
+            error = f"the current root turn has no unique active {marker} grant"
         else:
             grant = grants[0]
+            scope_error = _grant_scope_error(grant, required_scope)
             permission_error = _grant_permission_mode_error(grant, normalized_permission_mode)
-            if permission_error:
+            if scope_error:
+                error = scope_error
+            elif permission_error:
                 error = permission_error
             elif grant.status == BuildTurnGrant.STATUS_RESERVED and grant.service_started_at is not None:
-                error = "another protected Build tool is already in flight for this turn"
+                error = "another protected workspace tool is already in flight for this turn"
             elif grant.expires_at <= now:
                 _expire_grant(grant, now)
                 _write_terminal_audit(root, [grant], status="expired", reason="expired")
-                error = "$tcx-build grant is expired"
+                error = f"{marker} grant is expired"
             else:
                 _recover_abandoned_reservation(root, grant, now)
                 if grant.status == BuildTurnGrant.STATUS_RESERVED:
-                    error = "another protected Build tool is already in flight for this turn"
+                    error = "another protected workspace tool is already in flight for this turn"
                 else:
                     updated = BuildTurnGrant.objects.filter(
                         pk=grant.pk,
@@ -529,7 +693,7 @@ def reserve_build_turn_use(
                         reservation_proof_hash=_secret_hash(proof),
                     )
                     if updated != 1:
-                        error = "$tcx-build grant was already reserved"
+                        error = f"{marker} grant was already reserved"
                     else:
                         grant.status = BuildTurnGrant.STATUS_RESERVED
                         grant.reserved_at = now
@@ -543,7 +707,7 @@ def reserve_build_turn_use(
                             "native-user",
                             "native-hook",
                             {
-                                "type": "build.turn_grant.tool_reserved",
+                                "type": _grant_audit_action(grant, "tool_reserved"),
                                 "resource": grant.grant_id,
                                 "decision": "reserved",
                                 "payload": {
@@ -565,10 +729,12 @@ def begin_reserved_build_turn_use(
     args: Mapping[str, Any],
     proof: Any,
 ) -> str:
-    """Atomically consume a hook proof and begin one protected service call."""
+    """Atomically consume a scoped hook proof and begin one protected call."""
 
     root = Path(workspace_root).resolve()
     canonical_tool = _canonical_protected_tool_name(tool_name)
+    required_scope = _protected_tool_scope(canonical_tool)
+    marker = _scope_marker(required_scope)
     arguments_hash = _build_arguments_hash(args)
     proof_hash = _secret_hash(
         _validate_binding_value("Build turn proof", proof, max_length=_MAX_PROOF_LENGTH)
@@ -591,22 +757,25 @@ def begin_reserved_build_turn_use(
             )
         )
         if len(grants) != 1:
-            error = "a unique reserved $tcx-build proof is required"
+            error = f"a unique reserved {marker} proof is required"
         else:
             grant = grants[0]
-            if grant.expires_at <= now:
+            scope_error = _grant_scope_error(grant, required_scope)
+            if scope_error:
+                error = scope_error
+            elif grant.expires_at <= now:
                 _expire_grant(grant, now)
                 _write_terminal_audit(root, [grant], status="expired", reason="expired")
-                error = "$tcx-build grant is expired"
+                error = f"{marker} grant is expired"
             elif _recover_abandoned_reservation(root, grant, now):
-                error = "$tcx-build proof reservation expired before service start"
+                error = f"{marker} proof reservation expired before service start"
             elif grant.service_started_at is not None:
-                error = "$tcx-build proof was already started"
+                error = f"{marker} proof was already started"
             elif not hmac.compare_digest(grant.reservation_tool_name, canonical_tool) or not hmac.compare_digest(
                 grant.reservation_arguments_hash,
                 arguments_hash,
             ):
-                error = "$tcx-build proof does not match the reserved tool call"
+                error = f"{marker} proof does not match the reserved tool call"
             else:
                 updated = BuildTurnGrant.objects.filter(
                     pk=grant.pk,
@@ -618,7 +787,7 @@ def begin_reserved_build_turn_use(
                     reservation_proof_hash="",
                 )
                 if updated != 1:
-                    error = "$tcx-build proof was already started"
+                    error = f"{marker} proof was already started"
                 else:
                     grant.service_started_at = now
                     grant.reservation_proof_hash = ""
@@ -627,7 +796,7 @@ def begin_reserved_build_turn_use(
                         "native-user",
                         "tradingcodex-mcp",
                         {
-                            "type": "build.turn_grant.tool_started",
+                            "type": _grant_audit_action(grant, "tool_started"),
                             "resource": grant.grant_id,
                             "decision": "started",
                             "payload": {
@@ -642,7 +811,7 @@ def begin_reserved_build_turn_use(
     if error:
         raise PermissionError(error)
     if not grant_id:  # pragma: no cover - defensive guard
-        raise PermissionError("reserved $tcx-build use is unavailable")
+        raise PermissionError(f"reserved {marker} use is unavailable")
     return grant_id
 
 
@@ -653,10 +822,10 @@ def finish_reserved_build_turn_use(
 ) -> dict[str, Any]:
     """Finish one protected service call and return the multi-use grant to active."""
 
-    canonical_grant_id = _validate_binding_value("Build grant id", grant_id, max_length=80)
+    canonical_grant_id = _validate_binding_value("Workspace grant id", grant_id, max_length=80)
     normalized_result = str(result_status or "").strip().lower()
     if normalized_result not in _FINISH_STATUSES:
-        raise BuildInvocationError("Build use result_status must be ok or error")
+        raise BuildInvocationError("Workspace use result_status must be ok or error")
     root = Path(workspace_root).resolve()
     now = django_timezone.now()
     context = workspace_context_payload(root)
@@ -678,7 +847,7 @@ def finish_reserved_build_turn_use(
             )
         )
         if len(grants) != 1:
-            error = "the reserved $tcx-build use is no longer active"
+            error = "the reserved workspace use is no longer active"
         else:
             grant = grants[0]
             tool_name = grant.reservation_tool_name
@@ -724,7 +893,7 @@ def finish_reserved_build_turn_use(
                 "native-user",
                 "tradingcodex-mcp",
                 {
-                    "type": "build.turn_grant.tool_finished",
+                    "type": _grant_audit_action(grant, "tool_finished"),
                     "resource": grant.grant_id,
                     "decision": normalized_result,
                     "payload": {
@@ -747,7 +916,7 @@ def finish_reserved_build_turn_use(
     if error:
         raise PermissionError(error)
     if grant is None:  # pragma: no cover - defensive guard
-        raise PermissionError("reserved $tcx-build use is unavailable")
+        raise PermissionError("reserved workspace use is unavailable")
     return _grant_projection(grant)
 
 
@@ -764,10 +933,10 @@ def fail_closed_finalize_started_build_turn_use(
     the in-flight state.
     """
 
-    canonical_grant_id = _validate_binding_value("Build grant id", grant_id, max_length=80)
+    canonical_grant_id = _validate_binding_value("Workspace grant id", grant_id, max_length=80)
     normalized_result = str(result_status or "").strip().lower()
     if normalized_result not in _FINISH_STATUSES:
-        raise BuildInvocationError("Build use result_status must be ok or error")
+        raise BuildInvocationError("Workspace use result_status must be ok or error")
     root = Path(workspace_root).resolve()
     now = django_timezone.now()
     context = workspace_context_payload(root)
@@ -789,7 +958,7 @@ def fail_closed_finalize_started_build_turn_use(
             .first()
         )
         if grant is None:
-            raise PermissionError("the completed $tcx-build use cannot be recovered")
+            raise PermissionError("the completed workspace use cannot be recovered")
         metadata = dict(grant.metadata or {})
         prior_recovery = metadata.get("finished_unfinalized")
         if isinstance(prior_recovery, dict):
@@ -799,14 +968,14 @@ def fail_closed_finalize_started_build_turn_use(
                 or grant.service_started_at is not None
                 or grant.reservation_proof_hash
             ):
-                raise PermissionError("the completed $tcx-build recovery result does not match")
+                raise PermissionError("the completed workspace recovery result does not match")
             return _grant_projection(grant)
         if (
             grant.status != BuildTurnGrant.STATUS_RESERVED
             or grant.service_started_at is None
             or grant.reservation_proof_hash
         ):
-            raise PermissionError("the completed $tcx-build use is not recoverable")
+            raise PermissionError("the completed workspace use is not recoverable")
         tool_name = str(grant.reservation_tool_name)
         tool_use_id_hash = str(grant.reservation_tool_use_id_hash)
         arguments_hash = str(grant.reservation_arguments_hash)
@@ -853,7 +1022,7 @@ def fail_closed_finalize_started_build_turn_use(
             "native-user",
             "tradingcodex-mcp",
             {
-                "type": "build.turn_grant.tool_finish_recovered",
+                "type": _grant_audit_action(grant, "tool_finish_recovered"),
                 "resource": canonical_grant_id,
                 "decision": "revoked",
                 "payload": {
@@ -864,7 +1033,7 @@ def fail_closed_finalize_started_build_turn_use(
             },
         )
     if grant is None:  # pragma: no cover - defensive guard
-        raise PermissionError("the completed $tcx-build use cannot be recovered")
+        raise PermissionError("the completed workspace use cannot be recovered")
     return _grant_projection(grant)
 
 
@@ -875,7 +1044,10 @@ def revoke_build_turn_grants(
     turn_id: Any | None = None,
     reason: str = "stop",
 ) -> int:
-    """Revoke active or in-flight Build grants for a session or exact turn."""
+    """Revoke active or in-flight workspace grants for a session or exact turn.
+
+    The public name remains for generated-hook compatibility.
+    """
 
     root = Path(workspace_root).resolve()
     session_hash = _secret_hash(_validate_binding_value("session_id", session_id))
@@ -886,7 +1058,7 @@ def revoke_build_turn_grants(
     )
     safe_reason = str(reason or "").strip().lower()
     if not _SAFE_TERMINAL_REASON.fullmatch(safe_reason):
-        raise BuildInvocationError("Build grant revocation reason must be a compact identifier")
+        raise BuildInvocationError("Workspace grant revocation reason must be a compact identifier")
     context = workspace_context_payload(root)
     ensure_runtime_database(root)
 
@@ -935,22 +1107,27 @@ def _canonical_tool_name(value: Any) -> str:
 
 def _canonical_protected_tool_name(value: Any) -> str:
     tool_name = _canonical_tool_name(value)
-    if tool_name not in BUILD_PROTECTED_MCP_TOOLS:
-        raise BuildInvocationError(f"tool is not a protected Build MCP operation: {tool_name}")
+    if tool_name not in WORKSPACE_PROTECTED_MCP_TOOLS:
+        raise BuildInvocationError(f"tool is not a protected workspace MCP operation: {tool_name}")
     return tool_name
+
+
+def _protected_tool_scope(tool_name: Any) -> str:
+    canonical_tool = _canonical_protected_tool_name(tool_name)
+    return _canonical_authority_scope(WORKSPACE_PROTECTED_MCP_TOOL_SCOPES[canonical_tool])
 
 
 def _canonical_build_arguments(args: Mapping[str, Any]) -> dict[str, Any]:
     if not isinstance(args, Mapping):
-        raise BuildInvocationError("Build tool arguments must be an object")
+        raise BuildInvocationError("Workspace tool arguments must be an object")
     canonical: dict[str, Any] = {}
     for raw_key, value in args.items():
         if not isinstance(raw_key, str):
-            raise BuildInvocationError("Build tool argument names must be strings")
+            raise BuildInvocationError("Workspace tool argument names must be strings")
         if raw_key in {BUILD_TURN_PROOF_FIELD, "principal_id"}:
             continue
         if raw_key.startswith("_"):
-            raise BuildInvocationError(f"unsupported private Build tool field: {raw_key}")
+            raise BuildInvocationError(f"unsupported private workspace tool field: {raw_key}")
         canonical[raw_key] = value
     return canonical
 
@@ -966,23 +1143,35 @@ def _build_arguments_hash(args: Mapping[str, Any]) -> str:
             allow_nan=False,
         ).encode("utf-8")
     except (TypeError, ValueError) as exc:
-        raise BuildInvocationError("Build tool arguments must be canonical JSON") from exc
+        raise BuildInvocationError("Workspace tool arguments must be canonical JSON") from exc
     return hashlib.sha256(encoded).hexdigest()
 
 
 def _grant_projection(grant: Any) -> dict[str, Any]:
-    return {
+    projection = {
         "marker": "tradingcodex-build-turn-grant",
         "status": str(grant.status),
         "expires_at": _iso(grant.expires_at),
         "multi_use": True,
         "use_count": int(grant.use_count),
     }
+    scope = _grant_authority_scope(grant)
+    if scope != "build":
+        projection.update(
+            {
+                "marker": "tradingcodex-managed-skill-turn-grant",
+                "authority_scope": scope,
+                "entrypoint": _scope_marker(scope),
+            }
+        )
+    return projection
 
 
 def _grant_audit_metadata(grant: Any) -> dict[str, Any]:
     return {
         "grant_id": str(grant.grant_id),
+        "authority_scope": _grant_authority_scope(grant),
+        "entrypoint": _scope_marker(_grant_authority_scope(grant)),
         "status": str(grant.status),
         "multi_use": True,
         "workspace_id": str(grant.workspace_id),
@@ -1022,12 +1211,44 @@ def _grant_permission_mode(grant: Any) -> str:
 
 
 def _grant_permission_mode_error(grant: Any, current_mode: str) -> str:
+    marker = _scope_marker(_grant_authority_scope(grant))
     if current_mode == "plan":
-        return "$tcx-build tools are unavailable while Codex is in Plan mode"
+        return f"{marker} managed tools are unavailable while Codex is in Plan mode"
     granted_mode = _grant_permission_mode(grant)
     if current_mode != "unknown" and granted_mode not in {"unknown", current_mode}:
-        return "the current $tcx-build grant is bound to another Codex permission mode"
+        return f"the current {marker} grant is bound to another Codex permission mode"
     return ""
+
+
+def _canonical_authority_scope(value: Any) -> str:
+    scope = str(value or "").strip().lower()
+    if scope not in AUTHORITY_SCOPE_MARKERS:
+        raise BuildInvocationError(f"unknown workspace authority scope: {scope or 'empty'}")
+    return scope
+
+
+def _grant_authority_scope(grant: Any) -> str:
+    return _canonical_authority_scope(getattr(grant, "authority_scope", "build") or "build")
+
+
+def _scope_marker(scope: Any) -> str:
+    return AUTHORITY_SCOPE_MARKERS[_canonical_authority_scope(scope)]
+
+
+def _grant_scope_error(grant: Any, required_scope: Any) -> str:
+    actual = _grant_authority_scope(grant)
+    expected = _canonical_authority_scope(required_scope)
+    if actual == expected:
+        return ""
+    return (
+        f"the current {_scope_marker(actual)} grant cannot authorize {_scope_marker(expected)} work; "
+        f"start a new root turn with exact first line {_scope_marker(expected)}"
+    )
+
+
+def _grant_audit_action(grant: Any, suffix: str) -> str:
+    prefix = "build.turn_grant" if _grant_authority_scope(grant) == "build" else "managed_skill.turn_grant"
+    return f"{prefix}.{suffix}"
 
 
 def _write_terminal_audit(
@@ -1042,7 +1263,7 @@ def _write_terminal_audit(
         "native-user",
         "native-hook",
         {
-            "type": f"build.turn_grant.{status}",
+            "type": _grant_audit_action(grants[0], status),
             "resource": "session",
             "decision": status,
             "payload": {
@@ -1089,7 +1310,7 @@ def _recover_abandoned_reservation(root: Path, grant: Any, now: datetime) -> boo
         "native-user",
         "native-hook",
         {
-            "type": "build.turn_grant.reservation_expired",
+            "type": _grant_audit_action(grant, "reservation_expired"),
             "resource": grant.grant_id,
             "decision": "released",
             "payload": {
@@ -1125,7 +1346,7 @@ def _request_revoke_after_finish(
         "native-user",
         "native-hook",
         {
-            "type": "build.turn_grant.revocation_deferred",
+            "type": _grant_audit_action(grant, "revocation_deferred"),
             "resource": grant.grant_id,
             "decision": "pending",
             "payload": {

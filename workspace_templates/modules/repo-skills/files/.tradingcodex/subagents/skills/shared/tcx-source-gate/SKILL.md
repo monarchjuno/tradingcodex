@@ -41,6 +41,20 @@ Allowed source classes:
 | Web/news sources | Current events and company context | cite publication date and source; separate claims from facts |
 | Macro, rates, FX, commodities, credit, options, and index sources | Research or risk evidence when available | read-only only; record provider, as-of date, instrument coverage, and unsupported execution boundaries |
 
+Point-in-time minimums:
+
+- For filing-derived aggregates, retain the underlying filing or disclosure
+  identifier, accepted/published time, form, fiscal period, units, and amendment
+  posture. A provider's current company-facts or calendar-frame view is useful
+  for discovery and screening, but it is not historical point-in-time evidence
+  unless the exact filing bytes available at the cutoff are bound.
+- For historical macro or policy work, use a first-release, vintage, or
+  real-time-period series when available. A currently revised observation is
+  hindsight evidence; do not present it as what the analyst could have known at
+  the historical cutoff.
+- If those bindings are unavailable, preserve the source as current or
+  screen-grade context and mark replay or causal claims not decision-ready.
+
 Evidence checklist:
 
 - Investment universe, source category, and support gap if the installed workflow is partial.

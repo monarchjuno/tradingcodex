@@ -6,7 +6,7 @@ shape, automate, or review workflows without granting extra authority.
 
 ## Naming Contract
 
-All 30 bundled TradingCodex skills use the `tcx-` namespace. Prefer one word
+All 31 bundled TradingCodex skills use the `tcx-` namespace. Prefer one word
 after the prefix and use at most two words when clarity or safety requires it,
 as in `tcx-order-submit` or `tcx-investor-context`. Folder names, frontmatter
 names, registry ids, projected paths, UI metadata, and explicit `$` invocations
@@ -22,10 +22,11 @@ an optional skill cannot claim a `tcx-*` id.
 | --- | --- | --- |
 | `tcx-workflow` | Investment research, thesis review, Decision Packages, portfolio fit, risk review, or order-readiness coordination. | Dynamic exact-role evidence gathering, authenticated artifact synthesis, waiting/revise/blocked state, or Decision Package. |
 | `tcx-memory` | Retrieve prior decisions, replay an historical decision with point-in-time evidence, compare outcomes, or validate a lesson. | Source-bound episodes, replay/review artifacts, lesson status, evidence tier, and next validation needed. |
-| `tcx-strategy` | Design reusable user strategy skills; durable create, update, activate, archive, or delete runs only in a new exact `$tcx-build` root turn. | Validated strategy skill with required sections, status, projection metadata, and user approval posture. |
-| `tcx-brain-create` | Curate a user-owned local Brain from user-selected Decision Memory evidence, counterexamples, validated lessons, or an explicit philosophy. | Privacy-reviewed local source bundle and abstraction summary; no install, activation, or Git/publication action. |
-| `tcx-server` | Workbench/service health, `doctor`, update status, MCP readiness, DB path checks, and startup recovery. | Runtime status, recovery command, workbench URL, update guidance, or blocker reason. |
-| `tcx-build` | Explicit current-turn workspace refresh, managed optional skill, Strategy, or Investment Brain lifecycle work, workspace MCP configuration, and connector/provider development. | Validated managed state or connector files, provider metadata, focused validation, reviewable diff, or an exact operator-terminal next step. |
+| `tcx-strategy` | Design and manage reusable user strategy skills in a direct exact-first-line `$tcx-strategy` Research turn. | Validated strategy skill with required sections, status, projection metadata, and user approval posture. |
+| `tcx-brain` | Author and manage user-owned Brain sources plus installed Brain validation, discovery, version, activation, rollback, and removal in a direct exact-first-line `$tcx-brain` Research turn. | Privacy-reviewed source action or canonical managed lifecycle result with id, version, status, digests, projection posture, and next step. |
+| `tcx-dashboard` | Open the read-only workspace dashboard and review current attention items, recent research, forecasts, portfolio/order posture, pending permissions, and broker state. | Dashboard opened in the Codex in-app browser by default, or in an external browser only when explicitly requested, plus a compact recorded-state orientation. |
+| `tcx-server` | Viewer/service health, `doctor`, update status, MCP readiness, DB path checks, and startup recovery. | Runtime status, recovery command, viewer URL, update guidance, or blocker reason. |
+| `tcx-build` | Explicit current-turn workspace refresh, managed optional-role-skill lifecycle work, workspace MCP configuration, and connector/provider development. | Validated managed state or connector files, provider metadata, focused validation, reviewable diff, or an exact operator-terminal next step. |
 | `tcx-order-allow` | Explicitly admit at most one approved submit or cancel later in the current root native Codex turn, including a Codex app Scheduled Task turn. | A mode-bound, single-use `OrderTurnGrant`; no immediate broker effect. |
 | `tcx-order-submit` | Explicitly submit one already-approved order from a root native Codex workspace turn. | Redacted accepted, rejected, duplicate, or needs-review service result. |
 | `tcx-order-cancel` | Explicitly cancel one known submitted broker order from a root native Codex workspace turn. | Redacted canceled, rejected, duplicate, or needs-review service result. |
@@ -52,23 +53,31 @@ before role artifacts exist.
 market analysis. A strategy can guide future workflows, but it does not approve
 orders, grant broker authority, mutate policy, or execute trades. Durable
 create, update, activate, archive, and delete requests start a new root native
-turn with exact first line `$tcx-build`; the Build turn stages the standalone
-body and calls the managed Strategy lifecycle service. It does not directly
+`trading-research` turn with exact first line `$tcx-strategy`; the scoped turn stages the standalone
+body and calls the proof-protected `manage_strategy` service. It does not expose
+the launcher/runtime or directly
 repair generated skill folders, fixed-role TOML, or root projection blocks.
 
-`tcx-brain-create` handles only an explicit user-owned authoring task in a root
-native turn whose exact first line is `$tcx-build`. The actual Codex sandbox
-must permit the required workspace-local writes. The user selects the exact
-memory evidence and counterexamples. The skill performs privacy review, abstracts
-general heuristics without copying private cases, and writes a local source
-under `investment-brains/<investment-brain-id>` by default. It never edits
-managed packages or third-party sources, and it stops before install,
-activation, staging, commit, push, publication, or pull request.
+`tcx-brain` is the single user entrypoint for Brain source and installed-plugin
+management. Source actions create, inspect, revise, validate, or explicitly
+delete a user-owned workspace-local bundle; managed actions list, inspect,
+install, update, activate, deactivate, rollback, or remove through the
+proof-protected `manage_investment_brain` application service. Tool-using management starts in a root
+native `trading-research` turn whose exact first line is `$tcx-brain`, and the actual Codex sandbox must
+permit workspace-local source writes. Authoring uses only exact user-selected
+memory evidence and counterexamples, performs privacy review, and abstracts
+general heuristics without copying private cases. Source create and revise run
+non-mutating local validation, then create, revise, and delete all stop before
+managed lifecycle work. Installation begins in a fresh explicit `$tcx-brain` turn and
+starts inactive, activation requires an explicit request, and remove retains immutable
+versions for provenance. The skill never directly edits managed packages,
+registry, projection, or third-party sources and performs no implicit Git or
+publication action.
 
 Native workflow strategy selection requires exactly one explicit
 `$strategy-*` invocation. Plain-language mentions never select a strategy, and
-absence records `no_strategy`; Workbench uses its structured strategy selector.
-Either path validates and seals the active strategy into the protected run.
+absence records `no_strategy`; the read-only viewer never selects a strategy.
+Native binding validates and seals the active strategy into the protected run.
 
 `tcx-memory` is an explicit retrieval, replay, review, and lesson-validation
 entrypoint. For a current judgment it records the independent initial view
@@ -87,34 +96,50 @@ terminal command returned after confirmation; the skill does not bypass the
 Build shell gate. Its persistent enable/disable state is separate from skill availability,
 strategy rules, and internal paper account scope. It does not run investment
 analysis or grant authority. Native run binding follows the saved workspace default;
-only Workbench offers a one-run apply/ignore control, and that bound choice does
-not rewrite the file.
+the read-only viewer offers no one-run override and never rewrites the file.
 
-`tcx-server` handles operations. It can explain service state, local workbench
+`tcx-dashboard` opens the read-only viewer and handles user orientation. An
+unqualified invocation opens the viewer in the Codex in-app browser; an external
+browser is used only when the user explicitly requests it. The skill does not
+silently switch surfaces and does not launch a browser through the shell. It
+reads only the smallest relevant set of canonical status, research, forecast,
+portfolio, order, permission, and broker surfaces, puts explicit attention
+states first, and chooses the relevant Library, Skills, or System destination.
+It does not begin an analysis run, dispatch a role, create an artifact, infer a
+change without comparison evidence, or mutate any TradingCodex state. Missing
+or redacted data remains unknown rather than becoming an empty or healthy state.
+
+`tcx-server` handles operations and recovery. It can explain service state, local viewer
 readiness, update posture, MCP configuration, and recovery steps. It should not
 be used to perform investment judgment or connector implementation. It reads
 hook startup context and the read-only status/update MCP tools. Service,
 `doctor`, update, or recovery commands that require the launcher are returned
 as explicit user-terminal steps instead of being run through the model shell.
+The default doctor view is a compact layer summary with warning/failure detail;
+`doctor --verbose` exposes every individual check for maintainer review.
 
 `tcx-build` handles product/build-plane work. The root native prompt must have
 the exact physical first line `$tcx-build`, followed by a non-empty concrete
 request. The deterministic hook issues a DB-canonical grant bound to that
 workspace, session, turn, cwd, and complete prompt. The grant is multi-use only
-within that turn; every mutating follow-up needs the marker again, and Workbench
-and subagents cannot create or inherit it. The marker is intent, not permission:
-the actual Codex sandbox remains authoritative and a read-only runtime cannot
-make native workspace-file edits. It may still render/read and use the
-specifically proof-protected canonical DB calls because those writes remain
-service-owned. `workspace-write` is the preferred least-privilege setting for
-ordinary file-editing Build work. Codex Plan mode cannot issue or use the grant, and a
-permission-mode change requires a fresh root turn. Generated Build work uses
-native `apply_patch`, exact workspace reads/listing, trusted launcher commands,
-and isolated provider `py_compile`; general shell, scripts, interpreters,
-`pytest`, and build/test runners are blocked. Full validation belongs in an
-explicit operator or maintainer terminal. Generated core harness files, hooks,
+within that turn; every mutating follow-up needs the marker again, and
+subagents cannot create or inherit it. The browser viewer has no Build path. The marker is intent, not permission:
+the active Codex permission profile remains authoritative. The default
+`trading-research` profile supports general calculation and credential-free
+public retrieval plus user-owned file changes outside `trading/`. Controlled
+`trading/` or optional-role-skill lifecycle Build work requires a fresh root turn with
+`trading-build` selected. Codex Plan mode cannot
+issue or use the grant, and a permission-mode change requires a fresh root
+turn. Generated Build work may use native `apply_patch`, workspace-local shell,
+Python, and focused validation; the Build profile still denies protected
+runtime/DB state, credentials, ledgers, network, and global config. Generated
+core harness files, hooks,
 templates, fixed-role configuration, and service-owned projection blocks are
-not direct Build edit targets. Brain management always uses an explicit
+not direct Build edit targets. Brain and Strategy management instead begin
+with their own exact first-line marker in `trading-research`; each current-turn
+grant is limited to its matching native source/staging path and protected MCP
+tool. The generated lifecycle launcher and attached runtime remain denied in
+Research. Brain management always uses an explicit
 workspace-local source or public credential-free HTTPS Git source and
 never implies global config, raw credential access, External MCP lifecycle or consent,
 source-repository or Git-publication actions. It may create live-capable
@@ -134,7 +159,8 @@ action protocols, not model procedures. Their bundles disable implicit
 invocation and carry no MCP authority. The entire root user prompt must match
 the documented `--name value` grammar; the deterministic `UserPromptSubmit`
 hook parses it and invokes the canonical service gateway before a model runs.
-They are unavailable from Plan mode, Workbench, and subagents. Public/raw MCP,
+They are unavailable from Plan mode and subagents; the browser viewer exposes
+no action entrypoint. Public/raw MCP,
 REST, and generic CLI surfaces cannot perform these final mutations; the
 separately protected grant consumer is inert without current hook proof.
 
@@ -154,7 +180,8 @@ issuance and use. The grant is usable for one submit or cancel, expires after
 one hour, and is revoked on `Stop`, the next user turn, or consumption. It
 grants no approval and performs no immediate action. Only root Head Manager can
 call `use_order_turn_grant`; `PreToolUse` injects the internal proof, so
-Workbench, subagents, and direct MCP callers have no authority.
+subagents and direct MCP callers have no authority. The browser viewer cannot
+request or consume a grant.
 If a consumed grant is still `authorizing`, Stop and new-turn cleanup do not
 reset it. The same session blocks a new Build or order-sensitive prompt until
 the canonical result is terminal; status inspection and ordinary research may
@@ -169,8 +196,10 @@ must omit both authority markers. Only optional final execution uses the exact
 workspace-local Build work uses the exact standalone first line `$tcx-build`,
 with the concrete build request below it. Each scheduled run receives a fresh
 current-turn grant decision and remains subject to that run's actual Codex
-sandbox. File-mutating recurring Build work needs a `workspace-write` runtime;
-a read-only run is limited to rendering/inspection and specifically
+sandbox. Controlled `trading/` or managed lifecycle recurring Build work needs
+a `trading-build` runtime; a `trading-research` run may read and write ordinary
+user-owned paths outside `trading/`, use temporary computation,
+credential-free public retrieval, rendering/inspection, and specifically
 proof-protected canonical DB calls, while Plan mode blocks Build entirely.
 Prefer an isolated worktree or workspace and retain a reviewable diff for
 scheduled changes. Never combine `$tcx-build` with `$tcx-order-allow`. The saved prompt

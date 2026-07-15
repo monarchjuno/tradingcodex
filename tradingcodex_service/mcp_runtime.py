@@ -8,12 +8,22 @@ from dataclasses import dataclass
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Callable, Mapping
+from urllib.parse import urlsplit
 
 from tradingcodex_service.application.agents import AGENT_SPECS
-from tradingcodex_service.application.artifact_quality import ANTI_OVERFIT_CHECK_KEYS
+from tradingcodex_service.application.artifact_quality import (
+    ANTI_OVERFIT_CHECK_KEYS,
+    FOLLOW_UP_CONSENT_POSTURE,
+    FOLLOW_UP_MATERIALITY,
+    FOLLOW_UP_ROLES,
+    FOLLOW_UP_TRIGGERS,
+    IMPROVEMENT_TYPES,
+)
 from tradingcodex_service.application.build_gateway import (
     BUILD_OPERATOR_ONLY_MCP_TOOLS,
     BUILD_PROTECTED_MCP_TOOLS,
+    WORKSPACE_PROTECTED_MCP_TOOLS,
+    WORKSPACE_PROTECTED_MCP_TOOL_SCOPES,
     begin_reserved_build_turn_use,
     fail_closed_finalize_started_build_turn_use,
     finish_reserved_build_turn_use,
@@ -105,6 +115,8 @@ class McpToolSpec:
                 "allowed_roles": sorted(self.allowed_roles),
                 "experimental": self.experimental,
                 "requires_build_turn": self.name in BUILD_PROTECTED_MCP_TOOLS,
+                "requires_workspace_turn": self.name in WORKSPACE_PROTECTED_MCP_TOOLS,
+                "workspace_turn_scope": WORKSPACE_PROTECTED_MCP_TOOL_SCOPES.get(self.name, ""),
                 "operator_only": self.name in BUILD_OPERATOR_ONLY_MCP_TOOLS,
             },
         }
@@ -165,6 +177,45 @@ ANTI_OVERFIT_CHECK_SCHEMA = json_object_schema(
 ANTI_OVERFIT_CHECKS_SCHEMA = json_object_schema(
     {key: ANTI_OVERFIT_CHECK_SCHEMA for key in ANTI_OVERFIT_CHECK_KEYS},
     list(ANTI_OVERFIT_CHECK_KEYS),
+    additional_properties=False,
+)
+STRING_LIST_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string", "minLength": 1},
+}
+FOLLOW_UP_REQUEST_SCHEMA = json_object_schema(
+    {
+        "trigger": {"type": "string", "enum": sorted(FOLLOW_UP_TRIGGERS)},
+        "suggested_role": {"type": "string", "enum": sorted(FOLLOW_UP_ROLES)},
+        "question": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "materiality": {"type": "string", "enum": sorted(FOLLOW_UP_MATERIALITY)},
+        "required_inputs": STRING_LIST_SCHEMA,
+        "trigger_evidence_refs": STRING_LIST_SCHEMA,
+        "suggested_consent_posture": {
+            "type": "string",
+            "enum": sorted(FOLLOW_UP_CONSENT_POSTURE),
+        },
+        "blocked_actions": STRING_LIST_SCHEMA,
+    },
+    ["trigger", "suggested_role", "question", "reason", "materiality"],
+    additional_properties=False,
+)
+IMPROVEMENT_SCHEMA = json_object_schema(
+    {
+        "improvement_type": {"type": "string", "enum": sorted(IMPROVEMENT_TYPES)},
+        "improvement": {"type": "string", "minLength": 1},
+        "reason": {"type": "string", "minLength": 1},
+        "materiality": {"type": "string", "enum": sorted(FOLLOW_UP_MATERIALITY)},
+        "suggested_role": {
+            "type": "string",
+            "enum": sorted({*FOLLOW_UP_ROLES, "head-manager"}),
+        },
+        "evidence_refs": STRING_LIST_SCHEMA,
+        "applies_to": STRING_LIST_SCHEMA,
+        "blocked_actions": STRING_LIST_SCHEMA,
+    },
+    ["improvement_type", "improvement", "reason"],
     additional_properties=False,
 )
 
@@ -230,8 +281,8 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "current_price_as_of": {"type": "string"},
     "market_anchor_as_of": {"type": "string"},
     "investor_context_gaps": {"type": "array"},
-    "follow_up_requests": {"type": "array"},
-    "improvements": {"type": "array"},
+    "follow_up_requests": {"type": "array", "items": FOLLOW_UP_REQUEST_SCHEMA},
+    "improvements": {"type": "array", "items": IMPROVEMENT_SCHEMA},
 }
 RESEARCH_ARTIFACT_WORKFLOW_FIELDS = {
     "workflow_run_id": {"type": "string", "minLength": 1, "maxLength": 180},
@@ -400,6 +451,64 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         allowed_roles=roles_with_mcp_tool("get_update_status"),
         handler_name="get_update_status",
         input_schema=object_schema(),
+    ),
+    McpToolSpec(
+        name="manage_strategy",
+        description=(
+            "Perform one exact Strategy lifecycle action through the canonical workspace service. "
+            "Requires a current root $tcx-strategy turn; create/update read a reviewable root-level body_path."
+        ),
+        category="customization",
+        risk_level="write",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="manage_strategy",
+        input_schema=object_schema(
+            {
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "inspect", "create", "update", "activate", "archive", "delete"],
+                },
+                "name": {"type": "string", "maxLength": 64},
+                "description": {"type": "string", "maxLength": 500},
+                "body_path": {"type": "string", "maxLength": 180},
+                "language": {"type": "string", "maxLength": 32},
+                "status": {"type": "string", "enum": ["draft", "active", "archived"]},
+                "active_only": {"type": "boolean"},
+                "force": {"type": "boolean"},
+            },
+            ["action"],
+            additional_properties=False,
+        ),
+    ),
+    McpToolSpec(
+        name="manage_investment_brain",
+        description=(
+            "Perform one exact Investment Brain validation or lifecycle action through the canonical service. "
+            "Requires a current root $tcx-brain turn; local_source stays below investment-brains/."
+        ),
+        category="customization",
+        risk_level="write",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="manage_investment_brain",
+        input_schema=object_schema(
+            {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "list", "inspect", "validate", "install", "update",
+                        "activate", "deactivate", "rollback", "remove",
+                    ],
+                },
+                "brain_id": {"type": "string", "maxLength": 80},
+                "local_source": {"type": "string", "maxLength": 240},
+                "git_source": {"type": "string", "maxLength": 2048},
+                "ref": {"type": "string", "maxLength": 240},
+                "version": {"type": "string", "maxLength": 40},
+                "active_only": {"type": "boolean"},
+            },
+            ["action"],
+            additional_properties=False,
+        ),
     ),
     McpToolSpec(
         name="begin_analysis_run",
@@ -1509,7 +1618,7 @@ def call_mcp_tool(
     internal_context: dict[str, Any] = {}
     if name == ORDER_TURN_GRANT_TOOL:
         internal_context["execution_turn_proof"] = str(args.pop(_ORDER_TURN_GRANT_PROOF_FIELD, "") or "")
-    if name in BUILD_PROTECTED_MCP_TOOLS:
+    if name in WORKSPACE_PROTECTED_MCP_TOOLS:
         internal_context["build_turn_proof"] = str(args.pop(_BUILD_TURN_PROOF_FIELD, "") or "")
     if name in BUILD_OPERATOR_ONLY_MCP_TOOLS:
         internal_context["operator_service_authority"] = consume_operator_authority(
@@ -1519,7 +1628,7 @@ def call_mcp_tool(
             resource=external_mcp_operator_resource(name, args),
         )
     build_grant_id = ""
-    if name in BUILD_PROTECTED_MCP_TOOLS:
+    if name in WORKSPACE_PROTECTED_MCP_TOOLS:
         build_grant_id = str(
             begin_reserved_build_turn_use(
                 workspace_root,
@@ -1607,12 +1716,12 @@ def call_mcp_tool(
                     )
                 except Exception as recovery_exc:
                     surfaced_exc = PermissionError(
-                        "protected Build call failed, and its grant finalization and fail-closed recovery failed"
+                        "turn-protected workspace call failed, and its grant finalization and fail-closed recovery failed"
                     )
                     surface_cause = recovery_exc
                 else:
                     surfaced_exc = PermissionError(
-                        "protected Build call failed and normal grant finalization failed; "
+                        "turn-protected workspace call failed and normal grant finalization failed; "
                         "the grant was revoked fail-closed"
                     )
                     surface_cause = finish_exc
@@ -1625,13 +1734,13 @@ def call_mcp_tool(
                 )
             except Exception as recovery_exc:
                 surfaced_exc = PermissionError(
-                    "protected Build operation completed, but its grant finalization and fail-closed recovery failed; "
+                    "turn-protected workspace operation completed, but its grant finalization and fail-closed recovery failed; "
                     "do not retry the operation blindly"
                 )
                 surface_cause = recovery_exc
             else:
                 surfaced_exc = PermissionError(
-                    "protected Build operation completed, but normal grant finalization failed; "
+                    "turn-protected workspace operation completed, but normal grant finalization failed; "
                     "the grant was revoked fail-closed and the operation must not be retried blindly"
                 )
                 surface_cause = exc
@@ -1653,6 +1762,78 @@ def call_mcp_tool(
     return result
 
 
+def _require_only_action_args(args: Mapping[str, Any], allowed: set[str]) -> None:
+    unexpected = sorted(set(args) - {"action", *allowed})
+    if unexpected:
+        raise ValueError(f"management action received unsupported fields: {', '.join(unexpected)}")
+
+
+def _read_root_strategy_body(workspace_root: Path | str, raw_path: str) -> str:
+    root = Path(workspace_root).resolve()
+    supplied = Path(raw_path)
+    if supplied.is_absolute() or supplied.name != raw_path or raw_path in {"", ".", ".."}:
+        raise ValueError("Strategy body_path must be one root-level workspace filename")
+    candidate = root / supplied
+    if candidate.is_symlink():
+        raise ValueError("Strategy body_path must identify one regular root-level workspace file")
+    path = candidate.resolve(strict=False)
+    if path.parent != root or not path.is_file():
+        raise ValueError("Strategy body_path must identify one regular root-level workspace file")
+    if path.stat().st_size > 256 * 1024:
+        raise ValueError("Strategy body_path exceeds 256 KiB")
+    return path.read_text(encoding="utf-8")
+
+
+def _managed_brain_sources(
+    workspace_root: Path | str,
+    args: Mapping[str, Any],
+) -> tuple[Path | None, str | None]:
+    raw_local = str(args.get("local_source") or "")
+    raw_git = str(args.get("git_source") or "")
+    if bool(raw_local) == bool(raw_git):
+        raise ValueError("select exactly one of local_source or git_source")
+    if raw_git:
+        try:
+            parsed = urlsplit(raw_git)
+            _ = parsed.port
+        except ValueError as exc:
+            raise ValueError("git_source must be a valid public credential-free HTTPS URL") from exc
+        if (
+            parsed.scheme != "https"
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("git_source must be a public credential-free HTTPS URL without query or fragment")
+        from tradingcodex_service.application.investment_brains import (
+            validate_public_investment_brain_repository_url,
+        )
+
+        validate_public_investment_brain_repository_url(raw_git)
+        return None, raw_git
+    root = Path(workspace_root).resolve()
+    source_root = root / "investment-brains"
+    supplied = Path(raw_local)
+    try:
+        lexical = supplied.relative_to(root) if supplied.is_absolute() else supplied
+        resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (root / supplied).resolve(strict=False)
+        resolved.relative_to(source_root.resolve(strict=False))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("local_source must stay below investment-brains/") from exc
+    if lexical.parts[:1] != ("investment-brains",) or any(part in {"", ".", ".."} for part in lexical.parts):
+        raise ValueError("local_source must be a canonical path below investment-brains/")
+    current = root
+    for part in lexical.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValueError("local_source cannot traverse a symlink")
+    if not resolved.is_dir():
+        raise ValueError("local_source must identify an existing Investment Brain directory")
+    return resolved, None
+
+
 def raw_call_tool(
     workspace_root: Path | str,
     tool: McpToolSpec,
@@ -1662,6 +1843,7 @@ def raw_call_tool(
     internal_context: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     from tradingcodex_service.application import (
+        agents,
         analysis_runs,
         artifact_bindings,
         audit,
@@ -1670,6 +1852,7 @@ def raw_call_tool(
         execution_gateway,
         forecasting,
         investment_analysis,
+        investment_brains,
         orders,
         policy,
         portfolio,
@@ -1746,12 +1929,173 @@ def raw_call_tool(
             apply_investor_context=apply_context,
         )
 
+    def manage_strategy() -> dict[str, Any]:
+        action = str(args["action"])
+        if action == "list":
+            _require_only_action_args(args, {"active_only"})
+            return {
+                "action": action,
+                "records": agents.read_strategy_skill_records(
+                    workspace_root,
+                    active_only=bool(args.get("active_only")),
+                ),
+            }
+        name = str(args.get("name") or "")
+        if not name:
+            raise ValueError(f"manage_strategy {action} requires name")
+        if action == "inspect":
+            _require_only_action_args(args, {"name"})
+            return {"action": action, "record": agents.get_strategy_skill_record(workspace_root, name)}
+        if action in {"create", "update"}:
+            _require_only_action_args(
+                args,
+                {"name", "description", "body_path", "language", "status"},
+            )
+            body_path = str(args.get("body_path") or "")
+            if not body_path:
+                raise ValueError(f"manage_strategy {action} requires body_path")
+            if action == "create":
+                try:
+                    agents.get_strategy_skill_record(workspace_root, name)
+                except ValueError:
+                    pass
+                else:
+                    raise ValueError(f"strategy already exists; use update: {name}")
+            else:
+                agents.get_strategy_skill_record(workspace_root, name)
+            status = str(args.get("status") or "")
+            if not status:
+                raise ValueError(f"manage_strategy {action} requires explicit status")
+            record = agents.create_or_update_strategy_skill(
+                workspace_root,
+                name,
+                description=str(args.get("description") or ""),
+                body=_read_root_strategy_body(workspace_root, body_path),
+                language=str(args.get("language") or "unknown"),
+                status=status,
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action in {"activate", "archive"}:
+            _require_only_action_args(args, {"name"})
+            record = agents.set_strategy_skill_status(
+                workspace_root,
+                name,
+                "active" if action == "activate" else "archived",
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action == "delete":
+            _require_only_action_args(args, {"name", "force"})
+            return {
+                "action": action,
+                "record": agents.delete_strategy_skill(
+                    workspace_root,
+                    name,
+                    force=bool(args.get("force")),
+                    actor=principal_id,
+                ),
+            }
+        raise ValueError(f"unsupported Strategy management action: {action}")
+
+    def manage_investment_brain() -> dict[str, Any]:
+        action = str(args["action"])
+        if action == "list":
+            _require_only_action_args(args, {"active_only"})
+            records = investment_brains.read_investment_brain_records(
+                workspace_root,
+                include_removed=not bool(args.get("active_only")),
+            )
+            if args.get("active_only"):
+                records = [record for record in records if record.get("status") == "active"]
+            return {"action": action, "records": records}
+        brain_id = str(args.get("brain_id") or "")
+        if action == "inspect":
+            _require_only_action_args(args, {"brain_id"})
+            if not brain_id:
+                raise ValueError("manage_investment_brain inspect requires brain_id")
+            return {
+                "action": action,
+                "record": investment_brains.get_investment_brain_record(workspace_root, brain_id),
+            }
+        if action in {"validate", "install"}:
+            _require_only_action_args(args, {"local_source", "git_source", "ref"})
+            local_source, git_source = _managed_brain_sources(workspace_root, args)
+            operation = (
+                investment_brains.validate_investment_brain_source(
+                    workspace_root,
+                    local_source=local_source,
+                    git_source=git_source,
+                    ref=str(args.get("ref") or ""),
+                )
+                if action == "validate"
+                else investment_brains.install_investment_brain(
+                    workspace_root,
+                    local_source=local_source,
+                    git_source=git_source,
+                    ref=str(args.get("ref") or ""),
+                    active=False,
+                    actor=principal_id,
+                )
+            )
+            return {"action": action, "record": operation}
+        if not brain_id:
+            raise ValueError(f"manage_investment_brain {action} requires brain_id")
+        if action == "update":
+            _require_only_action_args(args, {"brain_id", "local_source", "git_source", "ref"})
+            local_source = None
+            git_source = None
+            if args.get("local_source") or args.get("git_source"):
+                local_source, git_source = _managed_brain_sources(workspace_root, args)
+            record = investment_brains.update_investment_brain(
+                workspace_root,
+                brain_id,
+                local_source=local_source,
+                git_source=git_source,
+                ref=str(args["ref"]) if "ref" in args else None,
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action in {"activate", "deactivate"}:
+            _require_only_action_args(args, {"brain_id"})
+            record = investment_brains.set_investment_brain_status(
+                workspace_root,
+                brain_id,
+                "active" if action == "activate" else "inactive",
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action == "rollback":
+            _require_only_action_args(args, {"brain_id", "version"})
+            return {
+                "action": action,
+                "record": investment_brains.rollback_investment_brain(
+                    workspace_root,
+                    brain_id,
+                    version=str(args.get("version") or ""),
+                    actor=principal_id,
+                ),
+            }
+        if action == "remove":
+            _require_only_action_args(args, {"brain_id"})
+            return {
+                "action": action,
+                "record": investment_brains.remove_investment_brain(
+                    workspace_root,
+                    brain_id,
+                    actor=principal_id,
+                ),
+            }
+        raise ValueError(f"unsupported Investment Brain management action: {action}")
+
     with_principal = {**args, "principal_id": principal_id}
     internal_context = dict(internal_context or {})
     handlers: dict[str, Callable[[], dict[str, Any]]] = {
         "get_tradingcodex_status": get_tradingcodex_status,
         "get_runtime_mode": get_runtime_mode,
         "get_update_status": get_update_status,
+        "manage_strategy": manage_strategy,
+        "manage_investment_brain": manage_investment_brain,
         "begin_analysis_run": begin_agent_analysis_run,
         "simulate_policy": lambda: policy.simulate_policy(workspace_root, with_principal),
         "validate_approval_receipt": lambda: orders.validate_approval_receipt(workspace_root, with_principal),
@@ -1901,6 +2245,8 @@ def _canonical_analysis_artifact_binding(
         verify_authenticated_artifact_binding(workspace_root, artifact)
         if str(artifact.get("workflow_run_id") or "") != workflow_run_id:
             raise ValueError(f"input research artifact belongs to another analysis run: {artifact_id}")
+        if str(artifact.get("handoff_state") or "") != "accepted":
+            raise ValueError(f"input research artifact is not an accepted handoff: {artifact_id}")
         content_hash = str(artifact.get("content_hash") or "")
         if not content_hash:
             raise ValueError(f"input research artifact has no content hash: {artifact_id}")

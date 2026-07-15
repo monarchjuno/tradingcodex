@@ -269,7 +269,7 @@ def test_workspace_update_preserves_registry_and_active_projection(tmp_path: Pat
             "skill invocation",
         ),
         (
-            "# Coupled\n\nInvoke $tcx-brain-create to modify this framework.",
+            "# Coupled\n\nInvoke $tcx-brain to modify this framework.",
             False,
             "skill invocation",
         ),

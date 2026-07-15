@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import runpy
 import sys
 from pathlib import Path
 
@@ -88,14 +89,23 @@ def main(argv: list[str] | None = None) -> None:
             hook_path = root / ".codex" / "hooks" / "tradingcodex_hook.py"
             if not hook_path.is_file():
                 raise ValueError(f"TradingCodex hook is missing: {hook_path}")
-            os.execv(sys.executable, [sys.executable, str(hook_path), *argv])
+            original_argv = sys.argv
+            try:
+                sys.argv = [str(hook_path), *argv]
+                runpy.run_path(str(hook_path), run_name="__main__")
+            finally:
+                sys.argv = original_argv
         elif command == "doctor":
             from tradingcodex_cli.commands.bootstrap import configure_workspace_env
             from tradingcodex_cli.commands.doctor import doctor
             from tradingcodex_cli.commands.utils import _option_value
 
             root = configure_workspace_env(Path.cwd())
-            doctor(root, _option_value(argv, "--layer") or "all")
+            doctor(
+                root,
+                _option_value(argv, "--layer") or "all",
+                verbose="--verbose" in argv,
+            )
         elif command in WORKSPACE_COMMANDS:
             from tradingcodex_cli.commands.bootstrap import configure_workspace_env
 
@@ -125,10 +135,10 @@ def print_help() -> None:
 
 Usage:
   tcx --version | tcx version
-  tcx attach [workspace] [--from <package-spec>]
-  tcx update [workspace] [--from <package-spec>] [--no-doctor] [--skip-refresh]
+  tcx attach [workspace] [--from <package-spec> | --dev]
+  tcx update [workspace] [--from <package-spec> | --dev] [--no-doctor] [--skip-refresh]
   tcx update status [--json]
-  tcx doctor [--layer <layer>]
+  tcx doctor [--layer <layer>] [--verbose]
   tcx home status|check [--json]
   tcx build status|codex-mcp
   tcx connectors status|providers|inspect-provider|approve-provider|revoke-provider|connect|scaffold|register|validate

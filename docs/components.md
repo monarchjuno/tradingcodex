@@ -58,7 +58,7 @@ clear.
 | --- | --- | --- |
 | `codex-native-orchestration` | Lets Head Manager interpret multilingual requests and dynamically coordinate exact fixed roles. | `guardrail.guidance`, `improvement.workflow_quality` |
 | `investment-brain-plugins` | Supports privacy-reviewed user-owned local Brain authoring, strict community bundle validation, explicit Head Manager-only projection, immutable versions, and receipt-authenticated run/artifact/Decision Memory provenance. | `guardrail.guidance`, `improvement.skill_evolution`, `improvement.research_memory` |
-| `fixed-role-dispatch` | Maintains head-manager, fixed subagent routing, no-overlap handoff boundaries, and the bounded workbench entry into the same generated coordinator. | `guardrail.guidance`, `guardrail.information_barrier`, `improvement.workflow_quality` |
+| `fixed-role-dispatch` | Maintains head-manager, fixed subagent routing, and no-overlap handoff boundaries in native Codex. | `guardrail.guidance`, `guardrail.information_barrier`, `improvement.workflow_quality` |
 | `versioned-workspace` | Keeps generated workspaces in user-owned Git worktrees with privacy-first ignores and no automatic stage, commit, remote, or publication. | `guardrail.guidance`, `guardrail.information_barrier`, `improvement.validation_feedback` |
 | `research-memory` | Stores source-aware research artifacts, versions, snapshots, Evidence Run Cards, Validation Cards, and exports. | `improvement.research_memory` |
 | `workflow-quality-gates` | Defines artifact quality, Decision Quality Spine, agent judgment review, claim discipline, and synthesis lineage without a Django workflow loop. | `guardrail.guidance`, `improvement.workflow_quality` |

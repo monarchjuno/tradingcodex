@@ -312,9 +312,9 @@ Every applicable workflow records:
 
 Native Codex run binding recognizes a Strategy only through one exact explicit
 `$strategy-*` invocation. A prompt that merely names or describes a strategy
-does not select it, and no invocation records `no_strategy`. Workbench uses its
-structured strategy selector instead. Both paths validate that the selected
-managed Strategy is active and valid, then seal its source bytes under the
+does not select it, and no invocation records `no_strategy`. The viewer never
+selects a strategy. Native binding validates that the selected managed Strategy
+is active and valid, then seals its source bytes under the
 run-owned analysis directory and bind the snapshot path and hash.
 
 Later strategy edits never rewrite an earlier decision or replay. A postmortem
@@ -356,14 +356,17 @@ Memory remains independent of the Brain that produced a decision:
 
 Learning from memory into a Brain is a separate user-controlled curation path.
 Writing requires a root native Codex prompt whose exact physical first line is
-`$tcx-build`, an explicit `$tcx-brain-create` authoring request below it, an
+`$tcx-brain`, an explicit source-authoring request below it, an
 actual Codex sandbox that permits the required workspace-local writes, exact
-user-selected source episodes, and counterexamples. The Build grant is bound to
-that turn and does not carry into follow-ups, Workbench, or subagents.
+user-selected source episodes, and counterexamples. The Brain-scoped grant is
+bound to that turn, cannot authorize Build or Strategy work, and does not carry
+into follow-ups or subagents; the browser viewer has no management path.
 It abstracts general heuristics into a privacy-reviewed user-owned local source
 without copying private cases or changing Decision Memory, installed packages,
-or third-party sources. Install, activation, commit, push, publication, and pull
-request remain separate explicit actions.
+or third-party sources. It validates a created or revised local source without
+installing it, then stops after the source action. Installation, activation,
+managed removal, commit, push, publication, and pull request remain separate
+explicit actions, with managed lifecycle work starting in a fresh `$tcx-brain` turn.
 
 ## Workspace Investor Context
 
@@ -405,10 +408,9 @@ batches and preview durable changes before writing.
 - Native Codex run binding follows that saved workspace default. When enabled,
   it seals the applied file under the run-owned analysis directory and binds its
   snapshot path and hash.
-- Workbench alone offers an explicit one-run apply/ignore control. That override
-  is sealed into the run without changing the saved default. Wording a native
-  chat request as an override does not mutate an analysis run already sealed by
-  `begin_analysis_run`.
+- The viewer is read-only and offers no one-run apply/ignore override. Wording a
+  native chat request as an override does not mutate an analysis run already
+  sealed by `begin_analysis_run`.
 - The analysis run records whether context was configured and applied plus its
   content hash. It receives compact applicable fields, not the full file.
 - General research and historical replay can proceed without personal context.
@@ -429,7 +431,7 @@ product surfaces:
 | Surface | Decision Memory behavior |
 | --- | --- |
 | Work | Start a normal memory-focused request for replay, review, retrieval, or validation and show a one-line scope preview before execution. Native Codex app users may invoke `$tcx-memory` explicitly. |
-| Skills | Expose Decision Memory, Strategy Creator, Brain Creator, and Investor Context as distinct outcomes. Decision Memory owns postmortem review; Brain Creator owns only gated local source authoring. |
+| Skills | Expose Decision Memory, Strategy Creator, Brain Manager, and Investor Context as distinct outcomes. Decision Memory owns postmortem review; Brain Manager owns gated local source CRUD and canonical managed-plugin lifecycle operations. |
 | Library | Browse source-backed research artifacts. The Decision Memory skill lists sealed decisions and reviews through their workspace commands and returns their paths. |
 | System | Show workspace and internal paper account posture without presenting a separate investor Profile product. |
 

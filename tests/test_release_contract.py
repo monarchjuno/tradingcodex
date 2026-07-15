@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import json
+import io
 import re
+import runpy
 import subprocess
 import sys
 import tomllib
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 import yaml
 from packaging.version import Version
 
 from tradingcodex_cli import startup_status
-from tradingcodex_cli.__main__ import print_help
+from tradingcodex_cli.__main__ import main, print_help
 from tradingcodex_cli.commands.build import build, print_build_help
 from tradingcodex_cli.commands.forecast import forecast
 from tradingcodex_cli.commands.investor_context import investor_context
@@ -21,6 +23,58 @@ from tradingcodex_service.version import TRADINGCODEX_VERSION
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_native_windows_smoke_calls_spaced_batch_launcher_without_escaped_quotes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    module = runpy.run_path(str(ROOT / "tests/platform_wheel_smoke.py"))
+    monkeypatch.setenv("COMSPEC", r"C:\Windows\System32\cmd.exe")
+
+    argv = module["windows_launcher_argv"](
+        PureWindowsPath(r"C:\Workspace With Spaces"),
+        "update",
+        "--skip-refresh",
+        "--no-doctor",
+    )
+
+    assert argv == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "call",
+        r"C:\Workspace With Spaces\tcx.cmd",
+        "update",
+        "--skip-refresh",
+        "--no-doctor",
+    ]
+    assert r'\"' not in subprocess.list2cmdline(argv)
+
+
+def test_cli_hook_dispatch_preserves_standard_input_and_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    hook = tmp_path / ".codex/hooks/tradingcodex_hook.py"
+    hook.parent.mkdir(parents=True)
+    hook.write_text(
+        "import json, sys\n"
+        "payload = json.loads(sys.stdin.read())\n"
+        "print(json.dumps({'event': sys.argv[1], 'payload': payload}))\n",
+        encoding="utf-8",
+    )
+    monkeypatch.delenv("TRADINGCODEX_WORKSPACE_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"platform":"windows"}\n'))
+
+    main(["__hook", "session-start"])
+
+    assert json.loads(capsys.readouterr().out) == {
+        "event": "session-start",
+        "payload": {"platform": "windows"},
+    }
 
 
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
@@ -224,8 +278,26 @@ def test_startup_status_exposes_only_inert_build_compatibility(
         "persistent_mode": False,
         "active": False,
         "permission_is_advisory": True,
+        "recommended_profile": "trading-build",
         "full_access_detected": True,
         "workspace_writable": True,
+    }
+    assert status["managed_skill_authorization"] == {
+        "status": "exact_capability_turn_required",
+        "authority": "user_prompt_submit_hook",
+        "exact_first_lines": {
+            "brain": "$tcx-brain",
+            "strategy": "$tcx-strategy",
+        },
+        "root_native_turn_only": True,
+        "persistent_mode": False,
+        "active": False,
+        "recommended_profile": "trading-research",
+        "lifecycle_transport": "proof_protected_mcp",
+        "runtime_filesystem_access": False,
+        "cross_scope": False,
+        "plan_mode_allowed": False,
+        "ordinary_workspace_writable": True,
     }
     assert status["mode_status"]["status"] == "retired"
     assert status["mode_status"]["authority"] == "none"
@@ -236,11 +308,19 @@ def test_startup_status_exposes_only_inert_build_compatibility(
 
 
 @pytest.mark.parametrize(
-    ("raw_permission", "normalized", "workspace_writable", "full_access"),
+    (
+        "raw_permission",
+        "normalized",
+        "workspace_writable",
+        "ordinary_workspace_writable",
+        "full_access",
+    ),
     [
-        ("workspace-write", "workspace_write", True, False),
-        ("read-only", "read_only", False, False),
-        ("danger-full-access", "full_access", True, True),
+        ("workspace-write", "workspace_write", True, True, False),
+        ("trading-build", "workspace_write", True, True, False),
+        ("read-only", "read_only", False, False, False),
+        ("trading-research", "restricted", False, True, False),
+        ("danger-full-access", "full_access", True, True, True),
     ],
 )
 def test_permission_status_preserves_least_privilege_workspace_write(
@@ -249,6 +329,7 @@ def test_permission_status_preserves_least_privilege_workspace_write(
     raw_permission: str,
     normalized: str,
     workspace_writable: bool,
+    ordinary_workspace_writable: bool,
     full_access: bool,
 ) -> None:
     monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path / "home"))
@@ -258,8 +339,30 @@ def test_permission_status_preserves_least_privilege_workspace_write(
 
     assert status["codex_permission"] == normalized
     assert status["workspace_writable"] is workspace_writable
+    assert status["managed_workspace_writable"] is workspace_writable
+    assert status["ordinary_workspace_writable"] is ordinary_workspace_writable
     assert status["workspace_write_detected"] is (normalized == "workspace_write")
     assert status["full_access_detected"] is full_access
+
+
+def test_permission_status_reads_custom_project_default(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path / "home"))
+    (tmp_path / ".codex").mkdir()
+    (tmp_path / ".codex/config.toml").write_text(
+        'default_permissions = "trading-research"\n',
+        encoding="utf-8",
+    )
+
+    status = startup_status.detect_codex_permission_status(tmp_path)
+
+    assert status["codex_permission"] == "restricted"
+    assert status["raw_permission"] == "trading-research"
+    assert status["workspace_writable"] is False
+    assert status["ordinary_workspace_writable"] is True
+    assert status["detection_source"] == "project_config"
 
 
 def test_update_status_requires_package_refresh_for_newer_workspace(monkeypatch, tmp_path: Path) -> None:
@@ -408,13 +511,13 @@ def test_workspace_local_update_is_the_only_build_turn_update(
     )
     assert read_only_status["workspace_build_update_supported"] is True
     assert read_only_status["workspace_build_update_eligible"] is False
-    assert "workspace-write" in read_only_status["head_manager_update_blocked_reason"]
+    assert "trading-build" in read_only_status["head_manager_update_blocked_reason"]
     read_only_actions = startup_status.build_allowed_next_actions(
         permission_status={"workspace_writable": False},
         update_status=read_only_status,
         service_status="ok",
     )
-    assert any("Switch Codex to workspace-write" in action for action in read_only_actions)
+    assert any("Select the trading-build permission profile" in action for action in read_only_actions)
     assert f"Within that Build turn, run only: {local_command}" in read_only_actions
 
 

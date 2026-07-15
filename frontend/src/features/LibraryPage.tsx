@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { requestJSON, apiErrorText } from "../api";
 import { Artifact, asRecord, asStringList, asText, formatDate, titleCase } from "../domain";
 import { EmptyState, ErrorNotice, FieldList, LoadingState, PageHeader, SectionHeader, StatusPill } from "../ui";
-import { collectionViewState } from "../workbench-data.js";
+import { collectionViewState } from "../viewer-data.js";
 
 export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact[]; error: string; loading: boolean }) {
   const requestedArtifact = sessionStorage.getItem("tcx-selected-artifact") || "";
@@ -42,7 +42,7 @@ export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact
     setDetail({});
     setDetailError("");
     setDetailLoading(true);
-    void requestJSON<unknown>(`/api/workbench/artifacts/${encodeURIComponent(selectedId)}/`, { signal: controller.signal })
+    void requestJSON<unknown>(`/api/viewer/artifacts/${encodeURIComponent(selectedId)}/`, { signal: controller.signal })
       .then((payload) => setDetail(asRecord(payload)))
       .catch((reason) => { if (!controller.signal.aborted) setDetailError(apiErrorText(reason)); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
@@ -52,21 +52,24 @@ export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact
   const choose = (artifact: Artifact) => {
     setSelectedId(artifact.id);
     setReaderOpen(true);
-    requestAnimationFrame(() => readerRef.current?.scrollIntoView({ block: "start" }));
+    requestAnimationFrame(() => {
+      readerRef.current?.scrollIntoView({ block: "start" });
+      readerRef.current?.focus();
+    });
   };
 
   return <section className="page library-page" aria-labelledby="library-title">
     <PageHeader eyebrow="Research library" title="Evidence you can inspect." titleId="library-title" description="Read the conclusion, source timing, uncertainty, and missing evidence before relying on a result." action={<span className="page-count">{artifacts.length}<small>artifacts</small></span>} />
     {error && <ErrorNotice>{error}</ErrorNotice>}
-    {viewState === "loading" ? <LoadingState label="Loading workspace research…" /> : viewState === "error" ? null : viewState === "empty" ? <EmptyState title="No research artifacts yet">Start an analysis in Work or use native Codex. Accepted research will appear here.</EmptyState> : <>
+    {viewState === "loading" ? <LoadingState label="Loading workspace research…" /> : viewState === "error" ? null : viewState === "empty" ? <EmptyState title="No research artifacts yet">Run analysis from native Codex. Accepted research will appear here.</EmptyState> : <>
       <div className="library-toolbar"><label><span className="sr-only">Search research</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search titles, summaries, and types" /></label><label><span className="sr-only">Filter by artifact type</span><select value={type} onChange={(event) => setType(event.target.value)}><option value="all">All research types</option>{types.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label></div>
       <div className={`library-layout${readerOpen ? " reader-open" : ""}`}>
-        <section ref={indexRef} className="artifact-index" aria-label="Research artifacts">
+        <section ref={indexRef} className="artifact-index" aria-label="Research artifacts" tabIndex={-1}>
           <div className="index-heading"><span>{filtered.length} results</span>{(query || type !== "all") && <button type="button" onClick={() => { setQuery(""); setType("all"); }}>Clear filters</button>}</div>
           <div className="artifact-list">{filtered.map((artifact) => <button key={artifact.id} type="button" className={selected?.id === artifact.id ? "artifact-row selected" : "artifact-row"} aria-pressed={selected?.id === artifact.id} onClick={() => choose(artifact)}><div className="artifact-row-top"><span>{titleCase(artifact.type)}</span><StatusPill value={artifact.readiness} /></div><strong>{artifact.title}</strong><p>{artifact.summary || "Open this verified workspace artifact."}</p><span className="artifact-date">{artifact.sourceAsOf ? `Sources as of ${formatDate(artifact.sourceAsOf)}` : "Source timing not stated"}</span></button>)}{!filtered.length && <EmptyState title="No matching research">Broaden the search or clear the type filter.</EmptyState>}</div>
         </section>
-        <article ref={readerRef} className="artifact-reader" aria-busy={detailLoading}>
-          <button type="button" className="mobile-back" onClick={() => { setReaderOpen(false); requestAnimationFrame(() => indexRef.current?.scrollIntoView({ block: "start" })); }}>← Back to research</button>
+        <article ref={readerRef} className="artifact-reader" aria-busy={detailLoading} tabIndex={-1}>
+          <button type="button" className="mobile-back" onClick={() => { setReaderOpen(false); requestAnimationFrame(() => { indexRef.current?.scrollIntoView({ block: "start" }); indexRef.current?.focus(); }); }}>← Back to research</button>
           {selected ? <ArtifactReader artifact={selected} detail={detail} loading={detailLoading} error={detailError} /> : <EmptyState title="Choose a research artifact">Select a result to read its verified synthesis and evidence posture.</EmptyState>}
         </article>
       </div>

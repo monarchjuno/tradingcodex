@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
 import pytest
 
 from tradingcodex_cli.commands.utils import read_thread_policy
-from tradingcodex_service.application import workbench
 from tradingcodex_service.application import runtime
 from tradingcodex_service.application.agents import read_agent_additional_instructions
 from tradingcodex_service.application.context_budget import audit_context_budget
@@ -29,59 +27,24 @@ def test_agent_instruction_reader_does_not_hide_invalid_utf8(tmp_path: Path) -> 
         read_agent_additional_instructions(tmp_path, "fundamental-analyst")
 
 
-@pytest.mark.parametrize("payload", ["{not-json}", "[]", '{"type": 7}'])
-def test_workbench_rejects_malformed_codex_event_output(payload: str) -> None:
-    with pytest.raises(ValueError, match=r"Codex .*event"):
-        workbench._normalize_codex_event(payload)
-
-
-def test_workbench_validates_the_entire_stored_event_log(tmp_path: Path) -> None:
-    path = tmp_path / "web-run-events.jsonl"
-    valid = json.dumps({
-        "type": "turn.completed",
-        "ts": "2026-01-01T00:00:00Z",
-    })
-    path.write_text("{not-json}\n" + "\n".join([valid] * 500) + "\n", encoding="utf-8")
-
-    with pytest.raises(ValueError, match="line 1"):
-        workbench._read_normalized_events(path)
-
-
-def test_workbench_stored_event_schema_rejects_unknown_fields() -> None:
-    with pytest.raises(ValueError, match="unsupported workbench event fields"):
-        workbench._validated_stored_event({
-            "type": "item.completed",
-            "item_type": "agent_message",
-            "ts": "2026-01-01T00:00:00Z",
-            "message": "must not be retained",
-        })
-
-
-def test_workbench_thread_authority_is_versioned_and_run_bound(tmp_path: Path, monkeypatch) -> None:
-    state_dir = tmp_path / "workbench-locks"
-    monkeypatch.setattr(workbench, "_run_state_dir", lambda: state_dir)
-    root = tmp_path / "workspace"
-    run_id = "workflow-current"
-    workbench._store_thread_authority(root, run_id, "thread-current")
-    path = workbench._thread_authority_path(root, run_id)
-    value = json.loads(path.read_text(encoding="utf-8"))
-    assert workbench._service_thread_id(root, run_id) == "thread-current"
-    value["workflow_run_id"] = "workflow-other"
-    path.write_text(json.dumps(value), encoding="utf-8")
-
-    with pytest.raises(ValueError, match="identity"):
-        workbench._service_thread_id(root, run_id)
-
-
 def test_thread_policy_requires_canonical_toml_and_yaml_types(tmp_path: Path) -> None:
     codex_path = tmp_path / ".codex/config.toml"
     tradingcodex_path = tmp_path / ".tradingcodex/config.yaml"
     codex_path.parent.mkdir(parents=True)
     tradingcodex_path.parent.mkdir(parents=True)
-    codex_path.write_text("[agents]\nmax_threads = 6\nmax_depth = 1\n", encoding="utf-8")
+    codex_path.write_text(
+        "[features.multi_agent_v2]\n"
+        "enabled = true\n"
+        "max_concurrent_threads_per_session = 7\n"
+        "\n[agents]\n"
+        "max_depth = 1\n",
+        encoding="utf-8",
+    )
     tradingcodex_path.write_text("subagents:\n  reserved_threads: 1\n  overflow_strategy: batch_queue\n", encoding="utf-8")
 
     assert read_thread_policy(tmp_path) == {
+        "multi_agent_version": "v2",
+        "max_concurrent_threads_per_session": 7,
         "max_threads": 6,
         "max_depth": 1,
         "reserved_threads": 1,
@@ -89,8 +52,48 @@ def test_thread_policy_requires_canonical_toml_and_yaml_types(tmp_path: Path) ->
         "overflow_strategy": "batch_queue",
     }
 
-    codex_path.write_text('[agents]\nmax_threads = "6"\nmax_depth = 1\n', encoding="utf-8")
-    with pytest.raises(ValueError, match="max_threads"):
+    codex_path.write_text(
+        "[features.multi_agent_v2]\n"
+        "enabled = true\n"
+        'max_concurrent_threads_per_session = "7"\n'
+        "\n[agents]\n"
+        "max_depth = 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="max_concurrent_threads_per_session"):
+        read_thread_policy(tmp_path)
+
+
+def test_thread_policy_rejects_disabled_v2_and_v1_thread_cap(tmp_path: Path) -> None:
+    codex_path = tmp_path / ".codex/config.toml"
+    tradingcodex_path = tmp_path / ".tradingcodex/config.yaml"
+    codex_path.parent.mkdir(parents=True)
+    tradingcodex_path.parent.mkdir(parents=True)
+    tradingcodex_path.write_text(
+        "subagents:\n  reserved_threads: 1\n  overflow_strategy: batch_queue\n",
+        encoding="utf-8",
+    )
+
+    codex_path.write_text(
+        "[features.multi_agent_v2]\n"
+        "max_concurrent_threads_per_session = 7\n"
+        "\n[agents]\n"
+        "max_depth = 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="enabled must be true"):
+        read_thread_policy(tmp_path)
+
+    codex_path.write_text(
+        "[features.multi_agent_v2]\n"
+        "enabled = true\n"
+        "max_concurrent_threads_per_session = 7\n"
+        "\n[agents]\n"
+        "max_threads = 6\n"
+        "max_depth = 1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="incompatible with enabled MultiAgent V2"):
         read_thread_policy(tmp_path)
 
 

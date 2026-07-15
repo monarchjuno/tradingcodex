@@ -13,68 +13,58 @@ The v1 public routes and imports use the canonical
 
 | Surface | Primary role | Must not do |
 | --- | --- | --- |
-| Product web | Skill-first analysis workbench, bounded Codex-run supervision, artifact/source review, and authenticated customization/operational flows | Directly select or spawn roles, accept arbitrary commands, expose raw reasoning/tool payloads, or bypass policy, approval, and execution gates |
+| Product web | Read-only workspace selection, artifact/source review, skill projection, and system posture | Launch Codex, mutate workspace/service state, accept arbitrary paths, expose raw reasoning/tool payloads, or bypass policy, approval, and execution gates |
 | Django Admin | Local/staff operations console | Bypass service-layer policy or audit |
 | Django Ninja | Typed authenticated local/staff REST and operator-managed remote control API | Mirror every MCP tool automatically or bypass execution checks |
-| MCP | Agent research, order-preparation, approval, status, one proof-protected current-turn order effect, and proof-protected Build services | Expose raw submit/cancel/refresh mutations, accept protected calls without current hook proof, mirror raw REST endpoints, or proxy raw broker APIs |
-| Root native action hook | Exact immediate submit/cancel plus exact-first-line `$tcx-order-allow` and `$tcx-build` current-turn admission and proof injection | Accept free-form intent, run from Workbench/subagents, elevate the Codex sandbox, or bypass service gates |
+| MCP | Agent research, order-preparation, approval, status, one proof-protected current-turn order effect, proof-protected Build services, and scoped Brain/Strategy lifecycle | Expose raw submit/cancel/refresh mutations, accept protected calls without current hook proof, mirror raw REST endpoints, proxy raw broker APIs, or expose the model to runtime credentials |
+| Root native action hook | Exact immediate submit/cancel plus exact-first-line `$tcx-order-allow`, `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` current-turn admission with capability scope and proof injection where required | Accept free-form intent, combine scopes, run from subagents, elevate the Codex sandbox, or bypass service gates |
 | CLI | Local operator and generated wrapper interface | Fork durable behavior away from services |
 
 ## Product Web App
 
-TradingCodex provides a skill-first React workbench at `/`, not a table-first
-Admin replacement. React 19, TypeScript, and Vite 8 source lives under
+TradingCodex provides a read-only React workspace viewer at `/`, not a
+table-first Admin replacement or agent runtime. React 19, TypeScript, and Vite 8 source lives under
 `frontend/`; the deterministic build is committed under
 `tradingcodex_service/static/tradingcodex_web/` and served by Django and
 WhiteNoise. Node 22 is a maintainer build dependency only. Installed packages
 and generated workspaces do not run a Node server or npm.
 
-The SPA keeps four stable hash sections, with three primary work surfaces and
-one lower-emphasis settings surface:
+The SPA keeps three stable hash sections:
 
-- **Work** has two exclusive modes: compose and scope-review a new analysis, or
-  read one selected run. A completed synthesis appears before supporting
-  artifacts and collapsed technical activity. Recent analyses appear only in
-  Work rather than consuming every product surface.
-- **Approaches** (`#/skills`) discovers built-in skills and supports existing authenticated
-  optional-skill and `strategy-*` management APIs. Skill selection supplies a
-  procedure/input guide; it never grants identity, tools, approval, or execution
-  authority.
-- **Research** (`#/library`) browses workspace research, reports, sources, forecasts, and other
+- **Library** (`#/library`) browses workspace research, reports, sources, forecasts, and other
   accepted artifacts with sanitized previews and source/as-of posture.
-- **Settings** (`#/system`) holds workspace, internal paper-account scope, broker/data-source,
-  policy, audit, and build diagnostics that should not dominate the analysis
-  workflow.
+- **Skills** (`#/skills`) inspects built-in, optional, and strategy projections
+  plus sanitized guidance. It cannot invoke or modify them.
+- **System** (`#/system`) shows workspace, internal paper-account scope,
+  broker/data-source, permission, and order posture.
 
-Decision Memory does not add a fifth top-level section. Users start retrieval,
-historical replay, postmortem review, and lesson validation as a skill-shaped
-Work request; Library exposes the resulting decisions, forecasts, reviews, and
-lessons. Investor-context setup is an explicit workspace skill operation rather
-than a selectable Profile screen. Add a dedicated Memory surface only after
-measured usage shows that Work, Approaches, and Research cannot support the task.
+Decision Memory does not add a fourth top-level section. Native Codex handles
+retrieval, replay, review, and lesson validation; Library exposes resulting
+artifacts. Investor-context setup is a native skill/operator operation.
 
 SPA navigation uses hash sections so Django needs only a GET shell at `/`.
 `/admin/` remains Django Admin, `/api/` remains Django Ninja, and static paths
 remain Django/WhiteNoise assets. Non-root product paths return `404`; browser
 navigation stays under the root hash routes.
 
-The product web app is work-first and evidence-readable. It never renders a new
-composer above a selected historical result. Active runs show a truthful,
-event-derived research phase without a fake DAG, stage percentage, or predefined
-team. Completed runs show the verified reader synthesis first; agents, allowlisted
-activity, ids, and provenance stay in a closed disclosure. Approaches and Research
-use list/detail navigation, with a single-view list-to-reader transition at narrow
-widths. Verbose paths, projection hashes, manifest internals, proposal files, and
-validation internals belong in Settings or progressively disclosed diagnostics.
+Library and Skills use list/detail navigation. Wide windows keep the list and
+reader side by side; Codex in-app and other half-width desktop windows switch
+to a full-width list-to-reader transition so neither pane is squeezed. At that
+compact desktop width the registered-workspace rail becomes a horizontal
+selector with branch and readiness context, while phone layouts keep the
+two-row navigation and full-width controls. The viewer shows no composer,
+active run, follow-up, or mutation control.
 
 Markdown preview rendering uses the shared maintained parser/sanitizer service.
 The client must not inject unsanitized workspace HTML.
 
-Workspace selection is web-session local:
+Workspace selection is explicit and limited to registered state:
 
 - `GET <web route>?workspace=<workspace_id>` stores the selected
   `WorkspaceContext` in the current browser session.
-- The Settings selector lists up to 20 recently seen `WorkspaceContext` rows.
+- The left rail lists up to 20 recently seen validated `WorkspaceContext` rows;
+  half-width desktop and narrower layouts replace it with a select control so
+  the Library, Skills, and System content receives the full window width.
 - Web and API rendering use the selected workspace path only after its current
   v1 manifest and registered path validate. An explicitly unknown, unavailable,
   or stale selection returns an error and never falls back to another workspace.
@@ -83,98 +73,50 @@ Workspace selection is web-session local:
   workspace identity so MCP calls, audit events, and workflow runs from another
   Codex workspace do not appear as current-workspace evidence.
 - Opening a workspace requires an existing `.tradingcodex/workspace.json`
-  manifest. Creating a new workspace is a separate POST action and uses the
-  normal non-forced bootstrap path, so non-empty directory protection is not
-  bypassed from the web surface.
-- This selector binds Web, workbench, and Django Ninja requests in the browser
+  manifest. The viewer cannot create or attach a workspace.
+- This selector binds viewer and Django Ninja requests in the browser
   session. It does not change CLI, MCP stdio, or process-level environment
   behavior.
 
-### Workbench Run Model
+### Native Runtime And Workspace Viewer
 
-A Work request launches the same generated `head-manager` that a user would run
-from the attached workspace. Django invokes `codex exec` in JSONL mode and
-supervises the process; it does not choose the role team or directly spawn fixed
-subagents. Project instructions, skills, hooks, role TOML, MCP allowlists, and
-service gates remain authoritative.
+Native Codex is the only agent runtime. Head Manager interprets requests,
+creates lightweight analysis-run provenance, and dynamically dispatches exact
+fixed roles under generated instructions, skills, hooks, TOML, MCP allowlists,
+and service gates.
 
-Head Manager interprets the request directly and dynamically chooses/revises
-exact fixed roles. The service creates only a lightweight analysis run with
-request hash/size and sealed provenance; it does not classify intent or build a
-plan/DAG.
+The Django product web is a separate read-only viewer. It selects only a
+registered, currently valid attached workspace and returns a canonical snapshot
+plus sanitized skill and artifact detail. It does not invoke `codex exec`,
+preview prompts, start or resume runs, expose raw reasoning or tool payloads, or
+mutate skill, strategy, policy, order, broker, or execution state.
 
-Preview, initial, and follow-up requests use the same skill-expanded prompt and
-are analysis-only. Their JSON body uses the single canonical `prompt` field;
-empty optional skill/strategy selections are omitted and unknown fields are
-rejected. The API rejects order
-drafting, approval, execution, cancellation, broker mutation, and secret
-requests before process launch. A selected built-in skill is prompt/procedure
-context only and cannot widen role or tool authority.
-
-The runner uses a fixed argument vector with `shell=False`, a vetted attached
-workspace as cwd, a project-wide `read-only` filesystem sandbox,
-`approval_policy="never"`, disabled sandbox command networking, ignored user
-config, an explicit session-scoped trust entry
-for the already verified generated project config, an explicit registry-owned
-orchestrator/xhigh Head Manager selector, forced hooks, and disabled unified-exec and
-browser/computer/app/image action features. It verifies full generated
-project/role config, prompts, core skills, launchers, hooks, and the canonical
-TradingCodex MCP server, removes secret-like environment variables, and permits
-only one active process per run. The same read-only sandbox applies to Head
-Manager and every spawned fixed role. PreToolUse admits only the explicit
-analysis MCP set plus artifact quality checks. Fixed roles store reports only
-through authenticated MCP. Artifact creation derives producer identity,
-schema, body hash, and exact run-local input hashes. Head Manager synthesis must
-name at least one verified input artifact.
-Follow-up resumes the stored Codex thread rather than creating an unrelated
-workflow. Every initial or resumed process has a fixed 30-minute elapsed
-timeout. Expiry terminates and reaps the process, records a redacted
-`workbench.timed_out` event, and returns a normalized `process_timeout` failure.
-There is no user-triggered web cancellation.
-
-The workbench receives normalized, redacted, allowlisted events for agent, tool,
-source, artifact, and terminal state. It never receives or stores raw reasoning,
-tool inputs/outputs, stderr, or raw final output. Reader-facing final analysis
-comes only from a hash-bound head-manager synthesis whose sealed run lineage,
-authenticated artifact receipts, accepted handoff, and applicable quality gate
-all verify, and must show forecast horizon,
-assumptions, probability or range, key variables, uncertainty, and invalidation
-conditions when a forecast is present.
+`$tcx-dashboard` is the native Codex entrypoint for opening this viewer. It
+opens the selected viewer destination in the Codex in-app browser by default and
+uses external Browser Use only when the user explicitly requests an external
+browser. Generated project configuration enables those two browser surfaces but
+keeps general Computer Use and full CDP access disabled. If the requested
+surface is unavailable, the skill returns the exact clickable viewer URL rather
+than launching through the shell or silently switching browser surfaces.
 
 ### Product Web Boundary
 
-- `GET /api/workbench/` and workbench skill, artifact, and run detail are
-  read-only local/staff surfaces.
-- `POST /api/workbench/preview/` computes the same skill-expanded scope used by
-  start without persisting an analysis run or launching Codex.
-- Workbench strategy selection is structured input, not prompt inference, and
-  its Investor Context checkbox is the only one-run apply/ignore override.
-  Preview and start resolve the same active strategy/context bindings; start
-  seals them under the protected workflow-run directory with content hashes.
-- Only preview, `POST /api/workbench/runs/`, and
-  `POST /api/workbench/runs/{run_id}/follow-up/` have a narrow local exception:
-  under the `local` service profile, a loopback request with valid CSRF may use
-  them without a staff session or API key. Under `remote`, staff/API-key
-  authentication is always required. Every other mutation keeps its existing
-  authentication rule.
-- The exception authorizes only scope preview and bounded analysis process
-  start/resume. It is not
-  generic loopback mutation authority and exposes no order, approval, execution,
-  cancellation, broker, policy, or secret action.
-- Optional-skill, strategy, investor-context, additional-instruction,
-  broker/data-source, internal account-scope, policy, order, and build mutations
-  continue through their existing
-  authenticated APIs and shared application services.
-- Optional skills and `strategy-*` rules may be created, updated, activated,
-  archived, deleted, inspected, selected for Work, and projected from Skills,
-  but cannot mutate
-  protected built-ins, role identity, the project-wide analysis sandbox, MCP
-  allowlists, policy, or execution authority.
+- `GET /api/viewer/` returns the selected workspace snapshot as
+  `{generated_at, sections}`; each section is `{ok, data}` or `{ok, error}`.
+- `GET /api/viewer/skills/{skill_id}` and
+  `GET /api/viewer/artifacts/{artifact_id}` return sanitized detail.
+- The root SPA remains available when a query contains an invalid workspace id
+  so the API error can render in the viewer; the API never silently falls back.
+- The viewer exposes Library, Skills, and System only. Its left rail is the
+  registered-workspace selector.
+- The viewer has no POST, PATCH, or DELETE route and no loopback mutation
+  exception. Administrative mutations remain on authenticated canonical
+  surfaces outside the viewer.
 - External MCP discovery and permission review must not expose raw external
   tools directly to Codex or turn user consent into order/execution approval.
 - Execution-sensitive actions remain behind TradingCodex role, MCP, policy,
-  approval, duplicate-request, connection, and audit checks regardless of
-  whether analysis began in Codex or the workbench.
+  approval, duplicate-request, connection, and audit checks. Analysis begins
+  only in native Codex; the viewer cannot initiate it.
 
 ## Django Admin
 
@@ -220,28 +162,19 @@ transport-principal binding; a staff session does not itself confer an agent
 role, even when a staff username collides with an active agent principal id.
 Role-authored endpoints require an API-key-bound principal. Administrative
 strategy and optional-skill operations remain available to CSRF-protected
-staff, while API-key callers need an active canonical
-`head-manager` for those administrative paths. The only anonymous
-mutation exception is the three CSRF-protected, loopback-local, analysis-only
-workbench POSTs documented above:
+staff, while API-key callers need an active canonical `head-manager` for those
+administrative paths. The read-only viewer creates no anonymous mutation
+exception:
 
 - `GET /api/health`
 - `GET /api/health/live`
 - `GET /api/health/ready`
-- `GET /api/workbench/` returns one canonical selected-workspace snapshot for
-  Work, Approaches, Research, and Settings as `{generated_at, sections}`, where every
+- `GET /api/viewer/` returns one canonical selected-workspace snapshot for
+  Library, Skills, and System as `{generated_at, sections}`, where every
   section is either `{ok: true, data}` or `{ok: false, error}`. Strategies and
   optional skills are snapshot sections rather than a second frontend load path.
-- `GET /api/workbench/skills/{skill_id}`
-- `GET /api/workbench/artifacts/{artifact_id}`
-- `GET /api/workbench/runs/{run_id}`
-- `POST /api/workbench/preview/` returns the exact skill-expanded scope used by
-  start, including structured strategy and one-run Investor Context choices,
-  without persisting an analysis run or launching Codex; it rejects reserved
-  native execution tokens
-- `POST /api/workbench/runs/` starts one bounded analysis-only Codex run
-- `POST /api/workbench/runs/{run_id}/follow-up/` resumes its stored Codex thread;
-  start and follow-up also reject reserved native execution tokens before launch
+- `GET /api/viewer/skills/{skill_id}`
+- `GET /api/viewer/artifacts/{artifact_id}`
 - `GET /api/harness/status`
 - `GET /api/harness/components`
 - `GET /api/harness/components/{component_id}`
@@ -349,7 +282,7 @@ before allocating an analysis run, deterministically parses the full prompt,
 creates a workspace-bound `native-user` mandate, writes redacted audit metadata,
 and calls `application/execution_gateway.py` in-process. It invokes no shell,
 subprocess, public MCP tool, REST route, or model. Malformed reserved actions,
-subagent turns, Workbench preview/start/follow-up, and the retired
+subagent turns, and the retired
 `$execute-paper-order` form fail closed. The returned context is an allowlisted
 result projection; canonical recovery comes from DB order status, not automatic
 retry.
@@ -361,40 +294,56 @@ Scheduled Task request. `UserPromptSubmit` requires the root session and turn,
 issues one workspace/session/turn/prompt/mode-bound `OrderTurnGrant`, and lets
 normal orchestration continue. Root Head Manager alone can select one later
 submit or cancel through `use_order_turn_grant`; `PreToolUse` reserves the grant
-for the tool-use id and injects internal proof. A direct MCP caller, Workbench,
-or subagent cannot supply that proof. Consumption still enters the same
+for the tool-use id and injects internal proof. A direct MCP caller or subagent
+cannot supply that proof, and the browser viewer has no grant entrypoint. Consumption still enters the same
 service-owned policy, approval, idempotency, live-confirmation, adapter, audit,
 reconciliation, and uncertainty gates.
 
-## Root Native Build Boundary
+## Root Native Workspace-Change Boundary
 
 Mutating Codex Build work begins only when the exact physical first line of a
 root native prompt is `$tcx-build` and later lines contain a non-empty concrete
 request. `UserPromptSubmit` issues a DB-canonical `BuildTurnGrant` bound to the
 workspace, session, turn, cwd, and complete prompt. `PreToolUse` requires the
-grant for direct write tools and injects a one-time internal proof for protected
-build MCP calls. The grant supports multiple build steps only in the current
-turn; each mutating follow-up requires the exact marker again. Workbench and
-subagents cannot mint, inherit, or use it.
+grant for controlled `trading/` edits and injects a one-time internal proof for
+protected build MCP calls. Ordinary `apply_patch` edits outside `trading/` do
+not consume Build authority; generic Write/Edit tools remain blocked. The grant
+supports multiple build steps only in the current
+turn; each mutating follow-up requires the exact marker again. Subagents cannot
+mint, inherit, or use it, and the browser viewer has no Build path.
 
-This is an intent gate, not a sandbox switch. Actual Codex permissions remain
-authoritative; `workspace-write` is the preferred least-privilege setting for
-ordinary Build work. Codex Plan mode cannot issue or use a grant, and a grant
-is bound to its issue-time permission mode. A read-only turn cannot make native
-workspace-file edits, though it may render/read and call the specifically
-proof-protected canonical DB services. The generated Build command lane is
-limited to native `apply_patch`, exact workspace reads/listing, trusted
-workspace-launcher subcommands, and isolated provider `py_compile`; general
-shell, scripts, interpreters, `pytest`, and build/test runners are blocked.
-Full tests and smokes run from an explicit operator or maintainer terminal.
+This is an intent gate, not a permission-profile switch. Actual Codex
+permissions remain authoritative. The default `trading-research` profile
+allows general computation, credential-free public retrieval, disposable temp
+writes, and user-owned file changes outside `trading/`. Controlled `trading/`
+or optional-role-skill lifecycle work starts in a fresh `trading-build` root turn. The
+Build profile opens connector/build paths but denies protected runtime/DB,
+credential, ledger, and network access. Codex Plan mode cannot issue or use a
+grant, and a grant is bound to its issue-time permission mode. General
+workspace-local shell, Python, and focused validation are available within the
+profile; controlled `trading/` edits, trusted launcher commands, and protected
+MCP mutations retain their deterministic Build checks.
+
+Investment Brain and Strategy management use separate exact root markers:
+`$tcx-brain` and `$tcx-strategy`. They stay in `trading-research`, issue a
+DB-canonical grant with only the matching capability scope, and admit only the
+canonical Brain source path plus `manage_investment_brain`, or Strategy body
+staging plus `manage_strategy`. The hook owns and injects the MCP proof;
+Research does not expose the generated CLI or attached runtime. Neither marker
+can be combined with `$tcx-build`, an order marker, or the other managed skill;
+Plan mode and subagents remain blocked.
 
 This also applies to Codex app Scheduled Tasks. A recurring Build task works
 only when its deliberately saved prompt starts with `$tcx-build`; every run
-gets a fresh grant decision. File-mutating runs require a `workspace-write`
-Automation runtime. A read-only run is limited to rendering/inspection and
-specifically proof-protected canonical DB calls; Plan mode blocks Build
-entirely. Prefer an isolated worktree or workspace and retain a reviewable
-diff. `$tcx-build` must never be combined with `$tcx-order-allow`.
+gets a fresh grant decision. Controlled `trading/` or optional-role-skill
+lifecycle runs require a `trading-build` Automation runtime. Brain and Strategy
+management starts directly with its matching exact marker in a
+`trading-research` Automation runtime. A `trading-research` run may read
+and write ordinary user-owned paths outside `trading/`, use temporary
+computation, public evidence retrieval, rendering/inspection, and specifically
+proof-protected canonical DB calls; Plan mode blocks Build entirely. Prefer an
+isolated worktree or workspace and retain a reviewable diff. `$tcx-build` must
+never be combined with `$tcx-order-allow`.
 
 Persistent `tcx mode` is retired: `tcx mode status` is an inert compatibility
 diagnostic, `tcx mode set ...` cannot grant authority, and any old
@@ -499,6 +448,11 @@ and `recorded`, while top-level event fields and `action` aliases are rejected.
 For a recorded workflow, research artifact write tools accept caller-owned
 report/source fields plus the run/task reference. Canonical workflow semantics,
 binding, identity, schema, and hashes are service-derived and reject overrides.
+The MCP schema exposes structured follow-up and improvement objects. Before an
+accepted run-bound write is receipted or published, the service validates its
+exact intended Markdown bytes with the strict artifact-quality contract; a
+failure leaves no file or receipt. Synthesis binding also rejects authenticated
+inputs whose current-run handoff state is not `accepted`.
 `tools/call` records `McpToolCall` rows with principal, status, request/result
 hashes, errors, and duration, except research tools and
 evaluation tools plus `list_workflow_artifacts`, which are excluded so
@@ -581,6 +535,11 @@ workspace-facing surface is grouped as follows:
 - service and operator surfaces: `tcx db`, `policy`, `build`, `connectors`,
   and `mcp`
 
+Generated launchers project `TRADINGCODEX_SERVICE_ADDR`. `tcx service status`,
+`ensure`, `stop`, and `runserver` use that address when no positional address
+is supplied. Release workspaces default to `127.0.0.1:48267`; development
+bootstrap can select a separate checkout-scoped loopback port.
+
 `tcx postmortem list|process-review|create|show` is available from the CLI;
 lesson promotion is only available to the authenticated `judgment-reviewer`
 through role-scoped MCP. `tcx mcp external import-codex --source
@@ -613,19 +572,23 @@ named broker request routes to `$tcx-build` to install or develop a reviewed
 provider, then registration stores only provider metadata and `credential_ref`.
 `inspect-provider` is inert and prints the exact source/bundle hashes for
 review. Approval and revocation reject piped or automated stdin and are not
-available through MCP, API, Admin, Workbench, Build, or Automation. Approval
+available through MCP, API, Admin, the browser viewer, Build, or Automation. Approval
 creates a database-bound immutable snapshot; the running service must be
 restarted before that exact snapshot can load.
 
 Default main-agent skill listing is user-facing, not exhaustive. It shows only
 direct user entrypoints: `tcx-plan`, `tcx-workflow`, `tcx-memory`,
-`tcx-automate`, `tcx-server`, `tcx-build`, `tcx-investor-context`,
-`tcx-strategy`, `tcx-brain-create`, and active `strategy-*` skills.
+`tcx-automate`, `tcx-dashboard`, `tcx-server`, `tcx-build`, `tcx-investor-context`,
+`tcx-strategy`, `tcx-brain`, and active `strategy-*` skills.
 Postmortem review is part of `tcx-memory`. Full inspection is available through
 `./tcx skills list --all` and role-specific `./tcx subagents skills <role>`.
 
 Optional-skill and strategy CRUD CLI commands call the same shared application
-service used by the authenticated workbench/API and mainagent guidance.
-Additional instruction edits are web-first and file-native; they are stored
+service used by the authenticated API and Head Manager guidance.
+`tcx-brain` similarly routes installed Brain list, inspect, validate, install,
+update, activate, deactivate, rollback, and remove through the canonical
+Investment Brain application service while keeping user-owned source edits
+workspace-file-native.
+Additional instruction edits are native/CLI-managed and file-native; they are stored
 under `.tradingcodex/agent-instructions/` and reflected in generated projection
 indexes.

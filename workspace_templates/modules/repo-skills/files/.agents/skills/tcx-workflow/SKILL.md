@@ -76,6 +76,11 @@ Act as coordinator and synthesizer. Do not perform the analyst roles yourself.
    `create_research_artifact` and return its artifact ID/path. If work is weak,
    report `waiting` or dispatch a fresh same-role correction with the gap.
 8. Inspect exact run-local artifacts through `get_research_artifact`.
+   Accepted run-bound artifacts have already passed the service's strict
+   pre-publication quality gate. Treat a rejected artifact write as a role-owned
+   correction, not as an artifact to synthesize. A synthesis input must also
+   retain `handoff_state=accepted`; authenticated `revise`, `blocked`, or
+   `waiting` artifacts are not synthesis-ready.
    Reassess the workflow after each wave: synthesize when supported; revise the
    owning role when its evidence is weak; add a role for a material new
    question; use

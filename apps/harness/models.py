@@ -2,6 +2,14 @@ from django.db import models
 
 
 class BuildTurnGrant(models.Model):
+    SCOPE_BUILD = "build"
+    SCOPE_BRAIN = "brain"
+    SCOPE_STRATEGY = "strategy"
+    SCOPE_CHOICES = (
+        (SCOPE_BUILD, "Build"),
+        (SCOPE_BRAIN, "Investment Brain"),
+        (SCOPE_STRATEGY, "Strategy"),
+    )
     STATUS_ACTIVE = "active"
     STATUS_RESERVED = "reserved"
     STATUS_REVOKED = "revoked"
@@ -14,6 +22,7 @@ class BuildTurnGrant(models.Model):
     )
 
     grant_id = models.CharField(max_length=80, unique=True)
+    authority_scope = models.CharField(max_length=32, choices=SCOPE_CHOICES, default=SCOPE_BUILD)
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=STATUS_ACTIVE)
     workspace_id = models.CharField(max_length=180)
     workspace_path_hash = models.CharField(max_length=64)
@@ -53,8 +62,8 @@ class BuildTurnGrant(models.Model):
                 name="unique_active_build_grant_session",
             ),
         ]
-        verbose_name = "Build turn grant"
-        verbose_name_plural = "Build turn grants"
+        verbose_name = "Workspace turn grant"
+        verbose_name_plural = "Workspace turn grants"
 
     def __str__(self) -> str:
         return f"{self.status}:{self.grant_id}"

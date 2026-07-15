@@ -104,6 +104,11 @@ LOCAL_RUNTIME_SOURCE_ROOTS = (
     "pyproject.toml",
     "uv.lock",
     "MANIFEST.in",
+    "setup.cfg",
+    "setup.py",
+    "README.md",
+    "LICENSE",
+    "NOTICE",
     "tradingcodex_cli",
     "tradingcodex_service",
     "apps",
@@ -265,6 +270,33 @@ def _generation_context(
 ) -> dict[str, str]:
     resolution = resolve_tradingcodex_home()
     assert_runtime_home_outside_workspace(target, resolution.home)
+    configured_codex_home = str(os.environ.get("CODEX_HOME") or "").strip()
+    codex_home = (
+        Path(configured_codex_home).expanduser()
+        if configured_codex_home
+        else Path.home() / ".codex"
+    ).resolve(strict=False)
+    if (
+        codex_home == resolution.home
+        or codex_home.is_relative_to(resolution.home)
+        or resolution.home.is_relative_to(codex_home)
+    ):
+        raise ValueError(
+            "CODEX_HOME and TRADINGCODEX_HOME must be separate paths so Codex proxy access "
+            "cannot reopen TradingCodex runtime state"
+        )
+    scratch_path = (
+        Path(tempfile.gettempdir()).resolve()
+        / "tradingcodex-scratch-v1"
+        / workspace_id
+    )
+    scratch_path.mkdir(parents=True, exist_ok=True)
+    if scratch_path.is_symlink() or not scratch_path.is_dir():
+        raise ValueError("TradingCodex scratch path must be a real directory")
+    try:
+        scratch_path.chmod(0o700)
+    except OSError:
+        pass
     db_override = bool(str(os.environ.get("TRADINGCODEX_DB_NAME") or "").strip())
     declared_source = str(os.environ.get(EXECUTABLE_SOURCE_ENV) or "")
     recorded_source_kind = str(os.environ.get(PACKAGE_SOURCE_KIND_ENV) or "")
@@ -305,6 +337,10 @@ def _generation_context(
         ),
         "TRADINGCODEX_PYTHON": generated_python,
         "TRADINGCODEX_WORKSPACE_ROOT": str(target.resolve()),
+        "TRADINGCODEX_SCRATCH_PATH": str(scratch_path),
+        "CODEX_HOME_PATH": str(codex_home),
+        "CODEX_HOME_PROXY_PATH": str(codex_home / "proxy"),
+        "CODEX_HOME_STANDALONE_PATH": str(codex_home / "packages" / "standalone"),
         "TRADINGCODEX_HOME": str(resolution.home),
         "TRADINGCODEX_HOME_SOURCE": resolution.home_source,
         "TRADINGCODEX_DB_PATH": str(tradingcodex_db_path()),
@@ -446,7 +482,19 @@ def ensure_managed_python_runtime(
         staging = Path(
             tempfile.mkdtemp(prefix=f".{runtime_environment.name}.", dir=runtime_parent)
         )
+        source_snapshot: Path | None = None
         install_spec = _managed_runtime_install_spec(package_spec)
+        if executable_source_is_local(package_spec):
+            local_source = Path(
+                canonical_executable_source(package_spec, require_local_exists=True)
+            )
+            if local_source.is_dir():
+                source_snapshot = _snapshot_local_runtime_source(
+                    local_source,
+                    runtime_parent,
+                    prefix=f".{runtime_environment.name}.source.",
+                )
+                install_spec = str(source_snapshot)
         environment = os.environ.copy()
         for key in (
             "PYTHONHOME",
@@ -483,6 +531,9 @@ def ensure_managed_python_runtime(
         except Exception:
             shutil.rmtree(staging, ignore_errors=True)
             raise
+        finally:
+            if source_snapshot is not None:
+                shutil.rmtree(source_snapshot, ignore_errors=True)
     _validate_generated_python(runtime_python, pythonpath=pythonpath)
     return runtime_python
 
@@ -614,6 +665,43 @@ def _update_runtime_file_digest(digest: Any, source: Path, path: Path) -> None:
     with path.open("rb") as handle:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
+
+
+def _snapshot_local_runtime_source(
+    source: Path,
+    destination_parent: Path,
+    *,
+    prefix: str = ".tradingcodex-source.",
+) -> Path:
+    """Copy only runtime-relevant source, excluding stale build products."""
+
+    snapshot = Path(tempfile.mkdtemp(prefix=prefix, dir=destination_parent))
+    try:
+        for name in LOCAL_RUNTIME_SOURCE_ROOTS:
+            source_path = source / name
+            destination_path = snapshot / name
+            if source_path.is_dir():
+                shutil.copytree(
+                    source_path,
+                    destination_path,
+                    ignore=_runtime_source_copy_ignore,
+                )
+            elif source_path.is_file():
+                destination_path.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source_path, destination_path)
+    except Exception:
+        shutil.rmtree(snapshot, ignore_errors=True)
+        raise
+    return snapshot
+
+
+def _runtime_source_copy_ignore(_directory: str, names: list[str]) -> set[str]:
+    return {
+        name
+        for name in names
+        if name in LOCAL_RUNTIME_IGNORED_PARTS
+        or Path(name).suffix.casefold() in LOCAL_RUNTIME_IGNORED_SUFFIXES
+    }
 
 
 def _managed_runtime_install_spec(package_spec: str) -> str:

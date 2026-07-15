@@ -41,18 +41,31 @@ def read_thread_policy(root: Path) -> dict[str, Any]:
     except (OSError, tomllib.TOMLDecodeError, yaml.YAMLError) as exc:
         raise ValueError("canonical thread policy configuration is unavailable") from exc
     agents = codex.get("agents") if isinstance(codex, dict) else None
+    features = codex.get("features") if isinstance(codex, dict) else None
+    multi_agent_v2 = features.get("multi_agent_v2") if isinstance(features, dict) else None
     subagents = tradingcodex.get("subagents") if isinstance(tradingcodex, dict) else None
-    if not isinstance(agents, dict) or not isinstance(subagents, dict):
+    if not isinstance(agents, dict) or not isinstance(multi_agent_v2, dict) or not isinstance(subagents, dict):
         raise ValueError("canonical thread policy sections are required")
-    max_threads = _thread_policy_integer(agents, "max_threads", minimum=2)
+    if multi_agent_v2.get("enabled") is not True:
+        raise ValueError("features.multi_agent_v2.enabled must be true")
+    if "max_threads" in agents:
+        raise ValueError("agents.max_threads is incompatible with enabled MultiAgent V2")
+    max_session_threads = _thread_policy_integer(
+        multi_agent_v2,
+        "max_concurrent_threads_per_session",
+        minimum=3,
+    )
+    max_threads = max_session_threads - 1
     max_depth = _thread_policy_integer(agents, "max_depth", minimum=1)
     reserved = _thread_policy_integer(subagents, "reserved_threads", minimum=0)
     overflow = subagents.get("overflow_strategy")
     if overflow != "batch_queue":
         raise ValueError("subagents.overflow_strategy must be batch_queue")
     if reserved >= max_threads:
-        raise ValueError("subagents.reserved_threads must be smaller than agents.max_threads")
+        raise ValueError("subagents.reserved_threads must be smaller than the MultiAgent V2 child-thread capacity")
     return {
+        "multi_agent_version": "v2",
+        "max_concurrent_threads_per_session": max_session_threads,
         "max_threads": max_threads,
         "max_depth": max_depth,
         "reserved_threads": reserved,

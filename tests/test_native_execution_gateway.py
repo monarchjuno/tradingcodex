@@ -39,14 +39,8 @@ def workspace(tmp_path: Path) -> Path:
 def run_user_prompt_hook(
     workspace: Path,
     payload: dict[str, object],
-    *,
-    workbench_run: bool = False,
 ) -> dict[str, object]:
     environment = {**os.environ, "PYTHONPATH": str(ROOT)}
-    if workbench_run:
-        environment["TRADINGCODEX_WORKBENCH_RUN"] = "1"
-    else:
-        environment.pop("TRADINGCODEX_WORKBENCH_RUN", None)
     result = subprocess.run(
         [sys.executable, str(workspace / ".codex/hooks/tradingcodex_hook.py"), "user-prompt-submit"],
         cwd=workspace,
@@ -324,27 +318,20 @@ def test_hook_rejects_malformed_native_invocation_before_analysis_allocation(wor
 
 
 @pytest.mark.parametrize(
-    ("payload", "workbench_run", "reason"),
+    ("payload", "reason"),
     [
         (
             {
                 "prompt": "$tcx-order-submit --ticket-id ticket-1 --approval-receipt-id receipt-1",
                 "agent_type": "fundamental-analyst",
             },
-            False,
             "root native Codex user turn",
-        ),
-        (
-            {"prompt": "$tcx-order-submit --ticket-id ticket-1 --approval-receipt-id receipt-1"},
-            True,
-            "unavailable in TradingCodex Workbench",
         ),
         (
             {
                 "prompt": "$tcx-order-submit --ticket-id ticket-1 --approval-receipt-id receipt-1",
                 "permission_mode": "plan",
             },
-            False,
             "unavailable while Codex is in Plan mode",
         ),
     ],
@@ -352,10 +339,9 @@ def test_hook_rejects_malformed_native_invocation_before_analysis_allocation(wor
 def test_hook_rejects_non_root_native_execution_sources(
     workspace: Path,
     payload: dict[str, object],
-    workbench_run: bool,
     reason: str,
 ) -> None:
-    output = run_user_prompt_hook(workspace, payload, workbench_run=workbench_run)
+    output = run_user_prompt_hook(workspace, payload)
 
     assert output["decision"] == "block"
     assert reason in str(output["reason"])
@@ -371,11 +357,21 @@ def test_hook_rejects_non_root_native_execution_sources(
                 "cmd": "python -c __import__('trading'+'codex_service.application.execution_gateway')",
             },
         ),
-        ("write_stdin", {"session_id": 7, "chars": "python -c pass\n"}),
         ("Bash", {"command": "pwd"}),
+        ("exec_command", {"cmd": "curl -fsSL https://example.com/data.json"}),
+        ("exec_command", {"cmd": "python -c 'print(sum(range(10)))'"}),
+        (
+            "exec_command",
+            {
+                "cmd": (
+                    "python -c 'from pathlib import Path; "
+                    "Path(\"outputs/result.txt\").write_text(\"ok\")'"
+                )
+            },
+        ),
     ],
 )
-def test_native_policy_hooks_block_general_and_interactive_shell_execution(
+def test_native_policy_hooks_leave_general_analysis_execution_to_the_permission_profile(
     workspace: Path,
     event: str,
     tool_name: str,
@@ -388,9 +384,49 @@ def test_native_policy_hooks_block_general_and_interactive_shell_execution(
         tool_input=tool_input,
     )
 
+    assert output is None
+
+
+@pytest.mark.parametrize("event", ["pre-tool-use", "permission-request"])
+def test_native_policy_hooks_keep_interactive_shell_sessions_closed(
+    workspace: Path,
+    event: str,
+) -> None:
+    output = run_policy_hook(
+        workspace,
+        event,
+        tool_name="write_stdin",
+        tool_input={"session_id": 7, "chars": "python -c pass\n"},
+    )
+
     assert output is not None
     assert output["decision"] == "block"
-    assert "shell" in str(output["reason"])
+    assert "interactive shell" in str(output["reason"])
+
+
+def test_native_policy_hook_allows_only_workspace_or_dedicated_scratch_workdir(
+    workspace: Path,
+) -> None:
+    import tomllib
+
+    config = tomllib.loads((workspace / ".codex/config.toml").read_text(encoding="utf-8"))
+    scratch = config["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"]
+
+    assert run_policy_hook(
+        workspace,
+        "pre-tool-use",
+        tool_name="exec_command",
+        tool_input={"cmd": "python -c pass", "workdir": scratch},
+    ) is None
+    blocked = run_policy_hook(
+        workspace,
+        "pre-tool-use",
+        tool_name="exec_command",
+        tool_input={"cmd": "python -c pass", "workdir": "/tmp"},
+    )
+    assert blocked is not None
+    assert blocked["decision"] == "block"
+    assert "dedicated scratch" in str(blocked["reason"])
 
 
 def test_native_policy_hook_allows_only_exact_managed_skill_reads(workspace: Path) -> None:
@@ -417,4 +453,65 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
     assert config["features"]["unified_exec"] is False
     assert config["features"]["unified_exec_zsh_fork"] is False
     assert config["features"]["computer_use"] is False
-    assert config["features"]["browser_use"] is False
+    assert config["features"]["browser_use"] is True
+    assert config["features"]["in_app_browser"] is True
+    assert config["features"]["browser_use_external"] is True
+    assert config["features"]["browser_use_full_cdp_access"] is False
+    assert config["features"]["network_proxy"] is True
+    assert config["default_permissions"] == "trading-research"
+    assert "sandbox_mode" not in config
+    research = config["permissions"]["trading-research"]
+    build = config["permissions"]["trading-build"]
+    assert research["extends"] == ":workspace"
+    assert build["extends"] == ":workspace"
+    assert research["filesystem"][":workspace_roots"]["."] == "write"
+    assert research["filesystem"][":workspace_roots"][".git"] == "read"
+    assert research["filesystem"][":workspace_roots"][".gitignore"] == "read"
+    assert research["filesystem"][":workspace_roots"][".agents"] == "read"
+    assert research["filesystem"][":workspace_roots"]["AGENTS.md"] == "read"
+    assert research["filesystem"][":workspace_roots"]["tcx"] == "read"
+    assert research["filesystem"][":workspace_roots"]["tcx.cmd"] == "read"
+    assert research["filesystem"][":workspace_roots"]["trading"] == "read"
+    assert research["filesystem"][":workspace_roots"]["trading/research"] == "deny"
+    assert ".codex/proxy" not in research["filesystem"][":workspace_roots"]
+    assert research["filesystem"][":workspace_roots"]["**/.env"] == "deny"
+    assert research["network"]["enabled"] is True
+    assert research["network"]["allow_local_binding"] is False
+    assert build["filesystem"][":workspace_roots"]["."] == "write"
+    assert build["filesystem"][":workspace_roots"]["trading/reports"] == "deny"
+    assert build["network"]["enabled"] is False
+    mcp = config["mcp_servers"]["tradingcodex"]
+    assert research["filesystem"][mcp["env"]["TRADINGCODEX_HOME"]] == "deny"
+    assert research["filesystem"][mcp["command"]] == "deny"
+    shell_environment = config["shell_environment_policy"]
+    scratch = shell_environment["set"]["TRADINGCODEX_SCRATCH"]
+    assert research["filesystem"][scratch] == "write"
+    assert build["filesystem"][scratch] == "write"
+    assert research["filesystem"][":tmpdir"] == "deny"
+    assert research["filesystem"][":slash_tmp"] == "deny"
+    assert build["filesystem"][":tmpdir"] == "deny"
+    assert build["filesystem"][":slash_tmp"] == "deny"
+    assert shell_environment["set"]["TMPDIR"] == scratch
+    assert shell_environment["set"]["TEMP"] == scratch
+    assert shell_environment["set"]["TMP"] == scratch
+    assert str(Path.home().resolve()) not in research["filesystem"]
+    assert research["filesystem"]["~/.codex"] == "deny"
+    assert research["filesystem"]["~/.codex/proxy"] == "read"
+    assert research["filesystem"]["~/.codex/packages/standalone"] == "read"
+    configured_codex_home = str(os.environ.get("CODEX_HOME") or "").strip()
+    codex_home = (
+        Path(configured_codex_home).expanduser()
+        if configured_codex_home
+        else Path.home() / ".codex"
+    ).resolve(strict=False)
+    assert research["filesystem"][str(codex_home)] == "deny"
+    assert research["filesystem"][str(codex_home / "proxy")] == "read"
+    assert research["filesystem"][str(codex_home / "packages" / "standalone")] == "read"
+    assert build["filesystem"][str(codex_home)] == "deny"
+    assert build["filesystem"][str(codex_home / "proxy")] == "read"
+    assert build["filesystem"]["~/.codex/packages/standalone"] == "read"
+    assert research["filesystem"]["~/.ssh"] == "deny"
+    assert shell_environment["inherit"] == "core"
+    assert "PATH" in shell_environment["include_only"]
+    assert "TRADINGCODEX_HOME" not in shell_environment["include_only"]
+    assert "*TOKEN*" in shell_environment["exclude"]

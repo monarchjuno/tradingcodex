@@ -65,7 +65,7 @@ Use [harness.md](./harness.md) for the orchestration/runtime model,
 | Django service plane | Durable policy/order/portfolio/audit/harness/integration logic, product web, Admin, Ninja, stdio MCP bridge, and research file indexing | [system-architecture.md](./system-architecture.md), [interfaces-and-surfaces.md](./interfaces-and-surfaces.md) |
 | Workspace system plane | Generated schemas, policy exports, MCP wrappers, research markdown, readable artifacts, audit directories | [generated-workspaces.md](./generated-workspaces.md), [research-memory-and-artifacts.md](./research-memory-and-artifacts.md) |
 
-Workspace identity is the Codex workbench identity. Research handoffs are
+Workspace identity is the attached Codex workspace identity. Research handoffs are
 workspace-local so agents and humans can read the same markdown. Portfolio,
 order, account, and strategy identity belongs to internal paper-account runtime
 scope, not workspace paths. Optional investor suitability context and
@@ -134,8 +134,8 @@ model runs. The separate `tcx-order-allow` bundle documents current-turn admissi
 an exact physical first line issues one `OrderTurnGrant`, and only root Head
 Manager can select one later submit or cancel through `use_order_turn_grant`.
 `PreToolUse` injects proof that model input and direct MCP callers cannot supply.
-Workbench, fixed roles, public REST, generic CLI, and unproven direct MCP calls
-cannot invoke the final mutation.
+The browser viewer has no mutation route. Fixed roles, public REST, generic
+CLI, and unproven direct MCP calls cannot invoke the final mutation.
 
 Paper and validation-only execution paths remain experimental local harness
 behavior. Live broker adapters remain disabled and unimplemented in the initial

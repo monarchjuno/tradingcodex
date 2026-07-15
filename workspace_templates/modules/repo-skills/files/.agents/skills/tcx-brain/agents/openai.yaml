@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Brain"
+  short_description: "Author and manage Investment Brain plugins"
+  default_prompt: "$tcx-brain\nCreate, inspect, or manage the specified Investment Brain in this capability-scoped turn."
+policy:
+  allow_implicit_invocation: false

@@ -55,9 +55,11 @@ class ModelPolicy:
     required_capabilities: tuple[str, ...]
 
 
-MODEL_POLICY_REVISION = "v1-role-policy-v2"
+MODEL_POLICY_REVISION = "v1-role-policy-v3"
 MODEL_PROMPT_REVISION = "2026-07-gpt56-v1"
 MODEL_TOOL_PROFILE_REVISION = "2026-07-role-allowlists-v1"
+MINIMUM_CODEX_VERSION = "0.144.1"
+REFERENCE_CODEX_VERSION = "0.144.4"
 MODEL_POLICIES = {
     "orchestrator": ModelPolicy(
         "orchestrator",
@@ -87,7 +89,8 @@ def resolve_agent_model_policy(role: str) -> dict[str, Any]:
     return {
         "policy_revision": MODEL_POLICY_REVISION,
         "runtime_surface": "codex_project_toml",
-        "minimum_codex_version": None,
+        "minimum_codex_version": MINIMUM_CODEX_VERSION,
+        "reference_codex_version": REFERENCE_CODEX_VERSION,
         "tier": policy.tier,
         "primary_model": policy.primary_model,
         "resolved_model": policy.primary_model,
@@ -141,11 +144,12 @@ HEAD_MANAGER_SKILLS = (
     "tcx-workflow",
     "tcx-memory",
     "tcx-automate",
+    "tcx-dashboard",
     "tcx-server",
     "tcx-build",
     "tcx-investor-context",
     "tcx-strategy",
-    "tcx-brain-create",
+    "tcx-brain",
     "tcx-order-allow",
     "tcx-order-submit",
     "tcx-order-cancel",
@@ -162,6 +166,8 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         mcp_allowlist=(
             "get_tradingcodex_status",
             "get_update_status",
+            "manage_strategy",
+            "manage_investment_brain",
             "begin_analysis_run",
             "simulate_policy",
             "get_order_status",
@@ -590,6 +596,7 @@ SKILL_SPECS: dict[str, SkillSpec] = {
     "tcx-workflow": SkillSpec("tcx-workflow", "TCX Workflow", ("head-manager",), user_visible=True),
     "tcx-memory": SkillSpec("tcx-memory", "TCX Memory", ("head-manager",), user_visible=True),
     "tcx-automate": SkillSpec("tcx-automate", "TCX Automate", ("head-manager",), user_visible=True),
+    "tcx-dashboard": SkillSpec("tcx-dashboard", "TCX Dashboard", ("head-manager",), user_visible=True),
     "tcx-server": SkillSpec("tcx-server", "TCX Server", ("head-manager",), user_visible=True),
     "tcx-build": SkillSpec(
         "tcx-build",
@@ -601,9 +608,9 @@ SKILL_SPECS: dict[str, SkillSpec] = {
     "tcx-source-gate": SkillSpec("tcx-source-gate", "TCX Source Gate", RESEARCH_ROLES, scope="subagent_shared"),
     "tcx-investor-context": SkillSpec("tcx-investor-context", "TCX Investor Context", ("head-manager",), user_visible=True),
     "tcx-strategy": SkillSpec("tcx-strategy", "TCX Strategy", ("head-manager",), user_visible=True),
-    "tcx-brain-create": SkillSpec(
-        "tcx-brain-create",
-        "TCX Brain Create",
+    "tcx-brain": SkillSpec(
+        "tcx-brain",
+        "TCX Brain",
         ("head-manager",),
         user_visible=True,
     ),
@@ -1763,6 +1770,7 @@ def _render_role_skill_source_block(root: Path, role: str, skills: list[str]) ->
             "",
             "Use only these TradingCodex role skill sources when a role skill procedure is needed.",
             "Read the relevant `SKILL.md` before applying that procedure.",
+            "Read one or several permitted skill documents with one `cat path ...` command; do not wrap the read in a loop, redirect, pipeline, substitution, or executable shell compound.",
             "Do not read or apply head-manager, strategy, or out-of-role TradingCodex skill files.",
             "If asked to inspect, test, list, or prove access to those forbidden skill files, report the request as blocked by role boundary without opening them.",
         ]

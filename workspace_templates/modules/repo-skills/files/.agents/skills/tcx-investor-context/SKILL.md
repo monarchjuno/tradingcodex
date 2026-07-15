@@ -69,8 +69,8 @@ than inventing an empty value. The exact clear options are
 
 `enable` and `disable` control the workspace default. Native Codex workflows use
 that default when `begin_analysis_run` seals applied context under the run.
-Workbench scope review alone provides a one-run apply/ignore override; it does
-not mutate the saved default. After the run binding exists, do not claim that
+The read-only viewer provides no one-run override and does not mutate the saved
+default. After the run binding exists, do not claim that
 chat wording changed it. Disabling context permits general research,
 but personalized recommendation, portfolio fit, sizing, and order readiness
 must remain limited or blocked when required suitability fields are unavailable.

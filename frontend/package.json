@@ -1,5 +1,5 @@
 {
-  "name": "tradingcodex-workbench",
+  "name": "tradingcodex-viewer",
   "private": true,
   "type": "module",
   "engines": {

@@ -5,10 +5,12 @@ import os
 import re
 import shlex
 import sys
+import tomllib
 from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+SCRATCH_ROOT = Path({{TRADINGCODEX_SCRATCH_PATH_PYTHON}}).resolve()
 os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", str(ROOT))
 
 from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS  # noqa: E402
@@ -18,11 +20,13 @@ from tradingcodex_service.application.analysis_runs import (  # noqa: E402
     read_analysis_run,
 )
 from tradingcodex_service.application.build_gateway import (  # noqa: E402
+    MANAGED_SKILL_SCOPES,
     BUILD_OPERATOR_ONLY_MCP_TOOLS,
-    BUILD_PROTECTED_MCP_TOOLS,
+    WORKSPACE_PROTECTED_MCP_TOOLS,
     BuildInvocationError,
     authorize_local_build_tool,
     issue_build_turn_grant,
+    issue_managed_skill_turn_grant,
     reserve_build_turn_use,
     revoke_build_turn_grants,
     validate_build_mcp_permission,
@@ -47,24 +51,6 @@ from tradingcodex_cli.startup_status import build_server_status  # noqa: E402
 MAX_SESSION_EVENTS = 12
 MAX_COMPLETED_RECORDS = 12
 SESSION_RUNS_PATH = ROOT / ".tradingcodex" / "mainagent" / "session-workflow-runs.json"
-WORKBENCH_RUN = os.environ.get("TRADINGCODEX_WORKBENCH_RUN") == "1"
-WORKBENCH_BASH = {
-    ("./tcx", "quality-check"),
-}
-WORKBENCH_MCP_ALLOWED = {
-    "get_tradingcodex_status", "get_update_status", "begin_analysis_run",
-    "simulate_policy", "list_reconciliation_runs", "get_positions", "get_portfolio_snapshot",
-    "list_workflow_artifacts", "create_research_artifact", "get_research_artifact",
-    "list_research_artifacts", "search_research_artifacts", "append_research_artifact_version",
-    "export_research_artifact_md", "record_source_snapshot", "create_research_spec",
-    "get_research_spec", "list_research_specs", "create_replay_manifest", "record_experiment_run",
-    "rebuild_research_index", "create_causal_equity_analysis", "record_blind_judgment_prior",
-    "complete_judgment_review", "issue_forecast", "revise_forecast", "resolve_forecast",
-    "score_forecast", "get_forecast", "list_forecasts", "get_forecast_calibration_report",
-    "create_evaluation_corpus", "record_evaluation_run", "create_blind_review_assignment",
-    "get_blind_review_packet", "record_blind_human_review", "compare_evaluation_runs",
-    "record_audit_event",
-}
 HOOK_WRITE_ROOTS = (Path(".tradingcodex/mainagent"), Path("trading/audit"))
 SENSITIVE_ACTION_MARKERS = ("broker api", "api_key", "secret.read", "cash.withdraw", "policy.write")
 SHELL_TOOL_NAMES = frozenset({"bash", "shell", "exec_command", "write_stdin", "unified_exec"})
@@ -123,6 +109,7 @@ REMOTE_PUBLICATION_MATERIAL = re.compile(
     re.I,
 )
 BUILD_SKILL = "$tcx-build"
+MANAGED_SKILL_MARKERS = frozenset(MANAGED_SKILL_SCOPES)
 BUILD_TURN_GRANT_PROOF_FIELD = "_build_turn_proof"
 ORDER_ALLOW_SKILL = "$tcx-order-allow"
 ORDER_TURN_GRANT_TOOL = "use_order_turn_grant"
@@ -138,7 +125,7 @@ def payload_permission_mode(payload: dict) -> str:
 
 def plan_mode_block_reason(payload: dict) -> str:
     if payload_permission_mode(payload) in {"plan", "planning"}:
-        return "TradingCodex Build is unavailable while Codex is in Plan mode"
+        return "TradingCodex managed workspace changes are unavailable while Codex is in Plan mode"
     return ""
 
 
@@ -220,6 +207,7 @@ def session_start(payload: dict) -> None:
     readiness = {
         "marker": "tradingcodex-session-context",
         "build_authorization": server_status["build_authorization"],
+        "managed_skill_authorization": server_status["managed_skill_authorization"],
         "permission_status": server_status["permission_status"],
         "update_status": {
             "update_available": update_status["update_available"],
@@ -268,9 +256,10 @@ def user_prompt_submit(payload: dict) -> None:
     agent_type = payload.get("agent_type") or payload.get("subagent_type")
     native_token = reserved_native_execution_token(prompt)
     build_candidate = is_build_invocation_candidate(prompt)
-    sensitive_candidate = build_candidate or bool(native_token)
+    managed_skill_candidate = is_managed_skill_invocation_candidate(prompt)
+    sensitive_candidate = build_candidate or managed_skill_candidate or bool(native_token)
     turn_grant_context = None
-    if not agent_type and not WORKBENCH_RUN:
+    if not agent_type:
         session_id = str(payload.get("session_id") or "").strip()
         if session_id:
             try:
@@ -291,7 +280,7 @@ def user_prompt_submit(payload: dict) -> None:
                         "decision": "block",
                         "reason": (
                             "A prior TradingCodex order effect is still authorizing. "
-                            "Inspect its canonical order status before starting another Build or order turn."
+                            "Inspect its canonical order status before starting another managed, Build, or order turn."
                         ),
                     }))
                     return
@@ -307,7 +296,7 @@ def user_prompt_submit(payload: dict) -> None:
                         "reason": "TradingCodex could not safely close prior order turn grants",
                     }))
                     return
-            if not build_candidate:
+            if not (build_candidate or managed_skill_candidate):
                 try:
                     revoke_build_turn_grants(ROOT, session_id, reason="new_user_turn")
                 except Exception:
@@ -319,11 +308,14 @@ def user_prompt_submit(payload: dict) -> None:
                     if sensitive_candidate:
                         print(json.dumps({
                             "decision": "block",
-                            "reason": "TradingCodex could not safely close prior Build turn grants",
+                            "reason": "TradingCodex could not safely close prior workspace turn grants",
                         }))
                         return
     if build_candidate:
         handle_build_prompt(payload, str(prompt))
+        return
+    if managed_skill_candidate:
+        handle_managed_skill_prompt(payload, str(prompt))
         return
     if native_token == ORDER_ALLOW_SKILL:
         turn_grant_context = handle_order_allow_prompt(payload, str(prompt))
@@ -425,6 +417,11 @@ def is_build_invocation_candidate(prompt: object) -> bool:
     return raw.lstrip().startswith(BUILD_SKILL)
 
 
+def is_managed_skill_invocation_candidate(prompt: object) -> bool:
+    raw = str(prompt or "")
+    return any(raw.lstrip().startswith(marker) for marker in MANAGED_SKILL_MARKERS)
+
+
 def handle_build_prompt(payload: dict, prompt: str) -> None:
     agent_type = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
     prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
@@ -437,17 +434,6 @@ def handle_build_prompt(payload: dict, prompt: str) -> None:
             "redacted": True,
         })
         print(json.dumps({"decision": "block", "reason": plan_reason}))
-        return
-    if WORKBENCH_RUN:
-        append_hook_audit({
-            "event": "build-turn-grant-blocked",
-            "reason_code": "workbench_run",
-            "prompt_sha256": prompt_hash,
-        })
-        print(json.dumps({
-            "decision": "block",
-            "reason": "TradingCodex build turns are unavailable in Workbench; use a root native Codex workspace turn",
-        }))
         return
     if agent_type:
         append_hook_audit({
@@ -508,12 +494,112 @@ def handle_build_prompt(payload: dict, prompt: str) -> None:
         "turn_scoped": True,
         "planning_instruction": (
             "This root turn may perform workspace-local build work through hook-authorized tools. "
+            "Brain and Strategy lifecycle work use their own exact first-line skill turns instead. "
             "Do not pass build authority to a subagent, access raw credentials, modify protected runtime state, "
             "or treat build authority as order submission or cancellation authority."
         ),
     }
     append_hook_audit({
         "event": "build-turn-grant-issued",
+        "prompt_sha256": prompt_hash,
+        "expires_at": safe_context["expires_at"],
+        "redacted": True,
+    })
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "UserPromptSubmit",
+            "additionalContext": json.dumps(safe_context, ensure_ascii=False),
+        }
+    }, ensure_ascii=False))
+
+
+def handle_managed_skill_prompt(payload: dict, prompt: str) -> None:
+    agent_type = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
+    prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    plan_reason = plan_mode_block_reason(payload)
+    if plan_reason:
+        append_hook_audit({
+            "event": "managed-skill-turn-grant-blocked",
+            "reason_code": "plan_mode",
+            "prompt_sha256": prompt_hash,
+            "redacted": True,
+        })
+        print(json.dumps({"decision": "block", "reason": plan_reason}))
+        return
+    if agent_type:
+        append_hook_audit({
+            "event": "managed-skill-turn-grant-blocked",
+            "reason_code": "non_root_turn",
+            "agent_type": agent_type[:80],
+            "prompt_sha256": prompt_hash,
+        })
+        print(json.dumps({
+            "decision": "block",
+            "reason": "Managed skill turns are accepted only from a root native Codex user turn",
+        }))
+        return
+    session_id = str(payload.get("session_id") or "").strip()
+    turn_id = str(payload.get("turn_id") or "").strip()
+    cwd = str(payload.get("cwd") or "").strip()
+    if not session_id or not turn_id or not cwd:
+        print(json.dumps({
+            "decision": "block",
+            "reason": "Managed skill turns require Codex session_id, turn_id, and cwd bindings",
+        }))
+        return
+    try:
+        grant = issue_managed_skill_turn_grant(
+            ROOT,
+            prompt,
+            session_id=session_id,
+            turn_id=turn_id,
+            cwd=cwd,
+            permission_mode=payload_permission_mode(payload),
+        )
+    except (BuildInvocationError, PermissionError, ValueError) as exc:
+        append_hook_audit({
+            "event": "managed-skill-turn-grant-blocked",
+            "reason_code": "invalid_invocation",
+            "prompt_sha256": prompt_hash,
+            "redacted": True,
+        })
+        print(json.dumps({"decision": "block", "reason": str(exc)}))
+        return
+    except Exception:
+        append_hook_audit({
+            "event": "managed-skill-turn-grant-blocked",
+            "reason_code": "grant_service_unavailable",
+            "prompt_sha256": prompt_hash,
+            "redacted": True,
+        })
+        print(json.dumps({
+            "decision": "block",
+            "reason": "TradingCodex managed skill turn grant service is unavailable",
+        }))
+        return
+    if not isinstance(grant, dict):
+        print(json.dumps({"decision": "block", "reason": "Invalid managed skill invocation"}))
+        return
+    authority_scope = str(grant.get("authority_scope") or "")
+    entrypoint = str(grant.get("entrypoint") or "")
+    safe_context = {
+        "marker": "tradingcodex-managed-skill-turn",
+        "authority_scope": authority_scope,
+        "entrypoint": entrypoint,
+        "status": str(grant.get("status") or "active"),
+        "expires_at": str(grant.get("expires_at") or ""),
+        "turn_scoped": True,
+        "recommended_profile": "trading-research",
+        "planning_instruction": (
+            f"This root turn may perform only {entrypoint} management through its exact allowlisted source paths "
+            "and proof-protected lifecycle MCP tool. "
+            "Do not use tcx-build, cross into another managed skill, pass authority to a subagent, "
+            "or treat management authority as order, credential, publication, or global-config authority."
+        ),
+    }
+    append_hook_audit({
+        "event": "managed-skill-turn-grant-issued",
+        "authority_scope": authority_scope,
         "prompt_sha256": prompt_hash,
         "expires_at": safe_context["expires_at"],
         "redacted": True,
@@ -540,17 +626,6 @@ def handle_order_allow_prompt(payload: dict, prompt: str) -> dict | None:
         print(json.dumps({
             "decision": "block",
             "reason": "TradingCodex order execution is unavailable while Codex is in Plan mode",
-        }))
-        return None
-    if WORKBENCH_RUN:
-        append_hook_audit({
-            "event": "order-turn-grant-blocked",
-            "reason_code": "workbench_run",
-            "prompt_sha256": prompt_hash,
-        })
-        print(json.dumps({
-            "decision": "block",
-            "reason": "Order turn grants are unavailable in TradingCodex Workbench; use a root native Codex workspace turn",
         }))
         return None
     if agent_type:
@@ -684,17 +759,6 @@ def handle_native_execution_prompt(payload: dict, prompt: str) -> None:
             "reason": "TradingCodex order execution is unavailable while Codex is in Plan mode",
         }))
         return
-    if WORKBENCH_RUN:
-        append_hook_audit({
-            "event": "native-execution-blocked",
-            "reason_code": "workbench_run",
-            "prompt_sha256": prompt_hash,
-        })
-        print(json.dumps({
-            "decision": "block",
-            "reason": "Native execution actions are unavailable in TradingCodex Workbench; use a root native Codex workspace session",
-        }))
-        return
     if agent_type:
         append_hook_audit({
             "event": "native-execution-blocked",
@@ -802,7 +866,7 @@ def subagent_session_state(event: str, payload: dict) -> None:
     record = {
         "event": event,
         "role": role,
-        "task_name": "" if WORKBENCH_RUN else payload.get("task_name"),
+        "task_name": payload.get("task_name"),
         "run_id": run_id,
         "agent_session_id": agent_session_id,
         "subagent_continuation": "continues_active_role_session" if event == "subagent-start" and existing_role_sessions else "new_or_reused_unknown",
@@ -898,25 +962,6 @@ def policy_gate(event: str, payload: dict) -> None:
         if reason:
             print(json.dumps({"decision": "block", "reason": reason}))
         return
-    if event in {"pre-tool-use", "permission-request"} and WORKBENCH_RUN:
-        try:
-            reason = workbench_tool_block_reason(payload)
-        except Exception:
-            print(json.dumps({"decision": "block", "reason": "TradingCodex web tool policy could not be evaluated"}))
-            return
-        audited = append_hook_audit({
-            "event": event,
-            "workflow_run_id": resolve_workflow_run_id(payload),
-            "tool_name": payload_tool_name(payload),
-            "decision": "block" if reason else "allow",
-            "redacted": True,
-        })
-        if not audited:
-            print(json.dumps({"decision": "block", "reason": "TradingCodex web tool policy audit is unavailable"}))
-            return
-        if reason:
-            print(json.dumps({"decision": "block", "reason": reason}))
-        return
     tool_name = payload_tool_name(payload).lower()
     if is_order_turn_grant_tool(tool_name):
         handle_order_turn_grant_tool(event, payload)
@@ -943,7 +988,7 @@ def policy_gate(event: str, payload: dict) -> None:
         # again by the service. Do not mistake negative safety metadata such as
         # blocked_actions=["direct broker API"] for an attempted broker action.
         return
-    if is_local_build_tool(tool_name) and not managed_analysis_read_allowed(payload):
+    if is_local_build_tool(payload):
         handle_local_build_tool(event, payload)
         return
     if event in {"pre-tool-use", "permission-request"}:
@@ -980,7 +1025,7 @@ def build_protected_mcp_tool_name(tool_name: str) -> str:
     lowered = str(tool_name or "").lower()
     prefix = "mcp__tradingcodex__"
     identifier = lowered[len(prefix):] if lowered.startswith(prefix) else lowered
-    return identifier if identifier in BUILD_PROTECTED_MCP_TOOLS else ""
+    return identifier if identifier in WORKSPACE_PROTECTED_MCP_TOOLS else ""
 
 
 def build_operator_only_mcp_tool_name(tool_name: str) -> str:
@@ -1000,7 +1045,7 @@ def handle_build_mcp_tool(event: str, payload: dict) -> None:
     if agent_type:
         print(json.dumps({
             "decision": "block",
-            "reason": "Only root Head Manager may use build-protected TradingCodex MCP tools",
+            "reason": "Only root Head Manager may use turn-protected TradingCodex MCP tools",
         }))
         return
     session_id = str(payload.get("session_id") or "").strip()
@@ -1011,7 +1056,7 @@ def handle_build_mcp_tool(event: str, payload: dict) -> None:
         if not session_id or not turn_id:
             print(json.dumps({
                 "decision": "block",
-                "reason": "Build-protected MCP permission requires the current Codex session and turn bindings",
+                "reason": "Turn-protected MCP permission requires the current Codex session and turn bindings",
             }))
             return
         try:
@@ -1036,7 +1081,7 @@ def handle_build_mcp_tool(event: str, payload: dict) -> None:
         except Exception:
             print(json.dumps({
                 "decision": "block",
-                "reason": "TradingCodex build turn grant service is unavailable",
+                "reason": "TradingCodex workspace turn grant service is unavailable",
             }))
             return
         append_hook_audit({
@@ -1049,13 +1094,13 @@ def handle_build_mcp_tool(event: str, payload: dict) -> None:
     if not session_id or not turn_id or not tool_use_id:
         print(json.dumps({
             "decision": "block",
-            "reason": "Build-protected MCP use requires the current Codex session, turn, and tool-use bindings",
+            "reason": "Turn-protected MCP use requires the current Codex session, turn, and tool-use bindings",
         }))
         return
     if BUILD_TURN_GRANT_PROOF_FIELD in tool_input:
         print(json.dumps({
             "decision": "block",
-            "reason": "Build turn proof is hook-owned and cannot be supplied by the model",
+            "reason": "Workspace turn proof is hook-owned and cannot be supplied by the model",
         }))
         return
     try:
@@ -1088,7 +1133,7 @@ def handle_build_mcp_tool(event: str, payload: dict) -> None:
         })
         print(json.dumps({
             "decision": "block",
-            "reason": "TradingCodex build turn grant service is unavailable",
+            "reason": "TradingCodex workspace turn grant service is unavailable",
         }))
         return
     rewritten = dict(tool_input)
@@ -1204,17 +1249,58 @@ def handle_order_turn_grant_tool(event: str, payload: dict) -> None:
     }))
 
 
-def is_local_build_tool(tool_name: str) -> bool:
-    return bool(normalized_edit_tool_name(tool_name) or normalized_shell_tool_name(tool_name))
+def is_local_build_tool(payload: dict) -> bool:
+    return bool(local_tool_authority_scope(payload))
 
 
-def managed_analysis_read_allowed(payload: dict) -> bool:
-    shell_name = normalized_shell_tool_name(payload_tool_name(payload))
-    if not shell_name or shell_name == "write_stdin":
-        return False
+def local_tool_authority_scope(payload: dict) -> str:
+    tool_name = payload_tool_name(payload)
+    edit_name = normalized_edit_tool_name(tool_name)
+    if edit_name:
+        tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+        raw_paths = edit_target_paths(tool_input)
+        if not raw_paths:
+            return "build"
+        workspace_root = ROOT.resolve()
+        scopes: set[str] = set()
+        for raw_path in raw_paths:
+            try:
+                supplied = Path(raw_path)
+                resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (workspace_root / supplied).resolve(strict=False)
+                relative = resolved.relative_to(workspace_root).as_posix()
+            except (OSError, RuntimeError, ValueError):
+                return "build"
+            if relative == "investment-brains" or relative.startswith("investment-brains/"):
+                scopes.add("brain")
+            elif relative == "trading" or relative.startswith("trading/") or PROTECTED_BUILD_EDIT_PATH.search(relative):
+                scopes.add("build")
+            else:
+                scopes.add("ordinary")
+        if "brain" in scopes and len(scopes) > 1:
+            return "invalid"
+        if "brain" in scopes:
+            return "brain"
+        if "build" in scopes:
+            return "build"
+        return ""
+    shell_name = normalized_shell_tool_name(tool_name)
+    if not shell_name or shell_name in {"write_stdin", "unified_exec"}:
+        return ""
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     command = str(tool_input.get("command") or tool_input.get("cmd") or "")
-    return managed_non_brain_skill_read_allowed(command) or selected_brain_reference_read_allowed(payload, command)
+    if re.search(
+        r"(?<![\w.-])investment-brains(?:[/\\]|(?=$|\s|['\"]))",
+        command,
+        re.I,
+    ):
+        return "brain"
+    if re.match(r"^\s*(?:\./)?tcx(?:\.cmd)?\s+investment-brains(?:\s|$)", command, re.I):
+        return "brain"
+    if re.match(r"^\s*(?:\./)?tcx(?:\.cmd)?\s+strategies(?:\s|$)", command, re.I):
+        return "strategy"
+    if re.search(r"(?:^|[\s;&|])(?:\./)?tcx(?:\.cmd)?(?:\s|$)", command, re.I):
+        return "build"
+    return ""
 
 
 def local_build_hard_block_reason(payload: dict) -> str:
@@ -1236,6 +1322,16 @@ def local_build_hard_block_reason(payload: dict) -> str:
     if shell_name == "unified_exec":
         return "TradingCodex build turns do not permit unified or interactive execution"
     shell_command = str(tool_input.get("command") or tool_input.get("cmd") or "") if shell_name else ""
+    if re.match(r"^\s*(?:\./)?tcx(?:\.cmd)?\s+investment-brains(?:\s|$)", shell_command, re.I):
+        return (
+            "Codex-managed Investment Brain lifecycle uses the proof-protected "
+            "manage_investment_brain MCP tool; the tcx launcher is a user-terminal fallback"
+        )
+    if re.match(r"^\s*(?:\./)?tcx(?:\.cmd)?\s+strategies(?:\s|$)", shell_command, re.I):
+        return (
+            "Codex-managed Strategy lifecycle uses the proof-protected manage_strategy MCP tool; "
+            "the tcx launcher is a user-terminal fallback"
+        )
     if shell_name and PROTECTED_AGENT_RUNTIME_PATH.search(shell_command):
         return "TradingCodex build turns cannot directly modify protected runtime, hook, generated, role, or implementation paths"
     if shell_command and RAW_CREDENTIAL_ACCESS.search(shell_command):
@@ -1292,6 +1388,37 @@ def local_edit_path_reason(tool_name: str, tool_input: dict) -> str:
     lowered = normalized_edit_tool_name(tool_name)
     if lowered not in {"apply_patch", "edit", "write"}:
         return ""
+    raw_paths = edit_target_paths(tool_input)
+    if not raw_paths:
+        return "TradingCodex file edits require an explicit workspace target path"
+    workspace_root = ROOT.resolve()
+    for raw_path in raw_paths:
+        if raw_path.startswith(("~", "$")):
+            return "TradingCodex file edits must target a canonical workspace path"
+        supplied = Path(raw_path)
+        if any(part in {"", ".", ".."} for part in supplied.parts):
+            return "TradingCodex file edits must target a canonical workspace path"
+        try:
+            lexical_relative = supplied.relative_to(workspace_root) if supplied.is_absolute() else supplied
+            resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (workspace_root / supplied).resolve(strict=False)
+            relative = resolved.relative_to(workspace_root)
+        except (OSError, RuntimeError, ValueError):
+            return "TradingCodex file edits must remain inside the generated workspace"
+        if not relative.parts:
+            return "TradingCodex file edits must target a file inside the generated workspace"
+        if PROTECTED_BUILD_EDIT_PATH.search(relative.as_posix()):
+            return "TradingCodex cannot directly edit protected runtime, hook, generated, role, audit, policy, approval, order, or implementation paths"
+        current = workspace_root
+        for part in lexical_relative.parts[:-1]:
+            current /= part
+            if current.is_symlink():
+                return "TradingCodex file edits cannot traverse a symlinked directory"
+        if (workspace_root / lexical_relative).is_symlink():
+            return "TradingCodex file edits cannot target a symlink"
+    return ""
+
+
+def edit_target_paths(tool_input: dict) -> list[str]:
     raw_paths: list[str] = []
     for field in ("file_path", "path", "target_path", "destination"):
         value = tool_input.get(field)
@@ -1306,36 +1433,17 @@ def local_edit_path_reason(tool_name: str, tool_input: dict) -> str:
             re.M,
         )
     )
-    if not raw_paths:
-        return "TradingCodex build file edits require an explicit workspace target path"
-    workspace_root = ROOT.resolve()
-    for raw_path in raw_paths:
-        if raw_path.startswith(("~", "$")):
-            return "TradingCodex build file edits must target a canonical workspace path"
-        supplied = Path(raw_path)
-        if any(part in {"", ".", ".."} for part in supplied.parts):
-            return "TradingCodex build file edits must target a canonical workspace path"
-        try:
-            lexical_relative = supplied.relative_to(workspace_root) if supplied.is_absolute() else supplied
-            resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (workspace_root / supplied).resolve(strict=False)
-            relative = resolved.relative_to(workspace_root)
-        except (OSError, RuntimeError, ValueError):
-            return "TradingCodex build file edits must remain inside the generated workspace"
-        if not relative.parts:
-            return "TradingCodex build file edits must target a file inside the generated workspace"
-        if PROTECTED_BUILD_EDIT_PATH.search(relative.as_posix()):
-            return "TradingCodex build turns cannot directly edit protected runtime, hook, generated, role, audit, policy, approval, order, or implementation paths"
-        current = workspace_root
-        for part in lexical_relative.parts[:-1]:
-            current /= part
-            if current.is_symlink():
-                return "TradingCodex build file edits cannot traverse a symlinked directory"
-        if (workspace_root / lexical_relative).is_symlink():
-            return "TradingCodex build file edits cannot target a symlink"
-    return ""
+    return raw_paths
 
 
 def handle_local_build_tool(event: str, payload: dict) -> None:
+    required_scope = local_tool_authority_scope(payload)
+    if required_scope == "invalid":
+        print(json.dumps({
+            "decision": "block",
+            "reason": "Investment Brain source edits must not be combined with unrelated workspace changes",
+        }))
+        return
     plan_reason = plan_mode_block_reason(payload)
     if plan_reason:
         print(json.dumps({"decision": "block", "reason": plan_reason}))
@@ -1344,7 +1452,7 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
     if agent_type:
         print(json.dumps({
             "decision": "block",
-            "reason": "TradingCodex build tools are available only to the root Head Manager",
+            "reason": "TradingCodex managed workspace tools are available only to the root Head Manager",
         }))
         return
     reason = local_build_hard_block_reason(payload)
@@ -1364,9 +1472,9 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     if not session_id or not turn_id or (event != "permission-request" and not tool_use_id):
         binding_reason = (
-            "TradingCodex build shell use requires the current Codex session, turn, and tool-use bindings"
+            "TradingCodex managed shell use requires the current Codex session, turn, and tool-use bindings"
             if normalized_shell_tool_name(payload_tool_name(payload))
-            else "TradingCodex build tool use requires the current Codex session, turn, and tool-use bindings"
+            else "TradingCodex managed tool use requires the current Codex session, turn, and tool-use bindings"
         )
         print(json.dumps({
             "decision": "block",
@@ -1382,13 +1490,14 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
                 payload_tool_name(payload),
                 tool_input,
                 permission_mode=payload_permission_mode(payload),
+                required_scope=required_scope,
             )
         except (BuildInvocationError, PermissionError, ValueError) as exc:
             append_hook_audit({
                 "event": event,
                 "tool_name": payload_tool_name(payload),
                 "decision": "block",
-                "reason_code": "build_turn_grant_rejected",
+                "reason_code": "workspace_turn_grant_rejected",
                 "redacted": True,
             })
             print(json.dumps({"decision": "block", "reason": str(exc)}))
@@ -1398,12 +1507,12 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
                 "event": event,
                 "tool_name": payload_tool_name(payload),
                 "decision": "block",
-                "reason_code": "build_turn_grant_service_unavailable",
+                "reason_code": "workspace_turn_grant_service_unavailable",
                 "redacted": True,
             })
             print(json.dumps({
                 "decision": "block",
-                "reason": "TradingCodex build turn grant service is unavailable",
+                "reason": "TradingCodex workspace turn grant service is unavailable",
             }))
             return
         append_hook_audit({
@@ -1422,13 +1531,14 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
             payload_tool_name(payload),
             tool_input,
             permission_mode=payload_permission_mode(payload),
+            required_scope=required_scope,
         )
     except (BuildInvocationError, PermissionError, ValueError) as exc:
         append_hook_audit({
             "event": event,
             "tool_name": payload_tool_name(payload),
             "decision": "block",
-            "reason_code": "build_turn_grant_rejected",
+            "reason_code": "workspace_turn_grant_rejected",
             "redacted": True,
         })
         print(json.dumps({"decision": "block", "reason": str(exc)}))
@@ -1438,18 +1548,19 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
             "event": event,
             "tool_name": payload_tool_name(payload),
             "decision": "block",
-            "reason_code": "build_turn_grant_service_unavailable",
+            "reason_code": "workspace_turn_grant_service_unavailable",
             "redacted": True,
         })
         print(json.dumps({
             "decision": "block",
-            "reason": "TradingCodex build turn grant service is unavailable",
+            "reason": "TradingCodex workspace turn grant service is unavailable",
         }))
         return
     append_hook_audit({
         "event": event,
         "tool_name": payload_tool_name(payload),
-        "decision": "build_turn_validated",
+        "decision": "workspace_turn_validated",
+        "authority_scope": required_scope,
         "redacted": True,
     })
 
@@ -1504,40 +1615,6 @@ def dispatch_tool_block_reason(payload: dict) -> str:
     return ""
 
 
-def workbench_tool_block_reason(payload: dict) -> str:
-    tool_name = payload_tool_name(payload)
-    lowered = tool_name.lower()
-    if normalized_edit_tool_name(lowered):
-        return "TradingCodex web analysis blocks direct file-edit tools"
-    shell_name = normalized_shell_tool_name(lowered)
-    shell_payload_reason = shell_tool_payload_reason(tool_name, payload["tool_input"])
-    if shell_payload_reason:
-        return shell_payload_reason
-    if shell_name == "write_stdin":
-        return "TradingCodex web analysis blocks interactive shell sessions"
-    if shell_name:
-        command = str(payload["tool_input"].get("command") or payload["tool_input"].get("cmd") or "")
-        if not workbench_bash_allowed(command):
-            return "TradingCodex web analysis allows only artifact quality-check commands; durable analysis writes use structured TradingCodex MCP tools"
-    if lowered.startswith("mcp__tradingcodex__"):
-        identifier = lowered.rsplit("__", 1)[-1]
-        if identifier not in WORKBENCH_MCP_ALLOWED:
-            return "TradingCodex web analysis blocks MCP tools outside the explicit analysis allowlist"
-    elif lowered.startswith("mcp__"):
-        return "TradingCodex web analysis blocks direct external MCP tools"
-    return ""
-
-
-def workbench_bash_allowed(command: str) -> bool:
-    if not command or not re.fullmatch(r"[A-Za-z0-9_./:=+ -]+", command):
-        return False
-    try:
-        argv = tuple(shlex.split(command))
-    except ValueError:
-        return False
-    return any(argv[:len(prefix)] == prefix for prefix in WORKBENCH_BASH)
-
-
 def normalized_shell_tool_name(tool_name: str) -> str:
     normalized = str(tool_name or "").lower().rsplit("__", 1)[-1].rsplit(".", 1)[-1]
     return normalized if normalized in SHELL_TOOL_NAMES else ""
@@ -1562,15 +1639,17 @@ def shell_tool_payload_reason(tool_name: str, tool_input: dict) -> str:
     workdir = str(tool_input.get("workdir") or "")
     if workdir:
         try:
-            if Path(workdir).resolve() != ROOT.resolve():
-                return "TradingCodex shell reads must remain bound to the generated workspace root"
+            resolved = Path(workdir).resolve()
+            allowed_roots = (ROOT.resolve(), SCRATCH_ROOT)
+            if not any(resolved == root or root in resolved.parents for root in allowed_roots):
+                return "TradingCodex shell workdirs must remain in the generated workspace or its dedicated scratch directory"
         except (OSError, RuntimeError, ValueError):
             return "TradingCodex shell working directory is invalid"
     return ""
 
 
 def build_shell_command_reason(command: str) -> str:
-    """Admit only non-extensible Build commands whose effects stay reviewable.
+    """Admit only non-extensible managed commands whose effects stay reviewable.
 
     A general interpreter, test runner, shell script, build system, or shell
     composition operator can hide a direct import of TradingCodex services and
@@ -1625,7 +1704,7 @@ def build_shell_command_reason(command: str) -> str:
         if launcher.is_file() and not launcher.is_symlink() and build_tcx_argv_allowed(argv[1:]):
             return ""
     return (
-        "TradingCodex Build blocks general shell, scripts, tests, and interpreters; "
+        "TradingCodex managed workspace turns block general shell, scripts, tests, and interpreters; "
         "use apply_patch, protected services, trusted tcx commands, workspace reads, or isolated py_compile"
     )
 
@@ -1709,8 +1788,6 @@ def build_tcx_argv_allowed(argv: tuple[str, ...]) -> bool:
         if len(rest) >= 2 and rest[:2] == ("codex-mcp", "add"):
             return build_codex_mcp_add_argv_allowed(rest[2:])
         return False
-    if command == "investment-brains":
-        return build_investment_brains_argv_allowed(rest)
     if command == "skills":
         if not rest:
             return False
@@ -1721,8 +1798,6 @@ def build_tcx_argv_allowed(argv: tuple[str, ...]) -> bool:
         }:
             return build_optional_skill_argv_allowed(rest[1:])
         return False
-    if command == "strategies":
-        return build_strategy_argv_allowed(rest)
     if command == "subagents":
         return bool(rest) and rest[0] in {"status", "skills", "context-audit"}
     if command == "connectors":
@@ -1734,98 +1809,12 @@ def build_tcx_argv_allowed(argv: tuple[str, ...]) -> bool:
     return False
 
 
-def build_investment_brains_argv_allowed(argv: tuple[str, ...]) -> bool:
-    if not argv or argv[0] not in {
-            "list", "inspect", "validate", "install", "update", "activate",
-            "deactivate", "rollback", "remove",
-    }:
-        return False
-    for index, value in enumerate(argv):
-        if value == "--local":
-            if index + 1 >= len(argv) or build_shell_workspace_path_reason(argv[index + 1]):
-                return False
-        if value == "--git":
-            if index + 1 >= len(argv) or not safe_build_git_source(argv[index + 1]):
-                return False
-    return True
-
-
-def safe_build_git_source(value: str) -> bool:
-    try:
-        from urllib.parse import urlsplit
-
-        parsed = urlsplit(value)
-        return bool(
-            parsed.scheme == "https"
-            and parsed.hostname
-            and not parsed.username
-            and not parsed.password
-            and not parsed.query
-            and not parsed.fragment
-        )
-    except (TypeError, ValueError):
-        return False
-
-
 def build_optional_skill_argv_allowed(argv: tuple[str, ...]) -> bool:
     for index, value in enumerate(argv):
         if value == "--body-file":
             if index + 1 >= len(argv) or build_shell_workspace_path_reason(argv[index + 1]):
                 return False
     return True
-
-
-def build_strategy_argv_allowed(argv: tuple[str, ...]) -> bool:
-    """Validate managed Strategy lifecycle commands without direct projection edits."""
-
-    if not argv:
-        return False
-    action = argv[0]
-    rest = argv[1:]
-    name_pattern = r"strategy-[a-z0-9]+(?:-[a-z0-9]+)*"
-    if action == "list":
-        return rest in {(), ("--active",)}
-    if action == "inspect":
-        return len(rest) == 1 and re.fullmatch(name_pattern, rest[0]) is not None
-    if action in {"activate", "archive"}:
-        return len(rest) == 1 and re.fullmatch(name_pattern, rest[0]) is not None
-    if action == "delete":
-        return (
-            len(rest) in {1, 2}
-            and re.fullmatch(name_pattern, rest[0]) is not None
-            and (len(rest) == 1 or rest[1] == "--force")
-        )
-    if action not in {"create", "update"} or not rest:
-        return False
-    if re.fullmatch(name_pattern, rest[0]) is None:
-        return False
-    value_options = {"--description", "--body-file", "--language", "--status"}
-    seen: set[str] = set()
-    values: dict[str, str] = {}
-    index = 1
-    while index < len(rest):
-        option = rest[index]
-        if option == "--active":
-            if option in seen:
-                return False
-            seen.add(option)
-            index += 1
-            continue
-        if option not in value_options or option in seen or index + 1 >= len(rest):
-            return False
-        value = rest[index + 1]
-        if not value or value.startswith("--"):
-            return False
-        seen.add(option)
-        values[option] = value
-        index += 2
-    if "--body-file" not in values:
-        return False
-    if build_shell_workspace_path_reason(values["--body-file"]):
-        return False
-    if "--status" in values and values["--status"] not in {"draft", "active", "archived"}:
-        return False
-    return not ("--active" in seen and values.get("--status") not in {None, "active"})
 
 
 def build_codex_mcp_add_argv_allowed(argv: tuple[str, ...]) -> bool:
@@ -1868,13 +1857,64 @@ def build_codex_mcp_add_argv_allowed(argv: tuple[str, ...]) -> bool:
 
 
 def simple_cat_paths(command: str) -> tuple[str, ...]:
+    """Extract paths from a strictly read-only cat bundle.
+
+    Codex commonly batches projected skill reads and inserts literal ``printf``
+    headings between them.  Accept that harmless form without accepting a
+    general shell pipeline: only ``cat`` commands, optional literal headings,
+    and ``&&`` separators are valid.  The caller still validates every path
+    against its narrower authority boundary.
+    """
+
+    if not command.strip() or any(marker in command for marker in ("\n", "\r", "\x00", "$", "`")):
+        return ()
     try:
-        argv = tuple(shlex.split(command))
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=";&|<>")
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        argv = tuple(lexer)
     except ValueError:
         return ()
-    if len(argv) < 2 or argv[0] != "cat" or any(arg.startswith("-") for arg in argv[1:]):
+    if not argv:
         return ()
-    return argv[1:]
+    segments: list[tuple[str, ...]] = []
+    current: list[str] = []
+    for token in argv:
+        if token == "&&":
+            if not current:
+                return ()
+            segments.append(tuple(current))
+            current = []
+            continue
+        if token in {";", "&", "||", "|", "<", ">", "<<", ">>"}:
+            return ()
+        current.append(token)
+    if not current:
+        return ()
+    segments.append(tuple(current))
+
+    paths: list[str] = []
+    previous_was_heading = False
+    for index, segment in enumerate(segments):
+        if segment[0] == "cat":
+            if len(segment) < 2 or any(arg.startswith("-") for arg in segment[1:]):
+                return ()
+            paths.extend(segment[1:])
+            previous_was_heading = False
+            continue
+        if segment[0] == "printf":
+            heading = segment[1] if len(segment) == 2 else ""
+            if (
+                index == 0
+                or index == len(segments) - 1
+                or previous_was_heading
+                or not re.fullmatch(r"(?:\\n|[ A-Za-z0-9_.:/-])+", heading)
+            ):
+                return ()
+            previous_was_heading = True
+            continue
+        return ()
+    return tuple(paths)
 
 
 def session_bound_analysis_run(payload: dict) -> dict:
@@ -1954,9 +1994,94 @@ def managed_non_brain_skill_read_allowed(command: str) -> bool:
     return True
 
 
+def projected_role_skill_read_allowed(payload: dict, command: str) -> bool:
+    """Allow a child to read only skills enabled in its exact role config."""
+
+    role = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
+    if role not in EXPECTED_SUBAGENTS:
+        return False
+    paths = simple_cat_paths(command)
+    if not paths:
+        return False
+    config_path = ROOT / ".codex" / "agents" / f"{role}.toml"
+    if not config_path.is_file() or config_path.is_symlink():
+        return False
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return False
+    skill_config = config.get("skills") if isinstance(config.get("skills"), dict) else {}
+    blocks = skill_config.get("config") if isinstance(skill_config.get("config"), list) else []
+    allowed_roots: list[tuple[Path, Path]] = []
+    role_root = (ROOT / ".tradingcodex" / "subagents" / "skills" / role).resolve()
+    shared_root = (ROOT / ".tradingcodex" / "subagents" / "skills" / "shared").resolve()
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("enabled") is False:
+            continue
+        raw_path = str(block.get("path") or "").strip()
+        if not raw_path or Path(raw_path).is_absolute():
+            continue
+        configured = (config_path.parent / raw_path).resolve(strict=False)
+        if configured.name != "SKILL.md" or not configured.is_file():
+            continue
+        try:
+            configured.relative_to(role_root)
+        except ValueError:
+            try:
+                configured.relative_to(shared_root)
+            except ValueError:
+                continue
+        current = ROOT
+        symlinked = False
+        try:
+            relative = configured.relative_to(ROOT.resolve())
+        except ValueError:
+            continue
+        for part in relative.parts:
+            current /= part
+            if current.is_symlink():
+                symlinked = True
+                break
+        if not symlinked:
+            allowed_roots.append((configured, configured.parent / "references"))
+    if not allowed_roots:
+        return False
+    for raw_path in paths:
+        candidate_path = Path(raw_path)
+        if candidate_path.is_absolute() or any(part in {"", ".", ".."} for part in candidate_path.parts):
+            return False
+        candidate = (ROOT / candidate_path).resolve(strict=False)
+        if not candidate.is_file():
+            return False
+        permitted = False
+        for skill_file, references_root in allowed_roots:
+            if candidate == skill_file:
+                permitted = True
+                break
+            try:
+                reference = candidate.relative_to(references_root)
+            except ValueError:
+                continue
+            if reference.parts and candidate.suffix.lower() == ".md":
+                permitted = True
+                break
+        if not permitted:
+            return False
+        current = ROOT
+        try:
+            relative = candidate.relative_to(ROOT.resolve())
+        except ValueError:
+            return False
+        for part in relative.parts:
+            current /= part
+            if current.is_symlink():
+                return False
+    return True
+
+
 def native_tool_block_reason(payload: dict) -> str:
     tool_name = payload_tool_name(payload).lower()
-    tool_input = payload["tool_input"]
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     serialized = json.dumps(tool_input, ensure_ascii=False).lower()
     if tool_name.startswith("mcp__"):
         return "TradingCodex policy gate blocks direct external MCP tools"
@@ -1968,6 +2093,13 @@ def native_tool_block_reason(payload: dict) -> str:
     )
     protected_write_roots = (*protected_artifact_roots, ".tradingcodex/mainagent/", ".tradingcodex/generated/", ".tradingcodex/schemas/")
     if normalized_edit_tool_name(tool_name):
+        if payload_permission_mode(payload) in {"plan", "planning"}:
+            return "TradingCodex workspace file edits are unavailable while Codex is in Plan mode"
+        if normalized_edit_tool_name(tool_name) in {"edit", "write"}:
+            return "TradingCodex workspace file changes require native apply_patch so every change remains reviewable"
+        edit_reason = local_edit_path_reason(tool_name, tool_input)
+        if edit_reason:
+            return edit_reason
         if any(root in serialized for root in protected_write_roots):
             return "TradingCodex workflow state and artifacts are service-owned and must use authenticated TradingCodex MCP tools"
         if any(marker in serialized for marker in SENSITIVE_ACTION_MARKERS):
@@ -1981,28 +2113,37 @@ def native_tool_block_reason(payload: dict) -> str:
         return "TradingCodex native analysis does not permit interactive shell sessions"
     command = str(tool_input.get("command") or tool_input.get("cmd") or "") if isinstance(tool_input, dict) else ""
     if shell_name:
-        if managed_non_brain_skill_read_allowed(command) or selected_brain_reference_read_allowed(payload, command):
+        if (
+            managed_non_brain_skill_read_allowed(command)
+            or projected_role_skill_read_allowed(payload, command)
+            or selected_brain_reference_read_allowed(payload, command)
+        ):
             return ""
-        return (
-            "TradingCodex native analysis does not permit general shell or interpreter execution; "
-            "only exact managed skill/reference reads are allowed, and durable actions use authenticated services"
-        )
-    if not command:
-        return ""
-    lowered = command.lower()
-    compact = re.sub(r"\s+", " ", lowered)
-    if any(marker in compact for marker in SENSITIVE_ACTION_MARKERS):
-        return "TradingCodex policy gate blocked a sensitive shell request"
-    if AGENT_RUNTIME_TCX_IDENTITY_OVERRIDE.search(compact) or AGENT_RUNTIME_TCX_MUTATION.search(compact):
-        return "TradingCodex agent runtime mutations use authenticated structured MCP tools; role-selecting and state-mutating CLI commands are human/operator surfaces only"
-    if PROTECTED_AGENT_RUNTIME_PATH.search(command) and not (
-        managed_non_brain_skill_read_allowed(command)
-        or selected_brain_reference_read_allowed(payload, command)
-    ):
-        return "TradingCodex generated state, schemas, indexes, role configs, and implementation source are not an agent runtime API"
-    write_markers = (">", "write_text", "write_bytes", " touch ", " tee ", " cp ", " mv ", "sed -i", "install ")
-    if any(root in lowered for root in protected_artifact_roots) and any(marker in compact for marker in write_markers):
-        return "TradingCodex role and synthesis artifacts must be stored through authenticated TradingCodex MCP tools"
+        if not command.strip():
+            return "TradingCodex shell execution requires a non-empty command"
+        lowered = command.lower()
+        compact = re.sub(r"\s+", " ", lowered)
+        if RAW_CREDENTIAL_ACCESS.search(command):
+            return "TradingCodex native tools cannot read, print, or persist raw credential material"
+        if ORDER_EFFECT_MATERIAL.search(command):
+            return "TradingCodex native shell authority is not order submission or cancellation authority"
+        if REMOTE_PUBLICATION_MATERIAL.search(command):
+            return "TradingCodex native tools cannot publish, push, or reconfigure Git remotes"
+        if re.search(
+            r"(?<![\w.-])codex\s+mcp\s+(?:add|remove)\b[^\n]*--scope(?:\s+|=)global\b",
+            command,
+            re.I,
+        ):
+            return "TradingCodex native tools cannot modify global Codex configuration"
+        if any(marker in compact for marker in SENSITIVE_ACTION_MARKERS):
+            return "TradingCodex policy gate blocked a sensitive shell request"
+        if AGENT_RUNTIME_TCX_IDENTITY_OVERRIDE.search(compact) or AGENT_RUNTIME_TCX_MUTATION.search(compact):
+            return "TradingCodex agent runtime mutations use authenticated structured MCP tools; role-selecting and state-mutating CLI commands are human/operator surfaces only"
+        if PROTECTED_AGENT_RUNTIME_PATH.search(command):
+            return "TradingCodex generated state, schemas, indexes, role configs, and implementation source are not an agent runtime API"
+        write_markers = (">", "write_text", "write_bytes", " touch ", " tee ", " cp ", " mv ", "sed -i", "install ")
+        if any(root in lowered for root in protected_artifact_roots) and any(marker in compact for marker in write_markers):
+            return "TradingCodex role and synthesis artifacts must be stored through authenticated TradingCodex MCP tools"
     return ""
 
 

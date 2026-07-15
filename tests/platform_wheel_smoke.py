@@ -15,7 +15,10 @@ import venv
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.parse import urljoin
-from urllib.request import urlopen
+from urllib.request import build_opener, ProxyHandler
+
+
+LOOPBACK_HTTP_OPENER = build_opener(ProxyHandler({}))
 
 
 def run(
@@ -45,27 +48,40 @@ def run(
     return result
 
 
+def windows_launcher_argv(workspace: Path, *args: str) -> list[str]:
+    return [
+        os.environ.get("COMSPEC", "cmd.exe"),
+        "/d",
+        "/s",
+        "/c",
+        "call",
+        str(workspace / "tcx.cmd"),
+        *args,
+    ]
+
+
 def launcher_argv(workspace: Path, *args: str) -> list[str]:
     if os.name == "nt":
-        command = subprocess.list2cmdline([str(workspace / "tcx.cmd"), *args])
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
+        return windows_launcher_argv(workspace, *args)
     return [str(workspace / "tcx"), *args]
 
 
-def native_shell_argv(command: str) -> list[str]:
-    if os.name == "nt":
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
-    return ["/bin/sh", "-c", command]
-
-
 def free_loopback_port() -> int:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.bind(("127.0.0.1", 0))
-        return int(listener.getsockname()[1])
+    # Exercise the release-default address first and stay below the default
+    # macOS ephemeral range. A bind-to-zero port can be recycled as the source
+    # side of a probe before the detached service claims it on hosted runners.
+    for port in range(48267, 47999, -1):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+                listener.bind(("127.0.0.1", port))
+                return port
+        except OSError:
+            continue
+    raise RuntimeError("no free product-range loopback port for native wheel smoke")
 
 
 def fetch_text(url: str) -> str:
-    with urlopen(url, timeout=15) as response:
+    with LOOPBACK_HTTP_OPENER.open(url, timeout=15) as response:
         assert response.status == 200
         return response.read().decode("utf-8")
 
@@ -82,6 +98,7 @@ def platform_environment(root: Path) -> tuple[dict[str, str], Path]:
         "TRADINGCODEX_MCP_AUTOSTART_SERVICE",
         "TRADINGCODEX_PYTHON",
         "TRADINGCODEX_LAUNCHED_BY_UVX",
+        "CODEX_HOME",
         "DJANGO_SETTINGS_MODULE",
         "XDG_DATA_HOME",
     ):
@@ -188,13 +205,80 @@ def main() -> None:
         assert len(configs) == 10
         assert configs[0]["mcp_servers"]["tradingcodex"]["env"]["TRADINGCODEX_HOME"] == str(expected_home)
         assert configs[0]["mcp_servers"]["tradingcodex"]["env"]["TRADINGCODEX_HOME_SOURCE"] == "platform_default"
-        assert configs[0]["sandbox_mode"] == "read-only"
+        assert configs[0]["default_permissions"] == "trading-research"
+        assert configs[0]["features"]["network_proxy"] is True
+        assert "sandbox_mode" not in configs[0]
         assert "sandbox_workspace_write" not in configs[0]
-        assert "permissions" not in configs[0]
+        permissions = configs[0]["permissions"]
+        assert set(permissions) == {"trading-research", "trading-build"}
+        assert permissions["trading-research"]["extends"] == ":workspace"
+        assert permissions["trading-build"]["extends"] == ":workspace"
+        research_filesystem = permissions["trading-research"]["filesystem"]
+        build_filesystem = permissions["trading-build"]["filesystem"]
+        scratch = configs[0]["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"]
+        research_workspace = research_filesystem[":workspace_roots"]
+        assert research_workspace["."] == "write"
+        assert research_workspace[".git"] == "read"
+        assert research_workspace[".gitignore"] == "read"
+        assert ".codex/proxy" not in research_workspace
+        assert research_workspace[".agents"] == "read"
+        assert research_workspace["AGENTS.md"] == "read"
+        assert research_workspace["tcx"] == "read"
+        assert research_workspace["tcx.cmd"] == "read"
+        assert research_workspace["trading"] == "read"
+        assert research_workspace[".tradingcodex"] == "deny"
+        assert ".tradingcodex/cli.py" not in research_workspace
+        assert build_filesystem[":workspace_roots"][".tradingcodex/cli.py"] == "read"
+        assert build_filesystem[":workspace_roots"]["."] == "write"
+        assert {"manage_strategy", "manage_investment_brain"}.issubset(
+            configs[0]["mcp_servers"]["tradingcodex"]["enabled_tools"]
+        )
+        assert research_filesystem[scratch] == "write"
+        assert build_filesystem[scratch] == "write"
+        assert research_filesystem[":tmpdir"] == "deny"
+        assert research_filesystem[":slash_tmp"] == "deny"
+        assert build_filesystem[":tmpdir"] == "deny"
+        assert build_filesystem[":slash_tmp"] == "deny"
+        assert configs[0]["shell_environment_policy"]["set"]["TMPDIR"] == scratch
+        assert configs[0]["shell_environment_policy"]["set"]["TEMP"] == scratch
+        assert configs[0]["shell_environment_policy"]["set"]["TMP"] == scratch
+        shell_visible = set(configs[0]["shell_environment_policy"]["include_only"]) | set(
+            configs[0]["shell_environment_policy"]["set"]
+        )
+        assert {
+            "TRADINGCODEX_HOME",
+            "TRADINGCODEX_HOME_SOURCE",
+            "TRADINGCODEX_DB_NAME",
+            "TRADINGCODEX_PYTHON",
+            "TRADINGCODEX_SERVICE_ADDR",
+            "TRADINGCODEX_WORKSPACE_ROOT",
+        }.isdisjoint(shell_visible)
+        user_home = Path(environment["USERPROFILE" if os.name == "nt" else "HOME"]).resolve()
+        assert str(user_home) not in research_filesystem
+        assert str(user_home) not in build_filesystem
+        assert research_filesystem["~/.codex"] == "deny"
+        assert research_filesystem["~/.codex/proxy"] == "read"
+        assert research_filesystem["~/.codex/packages/standalone"] == "read"
+        codex_home = (user_home / ".codex").resolve()
+        assert research_filesystem[str(codex_home)] == "deny"
+        assert research_filesystem[str(codex_home / "proxy")] == "read"
+        assert research_filesystem[str(codex_home / "packages" / "standalone")] == "read"
+        assert build_filesystem[str(codex_home)] == "deny"
+        assert build_filesystem[str(codex_home / "proxy")] == "read"
+        assert build_filesystem["~/.ssh"] == "deny"
+        assert build_filesystem["~/.codex/packages/standalone"] == "read"
+        assert research_filesystem[str(expected_home)] == "deny"
+        assert build_filesystem[str(expected_home)] == "deny"
+        assert permissions["trading-research"]["network"]["enabled"] is True
+        assert permissions["trading-research"]["network"]["allow_local_binding"] is False
+        assert permissions["trading-build"]["network"]["enabled"] is False
         attached_python = Path(configs[0]["mcp_servers"]["tradingcodex"]["command"])
         assert attached_python.is_file()
         assert attached_python.is_relative_to(expected_home / "runtime" / "python")
+        assert research_filesystem[str(attached_python)] == "deny"
+        assert build_filesystem[str(attached_python)] == "deny"
         for config in configs:
+            assert "sandbox_mode" not in config
             mcp = config["mcp_servers"]["tradingcodex"]
             assert Path(mcp["command"]).absolute() == attached_python.absolute()
             assert mcp["args"] == ["-m", "tradingcodex_cli", "mcp", "stdio"]
@@ -233,7 +317,12 @@ def main() -> None:
         assert root_codex_config["features"]["hooks"] is True
         expected_hook = r".\tcx.cmd __hook session-start" if os.name == "nt" else "./tcx __hook session-start"
         assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"] == expected_hook
-        shell_hook = run(native_shell_argv(expected_hook), cwd=workspace, env=environment, input_text="{}\n")
+        shell_hook = run(
+            launcher_argv(workspace, "__hook", "session-start"),
+            cwd=workspace,
+            env=environment,
+            input_text="{}\n",
+        )
         assert json.loads(shell_hook.stdout)["hookSpecificOutput"]["hookEventName"] == "SessionStart"
 
         other_cwd = root / "Other Working Directory"
@@ -263,7 +352,26 @@ def main() -> None:
         port = free_loopback_port()
         addr = f"127.0.0.1:{port}"
         try:
-            run(launcher_argv(workspace, "service", "ensure", addr), cwd=other_cwd, env=environment)
+            try:
+                run(launcher_argv(workspace, "service", "ensure", addr), cwd=other_cwd, env=environment)
+            except RuntimeError as exc:
+                try:
+                    diagnostic = json.loads(
+                        run(
+                            launcher_argv(workspace, "service", "status", addr, "--json"),
+                            cwd=other_cwd,
+                            env=environment,
+                        ).stdout
+                    )
+                    safe_diagnostic = {
+                        key: diagnostic.get(key)
+                        for key in ("reachable", "compatible", "ready", "issue", "reason_codes", "next_action", "log")
+                    }
+                except Exception as diagnostic_exc:
+                    safe_diagnostic = {"diagnostic_error": type(diagnostic_exc).__name__}
+                raise RuntimeError(
+                    f"{exc}\nservice diagnostic:\n{json.dumps(safe_diagnostic, ensure_ascii=False)}"
+                ) from exc
             service = json.loads(run(launcher_argv(workspace, "service", "status", addr, "--json"), cwd=other_cwd, env=environment).stdout)
             assert service["compatible"] and service["ready"]
             workbench_url = f"http://{addr}/"

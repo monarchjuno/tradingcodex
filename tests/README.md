@@ -41,11 +41,19 @@ The Python platform smoke suite covers:
 For template/bootstrap changes, also create a throwaway workspace and run:
 
 ```bash
+SOURCE_ROOT="$(pwd)"
 SMOKE_ROOT="$(python -c 'import tempfile; print(tempfile.mkdtemp(prefix="tradingcodex-smoke-"))')"
-mkdir -p "$SMOKE_ROOT/workspace"
+"$SOURCE_ROOT/install.sh" --dev --no-doctor "$SMOKE_ROOT/workspace"
 cd "$SMOKE_ROOT/workspace"
-tcx attach .
-tcx workspace status
-tcx investor-context status
+./tcx workspace status
+./tcx investor-context status
 ./tcx doctor
+cd "$SOURCE_ROOT"
+python tests/codex_cli_contract.py --workspace "$SMOKE_ROOT/workspace" --require-reference
 ```
+
+Before a real V2 child lifecycle smoke, open the disposable workspace in a
+dedicated maintainer `CODEX_HOME`, persistently trust all eight generated
+project hooks, and rerun the preflight with `--require-hook-trust`. The
+one-run hook-trust bypass is suitable for root diagnostics only, not child
+lifecycle acceptance.

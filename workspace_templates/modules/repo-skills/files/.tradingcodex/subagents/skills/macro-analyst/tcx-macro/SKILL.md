@@ -37,6 +37,9 @@ Quality floor:
 - Tag material narrative claims as `[factual]`, `[inference]`, or `[assumption]`.
 - Distinguish economic data, policy statements, market pricing, user assumptions, and analyst inference.
 - State when evidence is suggestive rather than conclusive, especially around regime shifts and small samples.
+- For historical or replay work, bind first-release, vintage, or real-time-period
+  observations. Label a currently revised series as hindsight evidence rather
+  than treating it as known at the historical cutoff.
 - Use `screen-grade` or `not-decision-ready` when market anchors, source dates, or instrument-specific inputs are missing.
 - Do not fabricate economic releases, policy dates, market levels, source timestamps, or tool output.
 

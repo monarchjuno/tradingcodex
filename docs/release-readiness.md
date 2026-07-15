@@ -1,9 +1,9 @@
 # TradingCodex 1.0.0 Release Status
 
-Status: working-tree implementation, broad suite, native workflow, browser, and
-macOS distribution acceptance validated; exact final-commit artifacts, native
-Windows, tag, and publication remain pending
-Updated: 2026-07-13
+Status: release-branch implementation, broad suite, native workflow, browser,
+and exact Ubuntu/macOS/Windows distribution acceptance validated; merge CI,
+tag-bound rehearsal, tag, and publication remain pending
+Updated: 2026-07-15
 
 This page records the current `1.0.0` release state. It is not an implementation
 roadmap and does not treat source changes as proof that an exact distribution
@@ -19,12 +19,12 @@ artifact or public release has passed its gates.
   Ordinary forward migrations carry later v1 schema changes.
 - Django application services own durable behavior shared by Web, Admin, API,
   MCP, CLI, and generated hooks.
-- The workbench remains analysis-only. Policy, approval, idempotency, broker,
-  execution, redaction, and audit boundaries stay service-owned and fail
-  closed.
+- The workspace viewer is read-only and starts no Codex process. Policy,
+  approval, idempotency, broker, execution, redaction, and audit boundaries
+  stay service-owned and fail closed.
 - Paper execution is built in. Live submission remains disabled by default and
   requires an installed provider plus every documented safety gate.
-- The React workbench is a committed static build served by Django and
+- The React viewer is a committed static build served by Django and
   WhiteNoise; Node remains a maintainer-only build dependency.
 - PyPI publication is manual, tag-bound, and reuses one verified sdist and
   wheel across Ubuntu, macOS, Windows, and publication jobs.
@@ -35,40 +35,88 @@ artifact or public release has passed its gates.
 | --- | --- | --- |
 | Version identity | Verified in the working tree | `TRADINGCODEX_VERSION` is `1.0.0`; `pyproject.toml` reads it dynamically; `tcx --version` uses the same source. |
 | Schema baseline | Verified in the working tree | Project apps contain only `0001_v1_initial`; migration-graph and model-state checks live in `tests/test_v1_migrations.py`. |
-| Workspace baseline | Native working-tree acceptance verified | A no-backup clean attach into `vibe_threads` with an external runtime home passed all doctor layers, preserved a local uncommitted/no-remote Git worktree, and completed exact-role research plus synthesis. |
-| Interfaces and safety | Verified in the working tree | The full Python suite, Django checks, migration check, compile pass, focused workflow/MCP/hook contracts, and native acceptance pass after the latest runtime fixes. Rerun against the final commit. |
-| Frontend | Rewritten workbench build and browser acceptance verified | Eleven focused tests, typecheck/build, content-hashed assets, exclusive compose/run modes, synthesis-first reading, desktop/narrow list-detail navigation, keyboard focus, loading/partial-error handling, sanitized previews, and horizontal-overflow checks pass against the source service. |
+| Workspace baseline | Current-reference preflight, release-branch native acceptance, and exact-wheel CI verified | A disposable development workspace passed strict pinned-reference config, explicit V2, persisted trust for all eight project hooks, the final artifact-to-synthesis workflow, and the disabled-dispatch fail-closed check after the prepublication quality-gate fix. GitHub CI then passed the exact release-branch wheel on macOS and Windows. |
+| Interfaces and safety | Verified on the release branch | GitHub CI passed 614 tests on each of Python 3.11, 3.12, 3.13, and 3.14, plus Django checks, migration checks, compile passes, focused safety invariants, frontend verification, clean-wheel construction, and native acceptance. |
+| Frontend | Viewer source, build, and browser acceptance pass | Ten focused tests, typecheck/build, deterministic committed assets, three-section routing, read-only source checks, 1440px/900px/600px layouts, keyboard focus, workspace switching, long-label containment, and invalid-selection failure rendering pass. |
 | Release automation | Structurally verified | The release contract suite verifies tag and artifact gating; a manual `publish_pypi=false` rehearsal remains required. |
-| Distribution artifacts | Fresh working-tree candidate verified on macOS | Fresh `1.0.0` sdist/wheel build, `twine check`, and packaged-wheel smoke pass; rebuild from the final commit and run the same immutable files on native macOS and Windows. |
+| Distribution artifacts | Exact release-branch artifacts verified on Ubuntu, macOS, and Windows | Fresh `1.0.0` sdist/wheel build, `twine check`, and packaged-wheel smoke passed locally; GitHub CI built one clean wheel, passed its Ubuntu smoke, and reused the uploaded artifact for native macOS and Windows smokes. |
 | Git tag and PyPI | Not performed by this status | Merge/CI, annotated `v1.0.0` tag, protected-environment approval, and manual publication remain release-operator actions. |
 | Post-publish verification | Blocked on publication | Exact-version POSIX and native Windows attach/doctor smokes run only after PyPI contains the immutable artifacts. |
 
-Working-tree status describes source shape, not release sign-off. The final
-commit and exact built artifacts remain authoritative.
+Release-branch status describes candidate source shape, not release sign-off.
+The merged commit and exact uploaded artifacts remain authoritative.
 
-Current working-tree evidence recorded on 2026-07-13 is listed below. None of
-this substitutes for rerunning release gates on the final commit and exact
-immutable artifacts:
+Current release-branch evidence recorded on 2026-07-15 is listed below. It
+authorizes merge of the candidate but does not substitute for CI on the merged
+commit or the tag-bound rehearsal of the immutable release artifacts:
 
-- `python -m pytest`: **364 passed** after the final runtime, artifact-time,
-  V2 dispatch, and synthesis-quality hardening.
+- GitHub Actions [CI run 29403737708](https://github.com/monarchjuno/tradingcodex/actions/runs/29403737708)
+  passed on release-branch commit `12649b0`: the safety and financial invariant
+  gate, ten-test frontend build verification, clean wheel build and Ubuntu
+  smoke, native macOS and Windows smokes of the same uploaded wheel, and the
+  full Python 3.11-3.14 matrix all completed successfully. Each Python job
+  reported **614 passed**, no Django issues, no migration changes, and a clean
+  compile pass.
+
+- `python -m pytest`: **604 passed** after development-bootstrap isolation,
+  current-reference V2 dispatch, prepublication artifact-quality enforcement,
+  hook-trust preflight, and release-checklist hardening; the only output was
+  three existing Pydantic deprecation warnings.
 - `python manage.py check`: no issues.
 - `python manage.py makemigrations --check --dry-run`: no changes detected.
 - `python -m compileall -q tradingcodex_cli tradingcodex_service apps tests`:
   passed.
 - `npm ci --prefix frontend`, `npm test --prefix frontend`, and
-  `npm run build --prefix frontend`: passed; the frontend suite reported seven
-  passing tests including typecheck/build, and a second build produced the same
-  aggregate SHA-256.
-- A fresh `1.0.0` sdist/wheel, `twine check`, and
+  `npm run build --prefix frontend`: passed; the frontend suite reported ten
+  passing tests, typecheck/build passed, and rebuilt assets matched the
+  committed output.
+- A fresh `1.0.0` sdist/wheel built from a detached clean release-branch
+  worktree, `twine check`, and
   `python tests/platform_wheel_smoke.py --wheel-dir <fresh-dist>` passed on
-  macOS for the working-tree candidate.
+  macOS.
 
 ### Native Codex acceptance evidence
 
+Codex CLI compatibility was rebaselined on 2026-07-15 from the previous patch
+reference to the current reference recorded in [installation.md](../installation.md).
+The command and flag surfaces used by TradingCodex did not change across those
+patch releases, and the upstream patch range did not introduce a project config
+schema migration. The audit did expose a pre-existing TradingCodex projection
+defect: the generated V2 table omitted `enabled = true` and mixed in the V1-only
+`agents.max_threads` key. The corrected contract explicitly enables V2, sets a
+seven-thread session cap, omits the V1 key, and fails strict/version preflight
+when that shape is not loaded.
+
+The accepted current-reference compatibility run used root task
+`019f61bc-ece9-7de3-8c72-6d90fe65ae2a`, child task
+`019f61bd-32ef-7f63-86a6-76ca6927ab5b`, and run id
+`analysis-2a9ab229746349b0bcae09ae384394ee`. Evidence includes:
+
+- exact configured CLI reference match and `--strict-config` success;
+- `config.load`, `mcp.config`, and `sandbox.helpers` all `ok`;
+- effective `multi_agent=true`, `multi_agent_v2=true`, hooks and network proxy
+  enabled, with computer use and unified exec disabled;
+- all eight generated project hooks persistently trusted in an isolated
+  maintainer `CODEX_HOME`;
+- an allowed `agents.spawn_agent` call using exact
+  `agent_type="fundamental-analyst"`, compact task name, and
+  `fork_turns="none"`;
+- the Terra/high child returning `ROLE_READY`, followed by root
+  `V2_HOOKS_OK`; and
+- matching `SubagentStart` and `SubagentStop` records for the child, with no
+  active child left in session state.
+
+The one-run `--dangerously-bypass-hook-trust` mode was tested only as a
+diagnostic and is not accepted as lifecycle evidence. In the current reference
+it is not inherited when an exact V2 child reloads its role config; persisted
+hook trust is therefore a release-smoke prerequisite.
+
 The previous server-planned DAG/supervisor-loop evidence is retired because it
-does not represent the v1 Codex-native architecture. A fresh generated
-`vibe_threads` workspace now has working-tree native evidence for:
+does not represent the v1 Codex-native architecture. The final working-tree
+native run used root task `019f62c2-5e0b-7622-a7e0-372b4bfa61ff`, run id
+`analysis-6178baef749c453ca1ef072e8dad369c`, and synthesis artifact
+`synthesis_report-NVDA-cb883bbc880f`. A fresh generated workspace provides
+evidence for:
 
 - `gpt-5.6-sol`/xhigh Head Manager and exact `gpt-5.6-terra`/high
   `fundamental-analyst` and `news-analyst` children;
@@ -78,10 +126,9 @@ does not represent the v1 Codex-native architecture. A fresh generated
   present;
 - a fresh `begin_analysis_run` request hash and sealed explicit Investment
   Brain id, version, content digest, Strategy, and Investor Context posture;
-- exactly two V2 spawns (`fundamental-analyst` and `news-analyst`) containing
-  only `agent_type`, `fork_turns`, `message`, and `task_name`; compact task
-  names, `fork_turns="none"`, no model/reasoning/sandbox override, and real
-  read-only child sandboxes;
+- exactly two sequential exact-role spawns (`fundamental-analyst`, then
+  `news-analyst`) with compact task names, `fork_turns="none"`, no
+  model/reasoning/sandbox override, and real read-only child sandboxes;
 - two authenticated role artifacts and one Head Manager synthesis whose
   receipt binds the exact two run-local input ids and hashes;
 - timezone-aware knowledge cutoffs bounded by service-returned source
@@ -91,38 +138,52 @@ does not represent the v1 Codex-native architecture. A fresh generated
   material `[factual]`, `[inference]`, and `[assumption]` tags in the synthesis;
 - artifact-driven synthesis without a Django plan, lane, DAG, task id, or
   supervisor tool;
-- the exact selected Brain loaded directly by Codex and sealed before dispatch;
-  its optional Markdown reference remained lazy because the base Brain body was
-  sufficient; and
+- no inferred Investment Brain, Strategy, or Investor Context when none was
+  explicitly selected, with the pristine baseline stated in synthesis; and
 - zero order tickets, approval receipts, execution results, and broker orders.
 
-The final native run used root task
-`019f587a-ca9c-7e23-bfbb-98f8fd590575`, run id
-`analysis-38146c80549e4f119862957dff9795a9`, and synthesis artifact
-`synthesis_report-NVDA-9b06d78f1d26`.
+All three final-run Markdown artifacts passed `tcx quality-check --strict` with
+no missing fields or warnings. The synthesis receipt
+`f67eb4e469108ebfa557d87f7a5e51842bfbbc75531d1e19857b068f8cdd5e7b`
+binds `fundamental_report-NVDA-e81b056d4024` and
+`news_event_report-NVDA-288b8587de0c` to their complete content hashes. Both
+child lifecycle records ended with no active session. A database check scoped
+to the disposable workspace found zero order tickets, approvals, broker
+orders, fills, order events, or execution results.
 
-This is working-tree evidence. The release remains not ready to tag until the
-same source, wheel, and platform gates pass for the final commit and immutable
-artifacts.
+An earlier candidate run exposed that a malformed string-valued
+`follow_up_requests` list could be receipted before the standalone strict check
+ran. The service now evaluates the exact intended Markdown bytes before
+publishing any accepted run-bound artifact, the MCP schema exposes structured
+follow-up and improvement objects, and synthesis refuses authenticated inputs
+whose handoff is not `accepted`. The final run above exercised the corrected
+path; its fundamental artifact now passes the same strict check that exposed
+the defect.
 
-### Workbench browser acceptance
+The multi-agent-disabled run used root task
+`019f62cb-0552-7490-96c5-ebe28e765d02` and run id
+`analysis-5ceee8b9af3c4683802f6ceb5c384f40`. It returned
+`waiting_for_subagent_dispatch` with one compact `fundamental-analyst` brief,
+and created no child event, role artifact, or synthesis.
 
-Current browser acceptance passed at desktop and 390x844: the index loaded
-content-hashed JavaScript/CSS, valid-page console errors were zero, horizontal
-overflow was zero, `Ctrl+K` focused the analysis request, and
-empty/loading/failure states exposed their expected visible and ARIA status.
-The Library displayed all three native research artifacts and loaded the
-sanitized synthesis preview. Loopback API checks proved CSRF rejection without
-a token and that a valid token reached normal JSON prompt validation. Responses
-carried the expected frame, content-type, referrer, and opener security headers.
+This is release-branch evidence. The candidate is ready to merge, but the
+release remains not ready to tag until the merged commit passes GitHub CI. The
+tagged immutable artifacts must then pass the manual `publish_pypi=false`
+rehearsal before publication.
 
-Two low-priority consistency observations remain; neither weakens the security
-block:
+### Workspace viewer browser acceptance
 
-- Direct `/?workspace=invalid-workspace#/work` navigation returns a plain-text
-  404 instead of rendering the SPA failure state.
-- CSRF rejection returns Django's default HTML 403 rather than the JSON API
-  error envelope.
+The generated development service passed real-browser acceptance at 1440px
+desktop, 900px half-width desktop, and 600px phone widths. Library, Skills, and
+System remained free of horizontal overflow; half-width Library/Skills used
+full-width list-to-detail transitions; all 27 visible research status labels
+stayed inside their rows; and long system status labels wrapped. Library/Skills
+detail views moved focus into the selected detail and back to their indexes,
+and a workspace switch returned focus to `main` after refreshed content loaded.
+Desktop and narrow workspace switching both updated the selected registered
+workspace. An invalid workspace query retained the SPA shell and rendered the
+API error without mutation controls. The default Django Admin login remained
+unchanged, and the browser console reported no errors or warnings.
 
 ## Final-Commit Validation
 

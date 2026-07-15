@@ -10,12 +10,6 @@ export class ApiError extends Error {
   }
 }
 
-function cookie(name: string): string {
-  const prefix = `${encodeURIComponent(name)}=`;
-  const item = document.cookie.split(";").map((part) => part.trim()).find((part) => part.startsWith(prefix));
-  return item ? decodeURIComponent(item.slice(prefix.length)) : "";
-}
-
 function selectedWorkspacePath(path: string): string {
   const workspace = new URLSearchParams(window.location.search).get("workspace");
   if (!workspace || !path.startsWith("/api/")) return path;
@@ -43,11 +37,6 @@ export async function requestJSON<T>(path: string, init: RequestInit = {}): Prom
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
-    const token = cookie("csrftoken");
-    if (token) headers.set("X-CSRFToken", token);
-  }
-
   const response = await fetch(selectedWorkspacePath(path), {
     ...init,
     method,
@@ -75,11 +64,4 @@ export function apiErrorText(error: unknown): string {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error) return error.message;
   return "The request could not be completed.";
-}
-
-export function mutation(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown): Promise<unknown> {
-  return requestJSON(path, {
-    method,
-    body: body === undefined ? undefined : JSON.stringify(body),
-  });
 }

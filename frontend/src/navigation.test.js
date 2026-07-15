@@ -3,26 +3,15 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
 import { hashForSection, matchesSearch, sectionFromHash } from "./navigation.js";
-import {
-  collectionViewState,
-  investorContextRequest,
-  isSkillCatalogVisible,
-  normalizedActivityLabel,
-  researchPhase,
-  sectionData,
-  snapshotSections,
-  workActionAvailability,
-  workbenchPromptRequest,
-  workbenchSelectionRequest,
-  workPreviewKey,
-} from "./workbench-data.js";
+import { collectionViewState, sectionData, snapshotSections } from "./viewer-data.js";
 
-test("hash navigation stays inside the four workbench sections", () => {
+test("hash navigation stays inside the three viewer sections", () => {
   assert.equal(sectionFromHash("#/skills"), "skills");
   assert.equal(sectionFromHash("#library?artifact=a"), "library");
-  assert.equal(sectionFromHash("#/unknown"), "work");
+  assert.equal(sectionFromHash("#/work"), "library");
+  assert.equal(sectionFromHash("#/unknown"), "library");
   assert.equal(hashForSection("system"), "#/system");
-  assert.equal(hashForSection("admin"), "#/work");
+  assert.equal(hashForSection("admin"), "#/library");
 });
 
 test("search matches labels and metadata without case sensitivity", () => {
@@ -31,7 +20,7 @@ test("search matches labels and metadata without case sensitivity", () => {
   assert.equal(matchesSearch([], ""), true);
 });
 
-test("workbench data accepts only the current snapshot contract", () => {
+test("viewer data accepts only the current snapshot contract", () => {
   const sections = snapshotSections({
     generated_at: "2026-07-11T00:00:00Z",
     sections: {
@@ -40,78 +29,10 @@ test("workbench data accepts only the current snapshot contract", () => {
       failed: { ok: false, error: { message: "unavailable" } },
     },
   });
-
   assert.deepEqual(sectionData(sections, "strategies"), [{ name: "strategy-quality" }]);
   assert.deepEqual(sectionData(sections, "optional_skills"), { optional_skills: [{ name: "quality-check" }] });
   assert.equal(sectionData(sections, "failed"), undefined);
-  assert.throws(
-    () => snapshotSections({ state: { strategies: [] } }),
-    /canonical sections object/,
-  );
-  assert.equal(isSkillCatalogVisible({ id: "tcx-investor-context", source: "core", scope: "mainagent", user_visible: true }), true);
-  assert.equal(isSkillCatalogVisible({ id: "tcx-fundamental", source: "core", scope: "subagent_role", user_visible: false }), true);
-});
-
-test("work preview identity binds request, method, strategy, and investor context", () => {
-  const base = {
-    request: " Analyze NVDA ",
-    methodId: "tcx-memory",
-    strategyId: "strategy-quality",
-    strategyHash: "strategy-hash-a",
-    useInvestorContext: true,
-    investorContextHash: "context-hash-a",
-  };
-  assert.equal(workPreviewKey(base), workPreviewKey({ ...base, request: "Analyze NVDA" }));
-  for (const changed of [
-    { request: "Analyze MSFT" },
-    { methodId: "tcx-fundamental" },
-    { strategyId: "strategy-catalyst" },
-    { strategyHash: "strategy-hash-b" },
-    { useInvestorContext: false },
-    { investorContextHash: "context-hash-b" },
-  ]) {
-    assert.notEqual(workPreviewKey(base), workPreviewKey({ ...base, ...changed }));
-  }
-});
-
-test("work actions wait for context state and preserve the server-owned default", () => {
-  assert.deepEqual(investorContextRequest(null), {});
-  assert.deepEqual(investorContextRequest(true), { use_investor_context: true });
-  assert.deepEqual(investorContextRequest(false), { use_investor_context: false });
-
-  const ready = {
-    contextReady: true,
-    request: "Analyze NVDA",
-    previewLoading: false,
-    runBusy: false,
-    previewReady: true,
-  };
-  assert.deepEqual(workActionAvailability(ready), { canPreview: true, canStart: true });
-  assert.deepEqual(workActionAvailability({ ...ready, contextReady: false }), { canPreview: false, canStart: false });
-  assert.deepEqual(workActionAvailability({ ...ready, runBusy: true }), { canPreview: false, canStart: false });
-  assert.deepEqual(workActionAvailability({ ...ready, previewLoading: true }), { canPreview: false, canStart: false });
-});
-
-test("workbench mutations use the canonical prompt body and omit empty selections", () => {
-  assert.deepEqual(workbenchPromptRequest("  Analyze NVDA  "), { prompt: "Analyze NVDA" });
-  assert.deepEqual(workbenchSelectionRequest("", ""), {});
-  assert.deepEqual(workbenchSelectionRequest("tcx-fundamental", ""), { skill_id: "tcx-fundamental" });
-  assert.deepEqual(workbenchSelectionRequest("", "strategy-quality"), { strategy_id: "strategy-quality" });
-});
-
-test("dynamic research phases stay truthful without inventing a DAG", () => {
-  assert.equal(researchPhase({ agentCount: 0, artifactCount: 0, hasFinalOutput: false }), "Preparing the research");
-  assert.equal(researchPhase({ agentCount: 2, artifactCount: 0, hasFinalOutput: false }), "Specialists are gathering evidence");
-  assert.equal(researchPhase({ agentCount: 2, artifactCount: 1, hasFinalOutput: false }), "Reviewing and comparing evidence");
-  assert.equal(researchPhase({ agentCount: 0, artifactCount: 0, hasFinalOutput: true }), "Analysis ready");
-});
-
-test("technical activity is presented as a restrained reader-facing trail", () => {
-  assert.equal(normalizedActivityLabel({ tool_name: "begin_analysis_run" }), "Research scope recorded");
-  assert.equal(normalizedActivityLabel({ item_type: "web_search" }), "Public evidence checked");
-  assert.equal(normalizedActivityLabel({ tool_name: "research_write_artifact" }), "Verified research note saved");
-  assert.equal(normalizedActivityLabel({ type: "subagent-start" }), "Specialist handoff updated");
-  assert.equal(normalizedActivityLabel({ type: "unknown" }), "Research activity recorded");
+  assert.throws(() => snapshotSections({ state: { strategies: [] } }), /canonical sections object/);
 });
 
 test("collection states never present an error as an empty result", () => {
@@ -128,11 +49,55 @@ test("light theme secondary text keeps normal-text contrast", async () => {
   assert.ok(contrast(light, "#f4f3ee") >= 4.5);
 });
 
-test("the rewritten workbench removes implementation-first progress copy", async () => {
-  const work = await readFile(new URL("./features/WorkPage.tsx", import.meta.url), "utf8");
-  assert.doesNotMatch(work, /Polling|No predefined stages/i);
-  assert.match(work, /Verified synthesis/);
-  assert.match(work, /Research activity/);
+test("system status labels wrap at every viewport width", async () => {
+  const css = await readFile(new URL("./styles.css", import.meta.url), "utf8");
+  const mobileRules = css.indexOf("@media (max-width: 600px)");
+  const wrapRule = css.indexOf(".workspace-settings .status-pill");
+  assert.match(
+    css,
+    /\.workspace-settings \.status-pill\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*normal/s,
+  );
+  assert.ok(wrapRule >= 0 && wrapRule < mobileRules, "the overflow guard must not be mobile-only");
+});
+
+test("narrow detail transitions preserve keyboard focus", async () => {
+  const [skills, library] = await Promise.all([
+    readFile(new URL("./features/SkillsPage.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./features/LibraryPage.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(skills, /detailRef\.current\?\.focus\(\)/);
+  assert.match(skills, /indexRef\.current\?\.focus\(\)/);
+  assert.match(library, /readerRef\.current\?\.focus\(\)/);
+  assert.match(library, /indexRef\.current\?\.focus\(\)/);
+});
+
+test("workspace switching returns focus to the updated main view", async () => {
+  const app = await readFile(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.match(app, /loadState\(\)\.finally\(\(\) => requestAnimationFrame\(\(\) => mainRef\.current\?\.focus\(\{ preventScroll: true \}\)\)\)/);
+});
+
+test("half-width desktop uses the compact workspace and single-pane reader layout", async () => {
+  const [css, app] = await Promise.all([
+    readFile(new URL("./styles.css", import.meta.url), "utf8"),
+    readFile(new URL("./App.tsx", import.meta.url), "utf8"),
+  ]);
+  const compactStart = css.indexOf("@media (max-width: 1099px)");
+  const mobileStart = css.indexOf("@media (max-width: 700px)");
+  assert.ok(compactStart >= 0 && mobileStart > compactStart);
+  const compact = css.slice(compactStart, mobileStart);
+  assert.match(compact, /\.viewer-layout\s*\{\s*display:\s*block/);
+  assert.match(compact, /\.workspace-mobile-select\s*\{\s*display:\s*grid/);
+  assert.match(compact, /\.library-layout, \.method-layout\s*\{\s*display:\s*block/);
+  assert.match(compact, /\.artifact-reader, \.method-detail\s*\{\s*display:\s*none/);
+  assert.doesNotMatch(compact, /--header-height:\s*118px/);
+  assert.match(app, /workspace-compact-meta/);
+});
+
+test("the app exposes no work execution surface", async () => {
+  const app = await readFile(new URL("./App.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /run_start|run_preview|follow-up|WorkPage|mutation\(/i);
+  assert.match(app, /Read-only viewer/);
+  assert.match(app, /Workspaces/);
 });
 
 function contrast(left, right) {

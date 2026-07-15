@@ -25,7 +25,7 @@ GITIGNORE_RULES = """# Runtime databases and journals
 *.db-shm
 *.db-wal
 
-# Process, session, service-status, and Workbench runtime files
+# Process, session, and service-status runtime files
 /.tradingcodex/mainagent/server-status.json
 /.tradingcodex/mainagent/session-start.json
 /.tradingcodex/mainagent/subagent-session-state.json

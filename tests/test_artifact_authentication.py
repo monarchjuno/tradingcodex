@@ -69,12 +69,77 @@ def _artifact_args(
         "handoff_state": "accepted",
         "confidence": "high",
         "missing_evidence": [],
+        "next_recipient": "head-manager",
         "next_action": "Verify the receipt.",
         "blocked_actions": ["order", "execution"],
         "source_snapshot_ids": [],
         "workflow_run_id": RUN_ID,
         "input_artifact_ids": inputs or [],
     }
+
+
+def test_accepted_run_bound_artifact_requires_strict_quality_before_publication(
+    tmp_path: Path,
+) -> None:
+    malformed_follow_up = _artifact_args("invalid-follow-up")
+    malformed_follow_up["follow_up_requests"] = ["Retrieve the missing filing."]
+
+    with pytest.raises(ValueError, match=r"follow_up_requests\[0\] must be object"):
+        call_mcp_tool(
+            tmp_path,
+            "create_research_artifact",
+            malformed_follow_up,
+            transport_principal="fundamental-analyst",
+        )
+
+    invalid_quality = _artifact_args("missing-next-recipient")
+    invalid_quality.pop("next_recipient")
+
+    with pytest.raises(
+        ValueError,
+        match="accepted run-bound research artifact failed strict quality",
+    ):
+        call_mcp_tool(
+            tmp_path,
+            "create_research_artifact",
+            invalid_quality,
+            transport_principal="fundamental-analyst",
+        )
+
+    assert not (
+        tmp_path / "trading/reports/fundamental/invalid-follow-up.md"
+    ).exists()
+    assert not (
+        tmp_path / "trading/reports/fundamental/missing-next-recipient.md"
+    ).exists()
+    binding_dir = tmp_path / ".tradingcodex/mainagent/runs" / RUN_ID / "artifact-bindings"
+    assert not binding_dir.exists() or not list(binding_dir.glob("*.json"))
+
+
+def test_synthesis_rejects_authenticated_input_without_accepted_handoff(
+    tmp_path: Path,
+) -> None:
+    revise = _artifact_args("needs-revision")
+    revise["handoff_state"] = "revise"
+    revise["missing_evidence"] = ["A primary filing is still required."]
+    call_mcp_tool(
+        tmp_path,
+        "create_research_artifact",
+        revise,
+        transport_principal="fundamental-analyst",
+    )
+
+    with pytest.raises(ValueError, match="is not an accepted handoff"):
+        call_mcp_tool(
+            tmp_path,
+            "create_research_artifact",
+            _artifact_args(
+                "invalid-synthesis-input",
+                "synthesis_report",
+                inputs=["needs-revision"],
+            ),
+            transport_principal="head-manager",
+        )
 
 
 def _store_role_artifact(root: Path, artifact_id: str = "authenticated-source") -> dict[str, object]:

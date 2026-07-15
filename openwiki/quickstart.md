@@ -8,10 +8,11 @@ OpenWiki is the working map for coding agents in this repository. It is intentio
 | --- | --- | --- |
 | `README.md` | New users | Product overview, install path, and links into detailed docs. |
 | `docs/` | Humans and maintainers | Durable source of truth for product behavior, safety, architecture, workflows, validation, release policy, and commercialization. |
+| `guidebook/` | End users | Concise task-first GitHub Pages guide for setup, skills, concepts, provider-to-order onboarding, and recovery. |
 | `openwiki/` | Coding agents | Fast source map, edit routing, and validation routing. |
 | `AGENTS.md` | Coding agents | Hard repository rules and required validation expectations. |
 
-When source behavior changes, update the relevant `docs/` page. When the agent working map becomes misleading, update `openwiki/`. Keep the same concept canonical in one place and link to it elsewhere.
+When source behavior changes, update the relevant `docs/` page. Update `guidebook/` in the same change when the user-visible setup, task, skill, viewer, recovery, provider, or order journey changes. When the agent working map becomes misleading, update `openwiki/`. Keep the same concept canonical in `docs/` and link to it elsewhere.
 
 ## Fast Path
 
@@ -20,7 +21,8 @@ When source behavior changes, update the relevant `docs/` page. When the agent w
 | Understand the repository shape | [Architecture](architecture.md) |
 | Change head-manager, subagents, skills, hooks, routing, or handoff behavior | [Workflows And Agents](workflows-and-agents.md) |
 | Change `tcx attach/update`, templates, generated files, or projection | [Generated Workspaces](generated-workspaces.md) |
-| Change React workbench/web/API/MCP/CLI behavior, models, research/decision memory, or investor context | [Interfaces And Data](interfaces-and-data.md) |
+| Change React viewer/web/API/MCP/CLI behavior, models, research/decision memory, or investor context | [Interfaces And Data](interfaces-and-data.md) |
+| Change the public task-first guide or its navigation | `guidebook/`, the owning `docs/` page, and `docs/deployment.md` |
 | Change policy, approval, broker, execution, external MCP, or secrets | [Safety And Execution](safety-and-execution.md) |
 | Choose validation before handoff | [Development And Validation](development-and-validation.md) |
 
@@ -50,7 +52,7 @@ Keep three product layers separate when editing:
   strategies, and explicit Investment Brain plugins that extend the baseline
   without weakening the kernel.
 
-All 30 bundled skill ids use the reserved compact `tcx-` namespace with one
+All 31 bundled skill ids use the reserved compact `tcx-` namespace with one
 suffix word when possible and no more than two. User-owned `strategy-*`,
 `investment-brain-*`, and optional role skills remain separate namespaces.
 
@@ -59,7 +61,7 @@ Codex may discover globally installed or plugin-provided skill metadata. Those c
 The system has three runtime planes:
 
 - Codex control plane: generated prompts, role TOML, skills, hooks, and project MCP config.
-- Django service plane: policy, orders, approvals, portfolio, audit, integrations, MCP, API, Admin, React asset serving, bounded workbench process supervision, and research indexing.
+- Django service plane: policy, orders, approvals, portfolio, audit, integrations, MCP, API, Admin, read-only React viewing, and research indexing.
 - Workspace system plane: generated files, research markdown, source snapshots, policies, audit files, and the `tcx`/`tcx.cmd` launchers.
 
 The service plane decides and records execution-sensitive outcomes. Workspace
@@ -70,18 +72,30 @@ final effect with one exact complete submit/cancel prompt, or admit at most one
 later effect in the current turn with an exact physical first line
 `$tcx-order-allow --mode paper|validation|live`. The generated hooks bind that
 grant to workspace/session/turn/prompt/mode and inject proof only into Head
-Manager's protected `use_order_turn_grant` call. Workbench, fixed roles, public
-REST/generic CLI, and direct MCP callers expose no usable final mutation. Codex
+Manager's protected `use_order_turn_grant` call. The browser viewer has no
+mutation route; fixed roles, public REST/generic CLI, and direct MCP callers
+expose no usable final mutation. Codex
 app Scheduled Tasks submit the saved prompt through the same root-turn path;
 TradingCodex does not detect or trust an Automation origin.
 
-Normal Head Manager and fixed-role analysis shares one project-wide read-only
-filesystem sandbox. Authenticated service/MCP tools own durable writes. Product
-or connector editing requires a root native prompt whose exact physical first
-line is `$tcx-build`; the hook issues a DB-canonical current-turn grant, but the
-actual Codex sandbox remains authoritative. Every mutating follow-up and every
-Automation run needs a fresh marker. Workbench and subagents cannot inherit it,
-and `$tcx-build` must never be combined with `$tcx-order-allow`. Persistent
+Normal Head Manager and fixed-role analysis inherits the project-wide
+`trading-research` permission profile. General shell/Python, credential-free
+public retrieval, user-owned file changes outside `trading/`, and the dedicated
+`$TRADINGCODEX_SCRATCH` path are available. The `trading/` tree, generated
+control files, TradingCodex runtime/DB, protected artifacts, credentials, and
+local/private services remain protected. Authenticated service/MCP tools own
+durable TradingCodex writes. Controlled `trading/`, product, or connector
+editing requires the separate `trading-build` profile and a root
+native prompt whose exact physical first line is `$tcx-build`; the hook issues
+a DB-canonical current-turn grant, but the active Codex profile remains
+authoritative. Brain and Strategy management stay in `trading-research` and
+start directly with exact `$tcx-brain` or `$tcx-strategy`; their current-turn
+grant admits only the matching native source/staging path and proof-protected
+`manage_investment_brain` or `manage_strategy` lifecycle tool. Research does
+not expose the model to the generated launcher or attached runtime. Every managed
+follow-up and every Automation run needs a fresh marker. The browser viewer
+cannot request one, subagents cannot inherit one, Plan mode blocks all of them,
+and Build, Brain, Strategy, and order markers must never be combined. Persistent
 `tcx mode` is retired and old `mode.json` state is ignored.
 
 ## High-Signal Source Files
@@ -93,7 +107,7 @@ and `$tcx-build` must never be combined with `$tcx-order-allow`. Persistent
 | `tradingcodex_service/application/components.py` | Harness component registry and maintenance ownership. |
 | `tradingcodex_service/application/agents.py` | Fixed roles, built-in skills, MCP allowlists, projection. |
 | `tradingcodex_service/application/analysis_runs.py` | Lightweight request-hash and sealed run-provenance bindings with no semantic plan or DAG. |
-| `tradingcodex_service/application/build_gateway.py` | Exact `$tcx-build` parsing, current-turn grant reservation, protected-call proof consumption, revocation, and audit. |
+| `tradingcodex_service/application/build_gateway.py` | Exact Build/Brain/Strategy marker parsing, capability-scoped current-turn grant reservation, protected-call proof consumption, revocation, and audit. |
 | `tradingcodex_service/application/investment_brains.py` | Strict Brain bundle registry, immutable local/Git versions, activation, and Head Manager-only projection. |
 | `tradingcodex_service/application/decision_packages.py`, `postmortems.py` | Sealed decisions, outcome-separated review, and lesson validation/promotion. |
 | `tradingcodex_service/application/workspace_git.py` | Generated-workspace Git and privacy-ignore contract without automatic repository actions. |
@@ -101,8 +115,8 @@ and `$tcx-build` must never be combined with `$tcx-order-allow`. Persistent
 | `tradingcodex_service/application/research_specs.py`, `forecasting.py` | Point-in-time research plans, method profiles, experiment runs, and forecast lifecycle. |
 | `tradingcodex_service/application/investment_analysis.py`, `evaluation_lab.py` | Method-bound causal valuation plus pristine and corpus-declared paired model-evaluation profiles. |
 | `tradingcodex_service/api.py` | Local/staff API surface. |
-| `tradingcodex_service/workbench_api.py`, `application/workbench.py` | Workbench snapshot/detail API and bounded analysis-only Codex runner. |
-| `frontend/` | React 19/TypeScript/Vite 8 source for Work, Approaches (`#/skills`), Research (`#/library`), and Settings (`#/system`). |
+| `tradingcodex_service/viewer_api.py`, `application/viewer.py` | Read-only selected-workspace snapshot and skill/artifact detail API. |
+| `frontend/` | React 19/TypeScript/Vite 8 source for Library (`#/library`), Skills (`#/skills`), System (`#/system`), and registered workspace selection. |
 | `tradingcodex_service/static/tradingcodex_web/` | Committed frontend output served by Django/WhiteNoise; do not hand-edit. |
 | `tradingcodex_service/web.py` | GET-only root SPA shell. |
 | `tradingcodex_service/mcp_runtime.py` | MCP tool registry, input validation, role visibility, call ledger behavior. |
@@ -113,9 +127,9 @@ and `$tcx-build` must never be combined with `$tcx-order-allow`. Persistent
 
 - Do not infer harness behavior from Python alone. Read docs, prompts, skills, hooks, policies, generated templates, services, and tests as one contract.
 - All durable service behavior belongs under `tradingcodex_service/application/` and should be reused by Web, Admin, API, MCP, CLI, and generated hooks.
-- The workbench may start the same generated `head-manager` through bounded
-  `codex exec`; Django does not select or directly spawn roles, and browser
-  origin never widens MCP, policy, approval, or execution authority.
+- The workspace viewer is read-only and starts no Codex process. Native Codex
+  owns Head Manager dispatch; browser origin never widens MCP, policy, approval,
+  or execution authority.
 - Node 22 is a maintainer frontend-build dependency only. The wheel and
   generated workspaces remain Node-free; attach/update never run npm.
 - Research artifacts and source snapshots are workspace-file-native, not Django research DB models.

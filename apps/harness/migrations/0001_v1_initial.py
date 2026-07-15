@@ -16,6 +16,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('grant_id', models.CharField(max_length=80, unique=True)),
+                ('authority_scope', models.CharField(choices=[('build', 'Build'), ('brain', 'Investment Brain'), ('strategy', 'Strategy')], default='build', max_length=32)),
                 ('status', models.CharField(choices=[('active', 'Active'), ('reserved', 'Reserved'), ('revoked', 'Revoked'), ('expired', 'Expired')], default='active', max_length=16)),
                 ('workspace_id', models.CharField(max_length=180)),
                 ('workspace_path_hash', models.CharField(max_length=64)),
@@ -36,8 +37,8 @@ class Migration(migrations.Migration):
                 ('metadata', models.JSONField(blank=True, default=dict)),
             ],
             options={
-                'verbose_name': 'Build turn grant',
-                'verbose_name_plural': 'Build turn grants',
+                'verbose_name': 'Workspace turn grant',
+                'verbose_name_plural': 'Workspace turn grants',
                 'ordering': ['-issued_at', '-id'],
                 'indexes': [models.Index(fields=['workspace_id', 'workspace_path_hash', 'session_id_hash', 'status'], name='harness_build_session_idx'), models.Index(fields=['expires_at', 'status'], name='harness_build_expiry_idx')],
                 'constraints': [models.UniqueConstraint(fields=('workspace_id', 'workspace_path_hash', 'session_id_hash', 'turn_id_hash'), name='unique_build_grant_per_turn'), models.UniqueConstraint(condition=models.Q(('status__in', ['active', 'reserved'])), fields=('workspace_id', 'workspace_path_hash', 'session_id_hash'), name='unique_active_build_grant_session')],

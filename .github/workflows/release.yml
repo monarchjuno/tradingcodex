@@ -51,7 +51,7 @@ jobs:
       - name: Install build and test dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]" build twine
+          python -m pip install -e ".[dev]" build twine uv
 
       - name: Validate release identity and publish ref
         env:
@@ -180,6 +180,9 @@ jobs:
         with:
           name: tradingcodex-${{ inputs.release_version }}
           path: dist/
+
+      - name: Install durable runtime provisioner
+        run: python -m pip install uv
 
       - name: Run native launcher, config, process, and service smoke
         run: python tests/platform_wheel_smoke.py --wheel-dir dist

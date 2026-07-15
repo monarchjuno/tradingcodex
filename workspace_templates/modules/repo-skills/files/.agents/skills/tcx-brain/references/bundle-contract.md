@@ -87,8 +87,8 @@ policy:
   allow_implicit_invocation: false
 ```
 
-The default prompt must name the exact Brain id. The Brain itself is always
-explicit-only even though the creator skill may be discoverable implicitly.
+The default prompt must name the exact Brain id. Both the projected Brain and
+the `tcx-brain` management entrypoint remain explicit-only.
 
 ## Review Checklist
 
@@ -101,14 +101,17 @@ explicit-only even though the creator skill may be discoverable implicitly.
   abstention limits.
 - No managed package, registry, projection, Decision Memory, or third-party
   source was edited.
-- No install, activation, Git, or publication action occurred.
+- No install, activation, Git, or publication action occurred during source
+  authoring.
 
 Run the non-mutating authoring check before handoff:
 
 ```text
-./tcx investment-brains validate --local investment-brains/<investment-brain-id>
+manage_investment_brain action=validate local_source=investment-brains/<investment-brain-id>
 ```
 
-Use `tcx.cmd` or `.\tcx.cmd` on native Windows. Validation must not install,
+The hook injects the required Brain-turn proof. The equivalent `./tcx
+investment-brains validate --local ...` (`tcx.cmd` on native Windows) is only a
+user-terminal fallback, not a model-shell path. Validation must not install,
 activate, project, or mutate the registry. Do not use installation as an
 authoring-time validation shortcut.

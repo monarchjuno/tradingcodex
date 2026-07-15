@@ -1,14 +1,14 @@
-export const SECTIONS = ["work", "skills", "library", "system"];
+export const SECTIONS = ["library", "skills", "system"];
 
 /** @param {string} hash */
 export function sectionFromHash(hash) {
   const value = hash.replace(/^#\/?/, "").split(/[/?]/, 1)[0].toLowerCase();
-  return SECTIONS.includes(value) ? value : "work";
+  return SECTIONS.includes(value) ? value : "library";
 }
 
 /** @param {string} section */
 export function hashForSection(section) {
-  return `#/${SECTIONS.includes(section) ? section : "work"}`;
+  return `#/${SECTIONS.includes(section) ? section : "library"}`;
 }
 
 /** @param {Array<unknown>} values @param {string} query */

@@ -7,36 +7,30 @@
   <img alt="Django" src="https://img.shields.io/badge/Django-5.2-092E20?logo=django&logoColor=white">
 </div>
 
-### The question is easy. Trusting the answer is the hard part.
+### Research in Codex, with a trail you can inspect.
 
-TradingCodex turns one investment question into a reviewable Codex workflow:
-specialist evidence, independent challenge, source and as-of metadata,
-uncertainty, and a report saved in your own workspace.
+TradingCodex is a local-first investment operating system for Codex. Ask a
+question in natural language, let a bounded fixed-role team gather and challenge
+evidence, then keep the resulting research, source posture, uncertainty, and
+next steps in your own workspace.
 
-**Ask naturally. Watch the team work. Keep the evidence.** Trading actions stay
-behind explicit policy, approval, idempotency, broker, and audit gates.
+It is not an autonomous trading bot. A research response never becomes a
+broker action on its own.
 
-[User guide](https://monarchjuno.github.io/tradingcodex/) · [Quick start](#quick-start) · [Run your first analysis](#run-your-first-analysis) · [See what you get](#what-you-get) · [Safety](#safety-you-do-not-have-to-remember) · [Docs](docs/README.md)
+[Get started](https://monarchjuno.github.io/tradingcodex/) · [All user-facing skills](docs/user-facing-skills.md) · [Provider to order](https://monarchjuno.github.io/tradingcodex/provider-to-order.html) · [Documentation](docs/README.md)
 
-## What You Get
+## Start Here
 
-| You do | TradingCodex does | You keep |
-| --- | --- | --- |
-| Ask in natural language or choose a built-in skill. | Seals lightweight run provenance, then lets Head Manager interpret the request. | The request hash, selected overlays, constraints, and run-local lineage. |
-| Follow the run in the local workbench. | Head Manager dynamically chooses and revises the smallest useful fixed-role team as evidence arrives. | Agent, tool, source, artifact, blocker, and forecast status. |
-| Review or challenge the result. | Requires source-aware artifacts and adds independent judgment review when the scope or evidence warrants it. | Markdown research, reports, source snapshots, forecasts, and follow-up history. |
+1. **Attach an empty workspace.** TradingCodex creates the local contract,
+   launcher, skills, hooks, and research folders without creating a commit or
+   remote.
+2. **Open a new native Codex task.** Start with the outcome you need, not with
+   a preselected analyst or agent.
+3. **Inspect the evidence.** Read saved artifacts in the read-only workspace
+   viewer, then continue, narrow the question, or stop.
 
-TradingCodex is local-first and Codex-native. It is not an autonomous trading
-bot, and a natural-language answer never becomes a broker action.
-
-## Quick Start
-
-You need Git, `uvx`, and an installed, authenticated `codex` CLI. Run this
-inside the empty workspace where you want your research files to live. Attach
-initializes a local Git repository only when the target is not already inside
-one; it never creates a commit or remote.
-
-macOS or Linux:
+You need Git, `uvx`, and an installed, authenticated `codex` CLI. In the empty
+folder where you want research to live, run:
 
 ```bash
 cd /path/to/your/empty-workspace
@@ -44,7 +38,7 @@ uvx --refresh --from tradingcodex tcx attach . && ./tcx doctor
 ./tcx service ensure
 ```
 
-Native Windows PowerShell:
+On native Windows PowerShell:
 
 ```powershell
 cd C:\path\to\your\empty-workspace
@@ -53,201 +47,111 @@ uvx --refresh --from tradingcodex tcx attach .
 .\tcx.cmd service ensure
 ```
 
-Open the workbench immediately at:
-
-```text
-http://127.0.0.1:48267/
-```
-
-To use the same workspace inside the Codex app, fully quit and restart Codex,
-open the generated workspace, trust the project, and start a new task so its
-project MCP config, prompts, skills, and hooks load together.
-
-The Python package already contains the compiled React workbench. End users do
-not need Node, npm, or a separate frontend server.
+Then fully restart Codex, open and trust that workspace, and start a new task.
+The local viewer is available at `http://127.0.0.1:48267/`. End users do not
+need Node, npm, or a separate frontend server.
 
 > [!IMPORTANT]
-> If a Codex agent is setting this up for you, give it the target workspace
-> directory. It must run `tcx attach` there, not clone this source repository.
-> Do not invent a workspace path; ask the user when no target was provided.
-> Clone the repository only for TradingCodex source development.
+> To set up a user workspace, use `tcx attach` in the target folder. Do not
+> clone this source repository into that workspace.
 
-For alternative installs, updates, runtime-home rules, and service recovery,
-see [installation.md](installation.md).
+## Choose Your Path
 
-## Run Your First Analysis
+| What you want to do | Start with | What happens next |
+| --- | --- | --- |
+| Investigate a company, thesis, event, portfolio fit, or risk question | [`$tcx-workflow`](https://monarchjuno.github.io/tradingcodex/research.html) | Head Manager chooses the smallest useful fixed-role team and returns evidence-backed artifacts or a clear waiting, revise, or blocked state. |
+| Make an ambiguous request concrete | [`$tcx-plan`](https://monarchjuno.github.io/tradingcodex/skill-plan.html) | Clarify scope, allowed actions, and stop conditions; use the resulting mandate in a new workflow task. |
+| Review a past decision or validate a lesson | [`$tcx-memory`](https://monarchjuno.github.io/tradingcodex/skill-memory.html) | Replay from point-in-time evidence and distinguish decision quality from outcome quality. |
+| Create a reusable method or reasoning framework | [`$tcx-strategy`](https://monarchjuno.github.io/tradingcodex/skill-strategy.html) or [`$tcx-brain`](https://monarchjuno.github.io/tradingcodex/skill-brain.html) | Start directly with the matching skill in the normal Research profile; its current-turn scope cannot grant execution authority or cross into generic Build work. |
+| Monitor work on a schedule | [`$tcx-automate`](https://monarchjuno.github.io/tradingcodex/skill-automate.html) | Create or update a Codex Scheduled Task that invokes the actual work skill on each run. |
+| Open the dashboard or recover a workspace | [`$tcx-dashboard`](https://monarchjuno.github.io/tradingcodex/skill-dashboard.html) or [`$tcx-server`](https://monarchjuno.github.io/tradingcodex/skill-server.html) | Open the read-only viewer inside Codex by default, request an external browser when needed, or receive a readiness check and safe recovery handoff. |
+| Connect a provider and prepare an order | [Provider to order](https://monarchjuno.github.io/tradingcodex/provider-to-order.html) | Keep provider setup, account sync, ticket creation, checks, approval, and final action as separate checkpoints. |
 
-1. Open **Work** in the local workbench.
-2. Enter a question or choose a built-in analysis skill.
-3. Review the proposed scope, exclusions, and blocked actions.
-4. Start the run and follow Head Manager's dynamic role choices, tools, sources,
-   artifacts, and quality gates.
-5. Read the saved report in **Library**, then ask a follow-up or rerun it.
+There are 13 user-facing skills. Browse their detailed behavior, examples, and
+boundaries in the [User Guide](https://monarchjuno.github.io/tradingcodex/skills.html).
 
-Try this:
+## Run Your First Research Task
 
-```text
-Analyze NVDA. Focus on business quality, price action, recent disclosures,
-and contrary evidence. No order, no trading, no valuation.
-```
-
-Head Manager interprets that request directly, begins a lightweight analysis
-run, and chooses the smallest useful fixed-role specialist or specialists. It
-reassesses the next role only after accepted artifacts arrive; no keyword router,
-default ticker team, or server-generated DAG fixes the sequence in advance.
-Because valuation and trading were excluded, valuation, order, approval, and
-execution remain out of scope.
-
-```mermaid
-flowchart LR
-  prompt[Your question] --> binding[Sealed run provenance]
-  binding --> dispatch[Dynamic exact-role dispatch]
-  dispatch --> evidence[Authenticated specialist evidence]
-  evidence --> reassess[Head Manager reassesses]
-  reassess --> report[Accepted saved report]
-  report --> followup[Follow up or rerun]
-```
-
-TradingCodex does not hide weak work behind a confident final answer:
-
-- `waiting` means required data or an artifact has not arrived.
-- `revise` means the owning specialist must fix the artifact.
-- `blocked` means evidence, scope, or policy prevents safe progress.
-- `accepted` means the artifact passed its handoff gate.
-
-## Start From What You Need
-
-You can usually start with plain language. Skills make repeated workflows more
-predictable without granting extra authority.
-
-| Your goal | Best entry |
-| --- | --- |
-| Research a company, event, instrument, thesis, portfolio fit, or risk question. | Ask naturally in **Work** or choose a built-in analysis skill; `tcx-workflow` guides Head Manager's dynamic run. |
-| Replay a past decision, compare outcomes, or validate a lesson. | Use `tcx-memory`; it keeps point-in-time replay, holdout, and live-forward evidence separate. |
-| Turn your investing rules into a reusable method. | Start a root turn with exact first line `$tcx-build`, then use `$tcx-strategy`; strategies shape analysis but cannot approve or execute orders. |
-| Curate selected decisions and counterexamples into your own local reasoning framework. | Start a root native Codex turn with the exact first line `$tcx-build`, then invoke `tcx-brain-create`; authoring does not install, activate, or publish the Brain. |
-| Set or disable workspace-specific investment objective, horizon, risk, or constraints. | Use `tcx-investor-context`; it manages an optional confirmed workspace file, not an account profile. |
-| Repeat research, monitoring, analysis, or another workflow on a schedule. | Use `tcx-automate` to create a Codex app Automation. Its complete saved prompt is submitted as a fresh root turn on every run; ordinary research needs no authority marker. |
-| Check why the service, MCP, DB, or workbench is unavailable. | Use `tcx-server` or run `./tcx doctor`. |
-| Build or validate a broker or data connector. | Start a root native Codex turn with the exact first line `$tcx-build`. It marks only that turn, cannot run in Plan mode, and needs `workspace-write` for native file edits. |
-
-See [User-facing skills](docs/user-facing-skills.md) for the complete entrypoint
-map and hard stops.
-
-## Prompts Worth Copying
-
-Research with an explicit boundary:
+In a new native Codex task, use the workflow skill and state both your desired
+outcome and the boundaries that must remain in force:
 
 ```text
+$tcx-workflow
 Analyze MSFT as a medium-term quality compounder. Separate facts, inferences,
 and assumptions. Include contrary evidence and invalidation conditions. No order.
 ```
 
-Challenge an existing thesis:
+The workflow begins a lightweight, workspace-bound run. Head Manager selects
+only the fixed-role specialists the question needs, reassesses from accepted
+artifacts, and either synthesizes the result or states why work is waiting,
+needs revision, or is blocked.
 
-```text
-Revisit my latest NVDA thesis. Focus on stale sources, the strongest contrary
-evidence, overconfidence risk, and what would change the conclusion. No trading.
+## How TradingCodex Is Organized
+
+| Layer | What it does | What it does not do |
+| --- | --- | --- |
+| **Native Codex task** | Interprets the request, runs Head Manager, and dynamically dispatches exact fixed-role specialists. | It does not turn ordinary prose into an order or use a generic agent to imitate a specialist. |
+| **Workspace** | Holds readable research, reports, source snapshots, skills, prompts, and lightweight run provenance. | It is not the portfolio, order, account, approval, or secret ledger. |
+| **Django service** | Enforces artifact identity, policy, approval, broker, idempotency, execution, and audit rules through shared application services. | It does not replace Codex with a semantic router, preset team, or stored workflow DAG. |
+| **Read-only viewer** | Lets you browse Library artifacts, Skills, System posture, and registered workspaces. | It does not launch Codex, write workspace files, or mutate orders, brokers, skills, or policy. |
+
+```mermaid
+flowchart LR
+  question[Your mandate] --> codex[Native Codex task]
+  codex --> team[Head Manager and fixed-role evidence]
+  team --> artifacts[Authenticated research artifacts]
+  artifacts --> viewer[Read-only Library and System viewer]
+  artifacts --> service[Policy, approval, broker, and audit gates]
 ```
 
-Review portfolio fit without jumping to an order:
+## What You Keep
 
-```text
-Review whether TSLA fits my current portfolio context. Cover concentration,
-liquidity, downside, and opportunity cost. Stop before order drafting.
-```
+TradingCodex keeps the work inspectable after the chat ends:
 
-Create a reusable strategy:
+- Research handoffs and evidence under `trading/research/`.
+- Role reports under `trading/reports/`.
+- Source snapshots, point-in-time posture, forecasts, and decision-memory
+  artifacts that explain what was known and when.
+- A read-only viewer with **Library**, **Skills**, and **System** sections for
+  the attached workspace.
 
-```text
-$tcx-build
-Use $tcx-strategy to define a quality-compounder strategy with explicit
-evidence requirements, disqualifiers, review cadence, and archive rules.
-```
+The workspace is yours to read, back up, diff, and version. The service keeps
+execution-sensitive runtime state in its central local ledger instead of hiding
+that state in prompts or workspace files.
 
-Curate a private local Investment Brain:
+## Safety by Design
 
-```text
-$tcx-build
-Use $tcx-brain-create to abstract the Decision Memory episodes and
-counterexamples I select into a local Brain draft. Review privacy first. Do not
-install, activate, commit, push, or publish it.
-```
+- Research, planning, memory, and automation do not imply broker authority.
+- Provider connection, ticket drafting, checks, risk approval, and final order
+  action are deliberately separate steps. The built-in provider is Paper; live
+  adapters remain blocked until every documented gate is satisfied.
+- Fixed roles have bounded tools and handoff responsibilities. A final order
+  path is available only from an exact root-native protocol, never from the
+  viewer, a subagent, public REST, generic CLI, or direct MCP call.
+- Raw credentials do not belong in prompts, workspace files, reports, API/MCP
+  output, or audit data.
 
-## Use The Workbench
-
-| Area | Use it for |
-| --- | --- |
-| **Work** | Start, preview, follow, revise, rerun, or continue an analysis. |
-| **Skills** | Browse and select built-ins; authenticated operators can also manage optional role skills and `strategy-*` strategies. |
-| **Library** | Read research, reports, source snapshots, versions, and forecasts. |
-| **System** | Check workspace, service, runtime, role, skill, permission, and MCP health. |
-
-Research memory remains ordinary workspace files, including content under
-`trading/research/`, `trading/reports/`, and `trading/forecasts/`. You can read,
-diff, back up, or version those files with normal tools instead of leaving the
-work trapped in a chat transcript.
-
-## Safety You Do Not Have To Remember
-
-- The workbench is analysis-only and cannot draft, approve, cancel, or execute
-  orders.
-- Paper execution is the default; live support requires a separately installed
-  and reviewed provider plus every service gate.
-- Fixed roles have separate tool, artifact, approval, and execution boundaries.
-- `judgment-reviewer` independently challenges evidence before synthesis.
-- Raw secrets do not belong in prompts, workspace files, reports, or audit
-  payloads.
-- External or host-global skills are not part of the TradingCodex baseline
-  unless you explicitly opt in.
-- Weak or out-of-scope work stops at `waiting`, `revise`, or `blocked` instead
-  of silently widening the workflow.
-
-TradingCodex is research, workflow, and execution-guardrail tooling. It is not
+TradingCodex provides research workflow and execution guardrails. It is not
 financial, investment, legal, tax, or regulatory advice, and it does not
-provide investment recommendations or guarantee returns.
-
-## Everyday Commands
-
-Run these from an attached workspace. On native Windows, substitute
-`.\tcx.cmd` for `./tcx`.
-
-| Command | Use it for |
-| --- | --- |
-| `./tcx doctor` | Check the complete generated workspace and service contract. |
-| `./tcx workspace status` | Inspect workspace identity and runtime provenance. |
-| `./tcx investor-context status` | Inspect the optional workspace suitability context and default application state. |
-| `./tcx skills list --all` | See built-in, optional, strategy, active, and archived skills. |
-| `./tcx subagents status` | Verify the fixed role roster and thread policy. |
-| `./tcx service ensure` | Start or reuse the compatible local workbench service. |
-
-Update an existing attached workspace with:
-
-```bash
-uvx --refresh --from tradingcodex tcx update . --from tradingcodex
-```
-
-Fully restart Codex after an attach or update so project MCP config, prompts,
-skills, and hooks reload together.
+guarantee returns.
 
 ## Learn More
 
 | Read this | When you need |
 | --- | --- |
-| [Installation](installation.md) | Install variants, updates, runtime homes, MCP, service startup, and smoke checks. |
-| [User-facing skills](docs/user-facing-skills.md) | The right entry skill and what each skill must not do. |
-| [Research memory and artifacts](docs/research-memory-and-artifacts.md) | Artifact paths, sources, versions, quality labels, forecasts, and exports. |
-| [Decision memory](docs/decision-memory.md) | Historical replay, postmortems, lesson validation, strategy snapshots, investor context, and Wiki/read-view boundaries. |
-| [Roles, skills, and workflows](docs/roles-skills-and-workflows.md) | The fixed team, handoffs, strategy overlays, and dispatch rules. |
-| [Safety policy and execution](docs/safety-policy-and-execution.md) | Permissions, approval, idempotency, broker, secret, and execution boundaries. |
-| [Interfaces and surfaces](docs/interfaces-and-surfaces.md) | Workbench, Admin, API, MCP, CLI, and generated launcher behavior. |
-| [Docs index](docs/README.md) | Every durable product and maintainer document. |
+| [User Guide](https://monarchjuno.github.io/tradingcodex/) | Setup, examples, concepts, all user-facing skills, and provider-to-order onboarding. |
+| [Installation](installation.md) | Install variants, updates, runtime homes, MCP/service startup, and recovery. |
+| [User-facing skills](docs/user-facing-skills.md) | The full skill map, entry rules, and hard stops. |
+| [Research memory and artifacts](docs/research-memory-and-artifacts.md) | Artifact paths, source posture, versions, quality labels, forecasts, and exports. |
+| [Decision memory](docs/decision-memory.md) | Replay, postmortems, lesson validation, and reusable context. |
+| [Safety policy and execution](docs/safety-policy-and-execution.md) | Permissions, approvals, brokers, secrets, and execution boundaries. |
+| [Documentation index](docs/README.md) | The complete product and maintainer documentation map. |
 
 ## Developing TradingCodex
 
-This repository is the product source, not a user workspace. Start with
-[CONTRIBUTING.md](CONTRIBUTING.md), then use the validation route for the area
-you change in [docs/validation-and-test-plan.md](docs/validation-and-test-plan.md).
+This repository is product source, not a user workspace. Start with
+[CONTRIBUTING.md](CONTRIBUTING.md), then follow the validation route for your
+change in [docs/validation-and-test-plan.md](docs/validation-and-test-plan.md).
 
 ## License
 

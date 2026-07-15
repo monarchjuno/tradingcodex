@@ -14,12 +14,15 @@ from tradingcodex_service.application.build_gateway import (
     BUILD_OPERATOR_ONLY_MCP_TOOLS,
     BUILD_PROTECTED_MCP_TOOLS,
     BUILD_TURN_PROOF_FIELD,
+    MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES,
     BuildInvocationError,
     authorize_local_build_tool,
     begin_reserved_build_turn_use,
     finish_reserved_build_turn_use,
     issue_build_turn_grant,
+    issue_managed_skill_turn_grant,
     parse_build_invocation,
+    parse_managed_skill_invocation,
     reserve_build_turn_use,
     revoke_build_turn_grants,
 )
@@ -44,6 +47,10 @@ EXPECTED_OPERATOR_ONLY_MCP_TOOLS = frozenset(
         "review_external_mcp_tool",
     }
 )
+EXPECTED_MANAGED_MCP_TOOL_SCOPES = {
+    "manage_investment_brain": "brain",
+    "manage_strategy": "strategy",
+}
 
 
 @pytest.fixture
@@ -98,6 +105,53 @@ def test_build_parser_accepts_only_the_exact_physical_first_line() -> None:
     for prompt in malformed:
         with pytest.raises(BuildInvocationError):
             parse_build_invocation(prompt)
+
+
+@pytest.mark.parametrize(
+    ("marker", "scope"),
+    [("$tcx-brain", "brain"), ("$tcx-strategy", "strategy")],
+)
+def test_managed_skill_parser_and_grant_are_exact_and_capability_scoped(
+    workspace: Path,
+    marker: str,
+    scope: str,
+) -> None:
+    prompt = f"{marker}\nPerform the requested managed action."
+    assert parse_managed_skill_invocation(prompt) == scope
+    assert parse_build_invocation(prompt) is None
+    result = issue_managed_skill_turn_grant(
+        workspace,
+        prompt,
+        session_id=f"{scope}-session",
+        turn_id=f"{scope}-turn",
+        cwd=workspace,
+        permission_mode="trading-research",
+    )
+    assert result is not None
+    assert result["marker"] == "tradingcodex-managed-skill-turn-grant"
+    assert result["authority_scope"] == scope
+    assert result["entrypoint"] == marker
+
+    grant = workspace_grants(workspace).get()
+    assert grant.authority_scope == scope
+    assert grant.metadata["entrypoint"] == marker
+
+    with pytest.raises(PermissionError, match="cannot authorize"):
+        authorize_local_build_tool(
+            workspace,
+            f"{scope}-session",
+            f"{scope}-turn",
+            "wrong-scope-tool",
+            "exec_command",
+            {"cmd": "./tcx doctor"},
+            permission_mode="trading-research",
+            required_scope="build",
+        )
+
+    with pytest.raises(BuildInvocationError):
+        parse_managed_skill_invocation(f"{marker} now\nPerform the requested managed action.")
+    with pytest.raises(BuildInvocationError):
+        parse_managed_skill_invocation(f"{marker}\n$tcx-build\nPerform the action.")
 
 
 def test_issue_requires_cwd_and_binds_only_hashed_turn_inputs(workspace: Path) -> None:
@@ -757,6 +811,128 @@ def test_stdio_mcp_build_tools_require_and_consume_the_hook_proof(workspace: Pat
     ).latest("id")
     assert BUILD_TURN_PROOF_FIELD not in json.dumps(ledger.request, sort_keys=True)
     assert proof not in json.dumps(ledger.request, sort_keys=True)
+
+
+def test_managed_skill_mcp_tools_are_scope_bound_and_consume_proof(workspace: Path) -> None:
+    from apps.harness.models import BuildTurnGrant
+    from tradingcodex_service.mcp_runtime import call_mcp_tool
+
+    assert MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES == EXPECTED_MANAGED_MCP_TOOL_SCOPES
+    body_path = workspace / "strategy-permission-smoke.draft.md"
+    body_path.write_text("# Permission Smoke\n\n## Thesis\n\nDraft only.\n", encoding="utf-8")
+    strategy_prompt = "$tcx-strategy\nCreate strategy-permission-smoke as a draft."
+    issued = issue_managed_skill_turn_grant(
+        workspace,
+        strategy_prompt,
+        session_id="strategy-mcp-session",
+        turn_id="strategy-mcp-turn",
+        cwd=workspace,
+        permission_mode="trading-research",
+    )
+    assert issued is not None and issued["authority_scope"] == "strategy"
+
+    args = {
+        "action": "create",
+        "name": "strategy-permission-smoke",
+        "description": "Permission-scoped Strategy smoke test.",
+        "body_path": body_path.name,
+        "language": "en",
+        "status": "draft",
+    }
+    with pytest.raises(PermissionError, match=r"\$tcx-brain"):
+        reserve_build_turn_use(
+            workspace,
+            "strategy-mcp-session",
+            "strategy-mcp-turn",
+            "wrong-managed-scope",
+            "manage_investment_brain",
+            {"action": "list"},
+            permission_mode="trading-research",
+        )
+    proof = reserve_build_turn_use(
+        workspace,
+        "strategy-mcp-session",
+        "strategy-mcp-turn",
+        "strategy-managed-tool",
+        "manage_strategy",
+        args,
+        permission_mode="trading-research",
+    )
+    result = call_mcp_tool(
+        workspace,
+        "manage_strategy",
+        {**args, BUILD_TURN_PROOF_FIELD: proof},
+        transport_principal="head-manager",
+    )
+    assert result["action"] == "create"
+    assert result["record"]["name"] == "strategy-permission-smoke"
+    assert result["record"]["status"] == "draft"
+    strategy_grant = workspace_grants(workspace).get(authority_scope="strategy")
+    assert strategy_grant.status == BuildTurnGrant.STATUS_ACTIVE
+    assert strategy_grant.use_count == 1
+    assert strategy_grant.reservation_proof_hash == ""
+
+    brain_prompt = "$tcx-brain\nList the managed Investment Brains."
+    issued = issue_managed_skill_turn_grant(
+        workspace,
+        brain_prompt,
+        session_id="brain-mcp-session",
+        turn_id="brain-mcp-turn",
+        cwd=workspace,
+        permission_mode="trading-research",
+    )
+    assert issued is not None and issued["authority_scope"] == "brain"
+    brain_args = {"action": "list"}
+    brain_proof = reserve_build_turn_use(
+        workspace,
+        "brain-mcp-session",
+        "brain-mcp-turn",
+        "brain-managed-tool",
+        "manage_investment_brain",
+        brain_args,
+        permission_mode="trading-research",
+    )
+    brain_result = call_mcp_tool(
+        workspace,
+        "manage_investment_brain",
+        {**brain_args, BUILD_TURN_PROOF_FIELD: brain_proof},
+        transport_principal="head-manager",
+    )
+    assert brain_result["action"] == "list"
+    assert brain_result["records"] == []
+
+
+def test_managed_brain_mcp_rejects_private_git_sources_before_network(workspace: Path) -> None:
+    from tradingcodex_service.mcp_runtime import call_mcp_tool
+
+    issue_managed_skill_turn_grant(
+        workspace,
+        "$tcx-brain\nValidate the explicitly selected public source.",
+        session_id="brain-private-source-session",
+        turn_id="brain-private-source-turn",
+        cwd=workspace,
+        permission_mode="trading-research",
+    )
+    args = {
+        "action": "validate",
+        "git_source": "https://127.0.0.1/private/brain.git",
+    }
+    proof = reserve_build_turn_use(
+        workspace,
+        "brain-private-source-session",
+        "brain-private-source-turn",
+        "brain-private-source-tool",
+        "manage_investment_brain",
+        args,
+        permission_mode="trading-research",
+    )
+    with pytest.raises(ValueError, match="public host"):
+        call_mcp_tool(
+            workspace,
+            "manage_investment_brain",
+            {**args, BUILD_TURN_PROOF_FIELD: proof},
+            transport_principal="head-manager",
+        )
 
 
 def test_completed_protected_call_is_revoked_if_normal_finish_fails(

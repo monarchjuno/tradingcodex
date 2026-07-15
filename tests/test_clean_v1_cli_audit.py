@@ -217,20 +217,25 @@ def test_native_agent_shell_blocks_role_impersonation_and_state_mutation_cli(tmp
         "./tcx connectors status",
         "./tcx mcp external list",
         "./tcx postmortem list",
-        "rg revenue trading/research trading/reports",
-        "sed -n '1,80p' trading/research/note.md",
-        "rg tradingcodex-home trading/research/note.md",
     )
     for command in blocked:
         result = _native_pre_tool(workspace, command)
         assert json.loads(result.stdout)["decision"] == "block", command
+
+    sandbox_enforced_artifact_reads = (
+        "rg revenue trading/research trading/reports",
+        "sed -n '1,80p' trading/research/note.md",
+        "rg tradingcodex-home trading/research/note.md",
+    )
+    for command in sandbox_enforced_artifact_reads:
+        assert _native_pre_tool(workspace, command).stdout == "", command
 
     protected_reads = (
         'rg -n "record_workflow_plan|unknown canonical universe|selected_roles|planner_rationale" .tradingcodex .agents -S',
         "rg needle ./.codex/",
         "grep -R needle ../workspace_templates",
         "find ../workspace/.tradingcodex -type f",
-        "sed -n '1,80p' tradingcodex_service/application/workbench.py",
+        "sed -n '1,80p' tradingcodex_service/application/viewer.py",
         "rg needle tradingcodex_cli",
         "type .codex\\agents\\fundamental-analyst.toml",
         "rg needle '.tradingcodex",

@@ -23,7 +23,7 @@ Run after broad Python migration, package, or import-structure changes:
 python -m compileall tradingcodex_cli tradingcodex_service apps tests
 ```
 
-Run after frontend or workbench UI changes:
+Run after frontend or viewer UI changes:
 
 ```bash
 npm ci --prefix frontend
@@ -78,35 +78,17 @@ Unit tests should cover:
   invocation metadata, fixed-role non-projection, and no duplicate Postmortem
   root entrypoint
 - investor-context file validation, on-demand creation, file-only reads,
-  enable/disable, native saved-default application, Workbench-only one-run
-  override binding, content hashing, privacy limits, and compact
+  enable/disable, native saved-default application, content hashing, privacy limits, and compact
   task-appropriate application
 - decision-memory evidence-origin and lesson-state validation, strategy/context
   snapshot binding, point-in-time replay cutoff enforcement, and separate
   historical-holdout versus live-forward reporting
-- workbench request validation rejects all three reserved native execution
-  tokens, order drafting, approval, execution, cancellation, broker mutation,
-  and secret handling before process launch
-- workbench subprocess construction uses a fixed argv, `shell=False`, a vetted
-  attached-workspace cwd, a project-wide read-only filesystem sandbox,
-  `approval_policy="never"`, disabled command
-  networking/unified-exec/browser/computer/app/image features, forced hooks,
-  ignored user config, full generated config/prompt/core-skill validation, and a
-  stripped secret-like environment
-- workbench PreToolUse fails closed, blocks shell/file/external MCP and
-  connector/order/execution tools, and allows `begin_analysis_run` plus the
-  explicit analysis-only artifact/research MCP set
-- workbench event normalization exposes only allowlisted redacted agent, tool,
-  source, artifact, and terminal state; raw reasoning, tool payloads, stderr, and
-  raw final output are neither stored nor returned
-- one active process per run, stored-thread follow-up resume, missing/failed PID
-  recovery, cross-worker claims, service-owned resume authority, child reaping,
-  fixed 30-minute initial/resumed-run timeout, timeout event and failed metadata,
-  and the documented absence of user-triggered cancellation in this slice
-- preview and start use the same skill-expanded prompt, public run files reject
-  symlink escapes, and final synthesis requires the sealed analysis-run binding,
-  authenticated artifact receipts, verified body and input hashes, accepted
-  handoff state, and the applicable strict quality gate
+- viewer snapshots accept only registered, current attached workspaces; invalid
+  or stale ids fail without fallback
+- viewer routes are GET-only, old workbench routes are absent, and no browser
+  endpoint launches, resumes, or supervises Codex
+- viewer skill and artifact detail use sanitized previews and never return raw
+  reasoning, tool payloads, stderr, or secret-bearing state
 - research allowed roots reject symlinks; MCP artifact identity is transport-
   principal-bound; run-local input dependencies cannot be skipped; authenticated
   receipts must match the current artifact bytes and sealed run lineage
@@ -124,6 +106,10 @@ API/Admin tests should cover:
   calls remain independent of CSRF
 - role-authored Ninja mutations reuse MCP role/capability/principal binding;
   cross-role synthesis-artifact or run-lineage forgeries leave no accepted file
+- accepted run-bound artifact writes validate the exact intended Markdown bytes
+  before receipt or stable publication; malformed structured follow-ups or
+  missing strict-quality fields leave neither file nor receipt, while synthesis
+  rejects authenticated `revise`, `blocked`, and `waiting` inputs
 - a CSRF-valid staff session whose username collides with an agent principal id
   still cannot call role-authored Ninja mutations
 - harness component endpoints expose the static component registry and return 404 for unknown component ids
@@ -139,17 +125,26 @@ API/Admin tests should cover:
 - stdio bridge returns valid MCP messages and writes no non-MCP stdout
 - Broker Center and order-ticket API endpoints expose read/status/draft/check
   behavior without bypassing approval or approved action gates
-- workbench snapshot/detail GETs remain read-only, while only scope-preview,
-  run-start, and follow-up POSTs permit valid-CSRF local-profile loopback use without staff/API
-  credentials
-- remote workbench POSTs still require staff/API credentials, and every other
-  anonymous loopback mutation remains denied
+- viewer snapshot/detail GETs remain read-only and POST returns method-not-allowed
+- old `/api/workbench/` routes return 404 and every anonymous loopback mutation
+  remains denied
 - Django Admin continues to use default registration and templates after the
   React cutover
 
 ## Generated Workspace Smoke Tests
 
 Run after template/bootstrap behavior changes:
+
+```bash
+python -m pytest tests/test_dev_bootstrap.py -q
+```
+
+These focused tests cover `--dev` source provenance, checkout-scoped home and
+service-address derivation, preservation during dev update, release-workspace
+conversion rejection, generated service-address defaults, and POSIX installer
+forwarding.
+
+Then run the full disposable-workspace contract:
 
 ```bash
 SOURCE_ROOT="$(pwd)"
@@ -165,6 +160,8 @@ cd "$SMOKE_ROOT/workspace"
 ./tcx workspace status
 ./tcx investor-context status
 ./tcx skills list --all
+cd "$SOURCE_ROOT"
+python tests/codex_cli_contract.py --workspace "$SMOKE_ROOT/workspace" --require-reference
 ```
 
 Smoke coverage should verify:
@@ -176,11 +173,14 @@ Smoke coverage should verify:
 - generated workspace contains `.tradingcodex/workspace.json`
 - generated workspace contains `.tradingcodex/generated/component-index.json`
 - generated workspace contains no `package.json` or Node MCP/runtime files
-- generated workspace contains nine fixed subagents and 30 protected bundled
+- generated workspace contains nine fixed subagents and 31 protected bundled
   repo skills, including all three explicit-only native execution bundles and
   no retired execution role or skill
 - generated `.codex/config.toml` enables live web search for pristine public
   research without treating a host finance skill as a dependency
+- generated `.codex/config.toml` explicitly enables MultiAgent V2, reports it
+  enabled through `codex features list`, uses seven session threads, and omits
+  the incompatible V1 `agents.max_threads` key
 - skill/projection manifests identify the finite managed inventory, declare
   runtime discovery incomplete, and resolve exact root/role skill paths
 - two generated workspaces have different workspace ids
@@ -216,7 +216,8 @@ same clean-wheel helper on native macOS and Windows. The helper uses
 `tempfile`, a space-containing wheel path and workspace, parses root plus all
 role TOML and generated YAML/JSON, runs `tcx` on POSIX or `tcx.cmd` on Windows,
 executes doctor/DB/hook/MCP/external-MCP smokes, and proves local service
-ensure/status/stop. It also loads `/` and the packaged
+ensure/status/stop on the release-default loopback port, or the next available
+non-ephemeral product-range port. It also loads `/` and the packaged
 content-hashed JavaScript and CSS under
 `/static/tradingcodex_web/assets/` from the clean wheel without installing or
 invoking Node. A feature is not described as native-Windows verified until
@@ -351,7 +352,7 @@ hook proof can submit or cancel, if raw public MCP/API surfaces expose
 submit/cancel/refresh mutations, if a retired execution role or skill remains
 projected, if raw broker APIs appear in Codex MCP config, if connector-only work
 attempts an execution dispatch, or if the hook routes a secret-only prompt into
-execution. Also fail if a malformed, Workbench, or subagent native-action
+execution. Also fail if a malformed or subagent native-action
 prompt reaches the service; if a valid exact immediate action begins an
 analysis run or spawns a role; or if an exact `$tcx-order-allow` turn can perform
 more than one protected effect, survive the turn, or bypass canonical gates.
@@ -381,19 +382,27 @@ Scenarios should include:
   grant decision rather than inheriting authority from an enabled task
 - connector build prompts start with the exact physical first line `$tcx-build`,
   remain in the root native turn, and do not dispatch investment subagents
-- missing, malformed, later-line, Workbench, or subagent `$tcx-build` markers
+- missing, malformed, later-line, or subagent `$tcx-build` markers
   cannot mint or use a Build grant; every mutating follow-up needs a fresh exact
   first line
 - Build grants are bound to workspace/session/turn/cwd/prompt, protected MCP
   proofs are one-time, an unstarted reservation lease releases after two
   minutes, service-started revocation is deferred until finish, and the grant
   never widens the actual Codex sandbox
+- exact first-line `$tcx-brain` and `$tcx-strategy` prompts issue separate
+  `brain` and `strategy` scopes in `trading-research`; each admits only its own
+  canonical native source/staging path and injects proof only into
+  `manage_investment_brain` or `manage_strategy`; Research runtime/launcher
+  access remains denied, Build cannot substitute for either, mixed markers and
+  cross-scope commands fail, and Plan/subagent contexts remain blocked
 - External MCP lifecycle/consent and provider-source approval reject agent MCP,
   agent shell, and noninteractive terminal callers; an unapproved or changed
   workspace provider is never imported by provider listing or connector status
 - recurring Build Automation works only when its saved prompt deliberately
   starts with `$tcx-build`; each run is re-evaluated and the marker is never
-  combined with `$tcx-order-allow`
+  combined with another managed or order marker; recurring Brain/Strategy
+  management starts directly with its matching exact skill marker in
+  `trading-research`
 - retired `tcx mode` state and old `.tradingcodex/runtime/mode.json` files are
   inert, including malformed or symlinked legacy files
 - explicit prohibitions such as "no order" remain binding without a
@@ -415,7 +424,7 @@ Scenarios should include:
 - native strategy binding accepts one exact explicit `$strategy-*` invocation,
   rejects ambiguous multiple invocations, never infers from a plain-language
   strategy name, and records `no_strategy` when no token is present
-- native and Workbench strategy selection seal the validated active strategy's
+- native strategy selection seals the validated active strategy's
   exact bytes under the run directory and bind its snapshot path and hash
 - explicit Decision Memory prompts retrieve, replay, review, or validate without
   creating a server workflow plan; current-decision use records an independent
@@ -427,19 +436,15 @@ Scenarios should include:
 - when both valuation and portfolio fit are material, Head Manager obtains the
   owning role artifacts in an evidence-dependent order and preserves their
   distinct boundaries
-- the workbench starts from natural language or a safe built-in analysis skill
-  and displays dynamically chosen agents, normalized tool activity, sources, artifacts,
-  waiting/blocked/failed state, and the accepted final analysis
-- a fake `codex` executable proves argv/cwd/environment construction, normalized
-  JSONL handling, one-active-process enforcement, and stored-thread follow-up
-  without network or model dependence
-- workbench run setup reuses enabled workspace investor context and only asks
-  unanswered suitability questions
+- native Codex starts from natural language or an exact built-in analysis skill
+  and produces source-bound artifacts and accepted synthesis
+- the viewer displays Library, Skills, and System for the selected registered
+  workspace and exposes no prompt or process controls
 - starter-prompt next allowed actions distinguish unanswered, partially
   answered, disabled, and complete workspace investor context
 - explicit investor-context updates persist to the workspace Markdown file;
   enable/disable changes the default, native run binding follows that default,
-  and a Workbench-only one-run apply/ignore choice leaves it unchanged
+  while the viewer offers no one-run override
 - Codex `UserPromptSubmit` generated hooks keep transport/run hints under budget
   and never classify meaning or choose roles; `begin_analysis_run` seals enabled
   workspace Investor Context and an exact explicitly invoked `$strategy-*`
@@ -449,15 +454,25 @@ Scenarios should include:
   a stale session binding
 - unavailable or unverified subagent routing fails closed without a generic
   spawn, role-TOML/source-code emulation, or an empty wait
-- unavailable or unauthenticated Codex CLI reports a workbench run blocker
-  without corrupting workflow state
-- workbench requests for orders, approval, execution, cancellation, broker
-  mutation, or secrets are rejected before subprocess launch
+- unavailable or unauthenticated native Codex does not affect viewer readability
+  or corrupt workflow state
 - completed role artifacts are reused when quality gates pass
-- Head Manager and every fixed role run in the same actual read-only sandbox,
-  final role reports use authenticated MCP only, and the service derives
+- Head Manager and every fixed role inherit the actual `trading-research`
+  profile, general shell/Python, credential-free public retrieval, and ordinary
+  user-owned file writes outside `trading/` work, protected
+  `trading/`/control/runtime/DB/credential/local-network access fails, final role
+  reports use authenticated MCP only, and the service derives
   producer identity, run/Brain lineage, schema, dependency, content, and receipt
   hash fields
+- generated root config selects `trading-research`, defines both native
+  profiles, forwards only the shell environment allowlist, and contains no
+  legacy `sandbox_mode`; fixed-role TOML also contains no sandbox override
+- Research-profile native smoke proves ordinary user-owned workspace writes,
+  dedicated scratch writes, and a credential-free public fetch work while
+  `trading/` writes, generated control-file writes, `.env`, TradingCodex
+  home/DB/runtime, local loopback, and Unix-socket access fail; Build-profile
+  smoke proves controlled connector writes and workspace-local Python/tests work
+  while network and the same protected paths fail
 - head-manager does not inspect schemas, generated indexes, role TOML, source,
   or CLI runtime paths to reconstruct bindings and does not file-edit workflow
   state or role artifacts; synthesis id/path/input hashes are service-derived
@@ -478,6 +493,9 @@ Scenarios should include:
   source/as-of posture, `context_summary`, material claim tags, handoff state,
   confidence, missing-evidence fields, next-recipient routing, blocked actions,
   or source snapshot metadata
+- accepted run-bound writes apply that same strict contract before publication,
+  including structured `follow_up_requests` and `improvements`; tests assert a
+  rejected write cannot create a stable artifact or service receipt
 - `tcx quality-check <artifact> --strict` validates
   `trading/forecasts/*.jsonl` forecast records and fails malformed probability
   ranges, missing resolution fields, or invalid open/closed status
@@ -508,7 +526,7 @@ Scenarios should include:
 - MCP `tools/list` exposes both TradingCodex custom annotations and standard
   MCP hints such as `readOnlyHint`, `destructiveHint`, `idempotentHint`, and
   `openWorldHint`
-- authenticated workbench additional-agent-instruction edits are saved as-is, projected
+- authenticated API additional-agent-instruction edits are saved as-is, projected
   after generated defaults but before the immutable core/extension footer, and
   removable without leaving stale marker blocks
 - clean-host and populated-host Codex smokes compare the same pristine request;
@@ -522,51 +540,68 @@ Scenarios should include:
 
 Harness taxonomy checks should confirm:
 
-- product web opens on Work and keeps Approaches, Research, and Settings available
-  under the stable skill/library/system hash routes with readable, sanitized
-  artifact previews
+- product web opens on Library and keeps Skills and System available under the
+  stable hash routes with readable, sanitized artifact previews
 - Guardrails are split into Guidance, Enforcement, and Information barriers
 - Improvement is separate from Guardrails
 - `tcx doctor --layer improvement` runs the quality/workflow checks
 
-## Browser And Workbench Verification
+## Browser And Viewer Verification
 
-After the frontend build and focused API/process tests pass, use a real browser
-against `127.0.0.1:48267` and verify:
+After the frontend build and focused GET API tests pass, start the generated
+workspace with `./tcx service ensure`, read its URL from
+`./tcx service status --json`, and use a real browser against that exact URL.
+The release default is `127.0.0.1:48267`; development workspaces normally use
+their checkout-scoped projected address. Verify:
 
 - desktop and narrow responsive layouts without hidden primary actions or
   horizontal content loss
-- compose and selected-run modes never render together; completed synthesis is
-  above supporting artifacts and the collapsed research-activity disclosure
-- Research and Approaches use a list-or-detail transition at narrow widths with
+- Library and Skills use a list-or-detail transition at narrow widths with
   a visible Back action and no stale detail body during selection changes
 - keyboard-only section navigation, visible focus, labeled controls, and
   logical focus after section changes, detail transitions, dialogs/errors, and
-  `Ctrl/Cmd+K` new-analysis focus
-- first-run, empty library, loading, streaming/progress, waiting, blocked,
-  missing-data, Codex-unavailable, failed, and completed states
-- natural-language and safe built-in-skill starts, live agent/tool/source/artifact
-  visibility, final forecast uncertainty, and follow-up resume
-- authenticated optional-skill and strategy management plus read-only behavior
-  when not authenticated
+  workspace and section changes
+- empty library, loading, invalid-workspace, missing-data, and partial-section
+  failure states
+- registered-workspace switching at desktop and narrow widths, with no arbitrary
+  path input or silent fallback
+- Skills and extensions remain inspect-only and native Codex guidance is clear
 - no browser console errors, unsanitized workspace HTML, raw reasoning, raw tool
   payloads, stderr, or secrets
 - Django Admin still renders and behaves as the default Admin surface
 
-When Codex CLI and authentication are available, run one real workbench-started
-analysis smoke in a disposable generated workspace. It must load the generated
+When Codex CLI and authentication are available, run one real native analysis
+smoke in a disposable generated workspace. It must load the generated
 `head-manager`, preserve explicit prohibitions, dispatch only roles dynamically
-justified by the mandate and accepted evidence, surface normalized progress,
-write accepted artifacts, and stop without an
-order, approval, execution, cancellation, broker mutation, or secret action.
-Record an unavailable Codex/auth blocker rather than replacing this with a
+justified by the mandate and accepted evidence, write accepted artifacts, and
+stop without an order, approval, execution, cancellation, broker mutation, or
+secret action. Record an unavailable Codex/auth blocker rather than replacing this with a
 claim based only on the fake subprocess test.
+
+Reference acceptance uses Codex CLI 0.144.4. Run
+`python tests/codex_cli_contract.py --workspace <workspace>
+--require-reference --require-hook-trust` first, after opening the disposable
+workspace in interactive Codex and persistently trusting all eight generated
+hooks in a dedicated maintainer `CODEX_HOME`. The preflight requires the exact
+reference version, strict Codex config loading, locally consistent MCP
+configuration, readable sandbox settings, the expected enabled/disabled
+feature states, and trusted lifecycle hooks. Native `codex exec` smokes must
+also pass `--strict-config`, so a newly unknown or removed project key fails
+before model behavior is accepted. Do not use `--ignore-user-config` or
+`--dangerously-bypass-hook-trust` for lifecycle acceptance: in 0.144.4 the
+one-run bypass is not inherited when a V2 child reloads an exact role config.
+On platforms where a temporary directory has a symlinked alias, resolve the
+workspace once with `realpath` or `Path.resolve()` and use that same physical
+path for interactive hook review, the contract preflight, and every native
+run. Hook trust is bound to the hook source path and current hash; mixing, for
+example, `/var/...` and `/private/var/...` makes a correctly reviewed hook
+appear untrusted.
 
 Run a second native CLI dispatch smoke that inspects the actual JSONL tool call
 and child hook audit. The parent must select its chosen role through exact
 `agent_type`, pass compact context without a full-history fork, and the child
 must load the role's projected model, reasoning effort, principal, and the same
-actual project-wide read-only sandbox. Require `fork_turns="none"`, no model or
+actual project-wide `trading-research` profile. Require `fork_turns="none"`, no model or
 reasoning override, and no `followup_task`. Run a sequential two-spawn smoke as
 well as one full artifact-to-synthesis workflow because V2 lifecycle failures
 can appear only after the first child finishes. Also run the same request with

@@ -4,8 +4,8 @@ TradingCodex is distributed as the `tradingcodex` Python package on PyPI. The
 installed command is `tcx`.
 
 The package contains the CLI, Django service plane, generated workspace
-templates, Django Admin, MCP gateway, and the committed React workbench build.
-Django and WhiteNoise serve the workbench. End users and generated workspaces
+templates, Django Admin, MCP gateway, and the committed React viewer build.
+Django and WhiteNoise serve the viewer. End users and generated workspaces
 do not need Node or npm.
 
 ## v1 Release Contract
@@ -48,10 +48,9 @@ and review gates in [release-readiness.md](./release-readiness.md).
 
 `local` is the default desktop profile. It may use the packaged development
 secret and `DEBUG=True` only because `tcx service` refuses to bind it outside
-loopback (`127.0.0.1`, `::1`, or `localhost`). Local anonymous HTTP access is
-read-only except for the documented analysis-only workbench preview, start, and
-follow-up requests with valid loopback CSRF. Other mutations require a bound API
-principal/key or an authenticated staff session.
+loopback (`127.0.0.1`, `::1`, or `localhost`). Local anonymous HTTP viewer
+access is read-only. Mutations require a bound API principal/key or an
+authenticated staff session on their canonical non-viewer surfaces.
 
 `remote` is an explicit operator-managed hardening profile. Before a
 non-loopback bind, all of these environment-backed settings are mandatory:
@@ -81,12 +80,11 @@ the backend listener private. Invalid remote settings fail before binding.
   consume readiness rather than treating a reachable process as ready.
 - service logs rotate at 5 MiB with three backups by default.
 - external MCP stderr rotates separately at 1 MiB with two backups.
-- persisted logs and normalized workbench events redact known secrets,
-  authorization values, credential-shaped fields, and URL user-info.
+- persisted logs redact known secrets, authorization values,
+  credential-shaped fields, and URL user-info.
 
-Workbench Codex subprocesses use fixed arguments, exact generated configuration,
-bounded features, redacted event retention, one active process per run, and a
-fixed 30-minute elapsed timeout. Browser origin never widens role, MCP, policy,
+The browser is a read-only workspace viewer. It has no Codex subprocess,
+preview, run, follow-up, or mutation route and never widens role, MCP, policy,
 approval, broker, or execution authority.
 
 ## Versioning
@@ -187,7 +185,7 @@ publisher. No job rebuilds the distribution after verification.
 The public user guide is a static documentation site under `guidebook/`. It
 uses a documentation-first layout with section navigation, a reading column,
 and a local table of contents. Its task-first content covers setup, copy-ready
-prompts, workbench use, reusable skills, and everyday recovery. The detailed
+prompts, workspace viewing, reusable skills, and everyday recovery. The detailed
 product rules remain canonical in `README.md`, `installation.md`, and `docs/`;
 the guide links back to those sources rather than replacing them.
 

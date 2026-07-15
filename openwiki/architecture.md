@@ -19,7 +19,7 @@ and runtime subsystem, not a synonym for the whole product.
 | Plane | Owns | Primary source |
 | --- | --- | --- |
 | Codex control plane | `head-manager`, nine fixed subagent TOMLs, skills, prompts, hooks, project MCP config, and exact root-native action interception | `workspace_templates/modules/*/files` |
-| Django service plane | policy, orders, approvals, portfolio, audit, broker/integration state, API, MCP, React asset serving, bounded workbench process supervision, Admin | `tradingcodex_service/application/`, `apps/` |
+| Django service plane | policy, orders, approvals, portfolio, audit, broker/integration state, API, MCP, read-only React asset serving, Admin | `tradingcodex_service/application/`, `apps/` |
 | Workspace system plane | generated config, research markdown, source snapshots, indexes, `tcx`/`tcx.cmd` launchers | generated files from `workspace_templates/` |
 
 Control-plane files request or guide work. Service-plane code decides and records durable outcomes. Workspace files make Codex-native state reviewable.
@@ -30,14 +30,14 @@ Control-plane files request or guide work. Service-plane code decides and record
 | --- | --- |
 | `tradingcodex_service/application/*` | Canonical service use cases. Put durable behavior here before wiring surfaces. |
 | `tradingcodex_service/application/execution_gateway.py` | Exact root-native submit/cancel parser, workspace-bound mandate, `native-user` authorization, redacted projection, and dispatch into the order kernel. |
-| `tradingcodex_service/application/build_gateway.py` | Exact `$tcx-build` parser, DB-canonical current-turn grant/proof lifecycle, revocation, and audit without sandbox elevation or execution authority. |
+| `tradingcodex_service/application/build_gateway.py` | Exact `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` parsers plus DB-canonical capability-scoped current-turn grant/proof lifecycle, revocation, and audit without sandbox elevation or execution authority. |
 | `apps/*/models.py` | Central DB records for policy, orders, portfolio, audit, MCP, workflows, integrations, and harness provenance. |
 | `tradingcodex_cli/commands/*` | CLI interface only. It should call shared services rather than fork behavior. |
 | `tradingcodex_service/api.py` | Typed local/staff REST/control API. |
-| `frontend/` | React 19, TypeScript, and Vite 8 workbench source; Node 22 build-time only. |
+| `frontend/` | React 19, TypeScript, and Vite 8 workspace viewer source; Node 22 build-time only. |
 | `tradingcodex_service/static/tradingcodex_web/` | Committed Vite output served by Django and WhiteNoise. |
 | `tradingcodex_service/web.py` | GET-only root SPA shell. |
-| `tradingcodex_service/application/workbench.py`, `workspaces.py` | Snapshot/detail assembly, selected-workspace binding, and fixed-argv analysis-only `codex exec` supervision. |
+| `tradingcodex_service/application/viewer.py`, `workspaces.py` | Read-only snapshot/detail assembly and registered selected-workspace binding. |
 | `tradingcodex_service/mcp_runtime.py` | Codex MCP boundary, role visibility, schema validation, and MCP ledger behavior; final submit/cancel/refresh mutations are not public tools. |
 | `workspace_templates/modules/*/files` | Generated workspace contract. Human/Codex-readable generated content should stay here as files. |
 | `tradingcodex_service/application/components.py` | Component maintenance map exported to generated workspaces. |
@@ -78,12 +78,13 @@ packages, outcome-separated postmortems, strategy/context hashes, and reviewed
 lesson states. Wiki and graph outputs are rebuildable views, not another
 canonical store. See [docs/decision-memory.md](../docs/decision-memory.md).
 
-Web-started runs add bounded operational metadata and normalized, redacted,
-allowlisted events beside the per-run analysis state. Raw reasoning, tool
-inputs/outputs, stderr, and raw final output are not persisted. The reader-facing
-head-manager report is exposed only when its sealed run lineage, authenticated
-artifact receipt, accepted handoff, producer, body hash, complete accepted-input
-hash set, and applicable quality gate all match.
+The viewer adds no run metadata and launches no Codex process. It reads
+canonical native activity and accepted artifacts through the shared service
+layer. Raw reasoning, tool inputs/outputs, stderr, and raw final output are not
+persisted or exposed. A reader-facing Head Manager report is available only
+when its sealed run lineage, authenticated artifact receipt, accepted handoff,
+producer, body hash, complete accepted-input hash set, and applicable quality
+gate all match.
 
 ## Django Model Families
 

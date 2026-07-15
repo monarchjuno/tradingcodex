@@ -4,6 +4,10 @@ Status: immediate native actions verified on 2026-07-13; Codex app Scheduled
 Task turn grants implemented on 2026-07-14. This page records the accepted
 design, migration, and validation evidence.
 
+> Historical note: references below to a Workbench runner describe the retired
+> pre-v1 design. The current product web is a read-only workspace viewer and has
+> no preview, start, follow-up, or Codex-process path.
+
 ## Implementation Checklist
 
 - [x] Add the exact parser, immutable workspace-bound mandate, `native-user`
@@ -56,7 +60,7 @@ design, migration, and validation evidence.
 - Provider canary regressions prove that submit/cancel results, health details,
   account-sync exceptions, and successful account display metadata do not
   reappear in DB rows, API/MCP projections, execution results, or audit events.
-- A disposable generated workspace reports nine fixed roles and 30 skills,
+- A disposable generated workspace reports nine fixed roles and 31 skills,
   contains no retired execution role, and exposes no ungated submit, cancel, or
   broker status-refresh mutation. Its one execution-risk MCP tool is
   `use_order_turn_grant`, which has no authority without hook-injected proof.

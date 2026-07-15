@@ -3,10 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Task-first documentation for setting up and using TradingCodex." />
+    <meta name="description" content="Skill-first documentation for setting up and using TradingCodex." />
     <meta name="theme-color" content="#101010" />
     <meta property="og:title" content="TradingCodex Docs" />
-    <meta property="og:description" content="Set up a workspace, run a scoped analysis, and keep the evidence." />
+    <meta property="og:description" content="Set up a workspace, choose the right skill, and keep the evidence." />
     <meta property="og:image" content="https://monarchjuno.github.io/tradingcodex/assets/og-v2.png" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://monarchjuno.github.io/tradingcodex/" />
@@ -17,47 +17,80 @@
   <body>
     <a class="skip-link" href="#content">Skip to content</a>
     <header class="global-header">
-      <a class="wordmark" href="#top" aria-label="TradingCodex documentation home"><span class="wordmark-mark" aria-hidden="true">T</span><span>TradingCodex</span><span class="wordmark-divider" aria-hidden="true">/</span><span class="wordmark-section">Docs</span></a>
-      <nav class="header-nav" aria-label="Documentation navigation"><a href="#getting-started" aria-current="page">Guide</a><a href="https://github.com/monarchjuno/tradingcodex/tree/main/docs">Reference</a><a href="https://github.com/monarchjuno/tradingcodex">GitHub</a></nav>
-      <span class="search-hint" aria-label="Use this page's navigation to find a topic"><kbd>⌘</kbd><kbd>K</kbd><span>Navigate</span></span>
+      <a class="wordmark" href="index.html" aria-label="TradingCodex documentation home"><span class="wordmark-mark" aria-hidden="true">T</span><span>TradingCodex</span><span class="wordmark-divider" aria-hidden="true">/</span><span class="wordmark-section">Docs</span></a>
+      <nav class="header-nav" aria-label="Documentation navigation"><a href="index.html" aria-current="page">Guide</a><a href="https://github.com/monarchjuno/tradingcodex/tree/main/docs">Reference</a><a href="https://github.com/monarchjuno/tradingcodex">GitHub</a></nav>
+      <span class="header-note">Skill-first guide</span>
     </header>
-    <div class="docs-shell" id="top">
+
+    <div class="docs-shell">
       <aside class="sidebar" aria-label="Documentation sidebar">
-        <details class="mobile-nav"><summary>Getting started <span aria-hidden="true">⌄</span></summary><div class="mobile-nav-links"><a href="#getting-started">Overview</a><a href="#install">Install</a><a href="#quick-start">Quick start with skills</a><a href="#first-analysis">Run a workflow</a><a href="#prompt-recipes">Prompt recipes</a><a href="#follow-a-run">Follow a run</a><a href="#skills">Skills</a><a href="#troubleshooting">Troubleshooting</a></div></details>
+        <details class="mobile-nav"><summary>Guide <span aria-hidden="true">⌄</span></summary><div class="mobile-nav-links"><a href="index.html">Get started</a><a href="dynamic-workflow.html">Dynamic workflow</a><a href="harness.html">The harness</a><a href="decision-memory.html">Decision Memory</a><a href="reusable-context.html">Reusable context</a><a href="execution-boundary.html">Execution boundary</a><a href="provider-to-order.html">Provider to order</a><a href="skills.html">All user-facing skills</a><a href="research.html">Research skills</a><a href="order.html">Order skills</a><a href="improve.html">Improve skills</a><a href="customize.html">Customize skills</a><a href="help-status.html">Help &amp; status</a></div></details>
         <nav class="sidebar-nav">
-          <p class="nav-label">Overview</p><a class="active" href="#getting-started" aria-current="page">Getting started</a><a href="#before-you-begin">Before you begin</a>
-          <p class="nav-label">Use TradingCodex</p><a href="#install">Install a workspace</a><a href="#quick-start">Quick start with skills</a><a href="#first-analysis">Run a workflow</a><a href="#prompt-recipes">Prompt recipes</a><a href="#follow-a-run">Follow a run</a><a href="#library">Use the Library</a>
-          <p class="nav-label">Workflows</p><a href="#skills">Choose a skill</a><a href="#keep-it-bounded">Keep it bounded</a>
-          <p class="nav-label">Operations</p><a href="#troubleshooting">Troubleshooting</a><a href="https://github.com/monarchjuno/tradingcodex/blob/main/installation.md">Full installation</a>
+          <p class="nav-label">Get started</p>
+          <a class="active" href="index.html" aria-current="page">Quick start</a>
+          <p class="nav-label">How it works</p>
+          <a href="dynamic-workflow.html">Dynamic workflow</a>
+          <a href="harness.html">The harness</a>
+          <a href="decision-memory.html">Decision Memory</a>
+          <a href="reusable-context.html">Reusable context</a>
+          <a href="execution-boundary.html">Execution boundary</a>
+          <p class="nav-label">Order onboarding</p>
+          <a href="provider-to-order.html">Provider to order</a>
+          <p class="nav-label">Skills in detail</p>
+          <a href="skills.html">All user-facing skills</a>
+          <a href="research.html">Research</a>
+          <a href="order.html">Order</a>
+          <a href="improve.html">Improve</a>
+          <a href="customize.html">Customize</a>
+          <a href="help-status.html">Help &amp; status</a>
         </nav>
-        <a class="sidebar-card" href="https://github.com/monarchjuno/tradingcodex/issues"><span>Need help?</span><strong>Open an issue <span aria-hidden="true">→</span></strong></a>
       </aside>
+
       <main id="content">
         <article class="doc-content">
-          <div class="breadcrumbs"><a href="#top">Docs</a><span aria-hidden="true">/</span><span>Getting started</span></div>
-          <header class="doc-header" id="getting-started"><p class="eyebrow">Introduction</p><h1>Get started</h1><p>Set up one local workspace, ask a tightly scoped investment question, and keep the research, evidence, and next steps available after the task ends.</p></header>
-          <div class="callout callout-note"><span class="callout-symbol" aria-hidden="true">i</span><div><strong>Start with research.</strong> TradingCodex is designed to help you inspect evidence and constraints. A natural-language answer never becomes a broker action on its own.</div></div>
-          <section id="before-you-begin"><h2>Before you begin <a href="#before-you-begin" aria-label="Link to Before you begin">#</a></h2><p>You need an empty folder for research, Git, <code>uvx</code>, and an installed, authenticated Codex CLI. End users do not need Node or npm.</p><div class="check-grid"><div><span aria-hidden="true">01</span><p><strong>Choose a workspace</strong><br />Keep research in a folder you own and can back up.</p></div><div><span aria-hidden="true">02</span><p><strong>Attach TradingCodex</strong><br />Generate the workspace contract and local launcher.</p></div><div><span aria-hidden="true">03</span><p><strong>Open Work</strong><br />Start with a question, not a preselected team.</p></div></div></section>
-          <section id="install"><h2>Install a workspace <a href="#install" aria-label="Link to Install a workspace">#</a></h2><p>Run the installer inside the empty folder where you want your research files to live. It initializes local workspace files; it does not create a commit or remote.</p><div class="code-block"><div class="code-title"><span>macOS or Linux</span><span>shell</span></div><pre><code>cd /path/to/your/empty-workspace
+          <div class="breadcrumbs"><a href="index.html">Docs</a><span aria-hidden="true">/</span><span>Getting started</span></div>
+          <header class="doc-header"><p class="eyebrow">Introduction</p><h1>Get started</h1><p>Set up one local workspace, then start from the outcome you want. The detailed pages explain both the skills you invoke and the system that keeps work evidence-based and bounded.</p></header>
+
+          <section id="before-you-begin">
+            <h2>Before you begin <a href="#before-you-begin" aria-label="Link to Before you begin">#</a></h2>
+            <p>You need an empty folder for research, Git, <code>uvx</code>, and an installed, authenticated Codex CLI 0.144.1 or later. Version 0.144.4 is the current tested reference; check with <code>codex --version</code>. End users do not need Node or npm.</p>
+            <div class="check-grid"><div><span aria-hidden="true">01</span><p><strong>Choose a workspace</strong><br />Keep research in a folder you own and can back up.</p></div><div><span aria-hidden="true">02</span><p><strong>Attach TradingCodex</strong><br />Generate the workspace contract and local launcher.</p></div><div><span aria-hidden="true">03</span><p><strong>Open a new task</strong><br />Use a skill as the first line when work needs a defined path.</p></div></div>
+          </section>
+
+          <section id="install">
+            <h2>Install a workspace <a href="#install" aria-label="Link to Install a workspace">#</a></h2>
+            <p>Run the installer inside the empty folder where research should live. It creates local workspace files; it does not create a commit or remote.</p>
+            <div class="code-block"><div class="code-title"><span>macOS or Linux</span><span>shell</span></div><pre><code>cd /path/to/your/empty-workspace
 uvx --refresh --from tradingcodex tcx attach . &amp;&amp; ./tcx doctor
-./tcx service ensure</code></pre></div><div class="code-block"><div class="code-title"><span>Windows PowerShell</span><span>powershell</span></div><pre><code>cd C:\path\to\your\empty-workspace
+./tcx service ensure</code></pre></div>
+            <div class="code-block"><div class="code-title"><span>Windows PowerShell</span><span>powershell</span></div><pre><code>cd C:\path\to\your\empty-workspace
 uvx --refresh --from tradingcodex tcx attach .
 .\tcx.cmd doctor
-.\tcx.cmd service ensure</code></pre></div><p>Open the local workbench at <code>http://127.0.0.1:48267/</code>. To use the workspace in the Codex app, restart Codex, open and trust that workspace, then start a new task.</p></section>
-          <section id="quick-start"><h2>Quick start with skills <a href="#quick-start" aria-label="Link to Quick start with skills">#</a></h2><p>In a new Codex task opened from your trusted workspace, place one skill invocation on the first line. Then write the request in ordinary language. Start with these four paths.</p><div class="skill-quickstart"><article><span class="skill-number" aria-hidden="true">01</span><div><h3>Research a current question</h3><p>Use <code>tcx-workflow</code> for company research, a thesis review, portfolio fit, risk, or a Decision Package. It chooses the smallest useful specialist team for the question.</p><pre><code>$tcx-workflow&#10;Analyze NVDA. Focus on business quality and contrary evidence. No order.</code></pre></div></article><article><span class="skill-number" aria-hidden="true">02</span><div><h3>Retrieve or replay a past decision</h3><p>Use <code>tcx-memory</code> when the question is about what was known before, a changed thesis, a forecast outcome, or a lesson.</p><pre><code>$tcx-memory&#10;Replay my latest NVDA decision using point-in-time evidence. What changed?</code></pre></div></article><article><span class="skill-number" aria-hidden="true">03</span><div><h3>Clarify a high-stakes request</h3><p>Use <code>tcx-plan</code> when scope, time horizon, blocked actions, or stop conditions are unclear. Carry the resulting mandate into a new <code>tcx-workflow</code> task.</p><pre><code>$tcx-plan&#10;Help me scope a review of a possible NVDA position. No order drafting.</code></pre></div></article><article><span class="skill-number" aria-hidden="true">04</span><div><h3>Check workspace health</h3><p>Use <code>tcx-server</code> for service readiness, update status, or safe recovery guidance. It does not run investment analysis.</p><pre><code>$tcx-server&#10;Is this workspace ready for a new analysis?</code></pre></div></article></div><div class="callout callout-path skill-boundary"><span class="callout-symbol" aria-hidden="true">↳</span><div><strong>Let the workflow select specialists.</strong> Do not start with role-owned skills such as <code>tcx-fundamental</code> or <code>tcx-portfolio</code>; <code>tcx-workflow</code> dispatches those only when the request needs them.</div></div></section>
-          <section id="first-analysis"><h2>Run your first workflow <a href="#first-analysis" aria-label="Link to Run your first workflow">#</a></h2><p>Use <code>tcx-workflow</code> for an immediate research request. State the question, time horizon, evidence you need, and actions that are outside the task.</p><div class="code-block prompt-block"><div class="code-title"><span>Starter prompt</span><span>text</span></div><pre><code>$tcx-workflow
-Analyze NVDA. Focus on business quality, price action, recent disclosures,
-and contrary evidence. No order, no trading, no valuation.</code></pre></div><div class="two-column-note"><div><strong>Include</strong><p>The question, time horizon, evidence you want, and what could change your mind.</p></div><div><strong>Exclude</strong><p>Say “no order,” “no trading,” or “no valuation” whenever those are outside the task.</p></div></div></section>
-          <section id="prompt-recipes"><h2>Prompt recipes <a href="#prompt-recipes" aria-label="Link to Prompt recipes">#</a></h2><p>Copy one of these into a new Codex task, then replace the ticker, horizon, or context.</p><div class="recipe-list"><details open><summary><span>Company research</span><span class="summary-arrow" aria-hidden="true">⌄</span></summary><pre><code>$tcx-workflow&#10;Analyze MSFT as a medium-term quality compounder. Separate facts, inferences, and assumptions. Include contrary evidence and invalidation conditions. No order.</code></pre></details><details><summary><span>Challenge a thesis</span><span class="summary-arrow" aria-hidden="true">⌄</span></summary><pre><code>$tcx-workflow&#10;Revisit my latest NVDA thesis. Focus on stale sources, the strongest contrary evidence, overconfidence risk, and what would change the conclusion. No trading.</code></pre></details><details><summary><span>Review portfolio fit</span><span class="summary-arrow" aria-hidden="true">⌄</span></summary><pre><code>$tcx-workflow&#10;Review whether TSLA fits my current portfolio context. Cover concentration, liquidity, downside, and opportunity cost. Stop before order drafting.</code></pre></details><details><summary><span>Replay a past decision</span><span class="summary-arrow" aria-hidden="true">⌄</span></summary><pre><code>$tcx-memory&#10;Replay my latest decision on NVDA with point-in-time evidence. Identify what was known, what changed, and the next validation needed.</code></pre></details></div></section>
-          <section id="follow-a-run"><h2>Follow a run <a href="#follow-a-run" aria-label="Link to Follow a run">#</a></h2><p>Head Manager starts a lightweight run and selects the smallest useful specialist team as accepted evidence arrives. Watch the status instead of treating the final report as a black box.</p><div class="status-table" role="table" aria-label="Analysis statuses"><div role="row"><span role="cell"><code class="status waiting">waiting</code></span><p role="cell">Required evidence or an artifact has not arrived yet.</p></div><div role="row"><span role="cell"><code class="status revise">revise</code></span><p role="cell">The owning specialist needs to improve an artifact.</p></div><div role="row"><span role="cell"><code class="status blocked">blocked</code></span><p role="cell">Evidence, scope, or policy prevents safe progress.</p></div><div role="row"><span role="cell"><code class="status accepted">accepted</code></span><p role="cell">The handoff cleared its quality gate and can support the next step.</p></div></div></section>
-          <section id="library"><h2>Use the Library <a href="#library" aria-label="Link to Use the Library">#</a></h2><p>Once a handoff is accepted, open <strong>Library</strong> to read the report with its sources, snapshots, versions, and forecasts. Use that material to ask a narrower follow-up or begin a new attempt.</p><div class="callout callout-path"><span class="callout-symbol" aria-hidden="true">↳</span><div><strong>Keep work portable.</strong> Research remains in ordinary workspace files under <code>trading/research/</code>, <code>trading/reports/</code>, and <code>trading/forecasts/</code>, so it can be read, backed up, diffed, and versioned with normal tools.</div></div></section>
-          <section id="skills"><h2>Choose a skill when work repeats <a href="#skills" aria-label="Link to Choose a skill when work repeats">#</a></h2><p>Plain language is the normal entry point. Invoke a skill when you need a bounded, repeatable workflow.</p><div class="table-wrap"><table><thead><tr><th>Goal</th><th>Start with</th></tr></thead><tbody><tr><td>Research a company, thesis, portfolio fit, or risk question</td><td><code>tcx-workflow</code></td></tr><tr><td>Replay a decision or validate a lesson</td><td><code>tcx-memory</code></td></tr><tr><td>Design a reusable investing method</td><td><code>tcx-strategy</code></td></tr><tr><td>Set optional workspace suitability context</td><td><code>tcx-investor-context</code></td></tr><tr><td>Check service and workspace health</td><td><code>tcx-server</code></td></tr></tbody></table></div><p>See the <a href="https://github.com/monarchjuno/tradingcodex/blob/main/docs/user-facing-skills.md">user-facing skills reference</a> for every entry rule and hard stop.</p></section>
-          <section id="keep-it-bounded"><h2>Keep the request bounded <a href="#keep-it-bounded" aria-label="Link to Keep the request bounded">#</a></h2><p>Use explicit exclusions when you only want research. The workbench is analysis-only: it cannot draft, approve, cancel, or execute an order. If a run stops at <code>waiting</code>, <code>revise</code>, or <code>blocked</code>, inspect the reason before asking a broader question.</p></section>
-          <section id="troubleshooting"><h2>Troubleshooting <a href="#troubleshooting" aria-label="Link to Troubleshooting">#</a></h2><p>Run these inside an attached workspace. On native Windows, substitute <code>.\tcx.cmd</code> for <code>./tcx</code>.</p><div class="command-list"><div><code>./tcx doctor</code><span>Check the full workspace and service contract.</span></div><div><code>./tcx service ensure</code><span>Start or reuse the local workbench service.</span></div><div><code>./tcx skills list --all</code><span>Inspect built-in, optional, strategy, active, and archived skills.</span></div><div><code>./tcx workspace status</code><span>Inspect workspace identity and runtime provenance.</span></div></div></section>
-          <footer class="doc-footer"><a href="https://github.com/monarchjuno/tradingcodex/blob/main/installation.md"><span>Previous</span><strong>Installation details</strong></a><a href="https://github.com/monarchjuno/tradingcodex/blob/main/docs/user-facing-skills.md"><span>Next</span><strong>User-facing skills</strong></a></footer>
+.\tcx.cmd service ensure</code></pre></div>
+            <p>Open the read-only workspace viewer at <code>http://127.0.0.1:48267/</code>. To work in Codex, restart Codex, open and trust that workspace, review and trust all eight generated TradingCodex hooks when prompted, then start a new task.</p>
+          </section>
+
+          <section id="quick-start" class="quick-start">
+            <h2>Quick start <a href="#quick-start" aria-label="Link to Quick start">#</a></h2>
+            <p>Choose the outcome, not a role. Start every example in a new native Codex task from the trusted workspace.</p>
+            <div class="quick-flow"><span>01</span><div><h3>Research a current question</h3><p>Use <code>tcx-workflow</code> to turn an investment question into a dynamic evidence workflow. Use <code>tcx-plan</code> first only when the mandate needs to be made concrete.</p><a href="research.html">Read the research skill guide →</a></div></div>
+            <div class="quick-flow order"><span>02</span><div><h3>Connect a provider, then use a protected order path</h3><p>Start with the Paper provider or prepare a reviewed broker connection. Research, ticket, checks, approval, and final action remain separate checkpoints.</p><a href="provider-to-order.html">Follow the provider-to-order guide →</a></div></div>
+            <div class="quick-flow improve"><span>03</span><div><h3>Learn from a past decision</h3><p>Use <code>tcx-memory</code> to retrieve and replay past evidence. Create a reusable Strategy or local Investment Brain in its own capability-scoped task.</p><a href="improve.html">Read the improve skill guide →</a></div></div>
+            <div class="quick-flow customize"><span>04</span><div><h3>Change the workspace deliberately</h3><p>Use <code>tcx-build</code> for managed workspace work. Use <code>tcx-investor-context</code> to preview optional suitability context.</p><a href="customize.html">Read the customize skill guide →</a></div></div>
+            <div class="quick-help"><strong>Need the dashboard or status first?</strong> Use <code>$tcx-dashboard</code> to open the read-only viewer in Codex by default, or explicitly request an external browser. Use <code>$tcx-server</code> for readiness, update, MCP, and recovery guidance.</div>
+          </section>
+
+          <section id="next">
+            <h2>Read the foundations <a href="#next" aria-label="Link to Read the foundations">#</a></h2>
+            <p>Before using the more sensitive paths, understand how the dynamic team, evidence trail, reusable context, and runtime boundary fit together.</p>
+            <div class="topic-list"><a href="dynamic-workflow.html"><span>01</span><strong>Dynamic workflow</strong><small>How a natural-language request becomes an evidence-led investigation.</small><i>→</i></a><a href="harness.html"><span>02</span><strong>The harness</strong><small>The runtime contract across Codex, services, and workspace files.</small><i>→</i></a><a href="decision-memory.html"><span>03</span><strong>Decision Memory</strong><small>How earlier judgments help without replacing current evidence.</small><i>→</i></a><a href="execution-boundary.html"><span>04</span><strong>Execution boundary</strong><small>Why analysis and a broker action are deliberately different paths.</small><i>→</i></a><a href="skills.html"><span>05</span><strong>All user-facing skills</strong><small>Browse all 13 direct skill entrypoints and their detailed pages.</small><i>→</i></a></div>
+          </section>
+
+          <footer class="doc-footer"><a href="https://github.com/monarchjuno/tradingcodex/blob/main/installation.md"><span>Reference</span><strong>Installation details</strong></a><a href="dynamic-workflow.html"><span>Next</span><strong>Dynamic workflow</strong></a></footer>
         </article>
       </main>
-      <aside class="on-this-page" aria-label="On this page"><p>On this page</p><nav><a class="active" href="#getting-started">Get started</a><a href="#before-you-begin">Before you begin</a><a href="#install">Install a workspace</a><a href="#quick-start">Quick start with skills</a><a href="#first-analysis">Run your first workflow</a><a href="#prompt-recipes">Prompt recipes</a><a href="#follow-a-run">Follow a run</a><a href="#library">Use the Library</a><a href="#skills">Choose a skill</a><a href="#troubleshooting">Troubleshooting</a></nav></aside>
+
+      <aside class="on-this-page" aria-label="On this page"><p>On this page</p><nav><a class="active" href="#before-you-begin">Before you begin</a><a href="#install">Install</a><a href="#quick-start">Quick start</a><a href="#next">Foundations</a></nav></aside>
     </div>
   </body>
 </html>

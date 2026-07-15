@@ -1647,6 +1647,14 @@ def _tracked_source_metadata(
     return tracked
 
 
+def validate_public_investment_brain_repository_url(repository: str) -> str:
+    """Validate an agent-supplied public HTTPS repository without materializing it."""
+
+    normalized = str(repository or "")
+    _validate_public_repository(normalized)
+    return normalized
+
+
 def _workspace_source_locator(workspace_root: Path, source_root: Path) -> str:
     try:
         relative = source_root.resolve().relative_to(workspace_root.resolve())

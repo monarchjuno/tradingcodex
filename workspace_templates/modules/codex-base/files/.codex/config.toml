@@ -1,30 +1,200 @@
-sandbox_mode = "read-only"
+default_permissions = "trading-research"
 approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = false, skill_approval = false } }
 approvals_reviewer = "user"
 allow_login_shell = false
 web_search = "disabled"
 model_instructions_file = "prompts/base_instructions/head-manager.md"
 
+[permissions.trading-research]
+extends = ":workspace"
+
+[permissions.trading-research.filesystem]
+{{TRADINGCODEX_SCRATCH_PATH_TOML}} = "write"
+":tmpdir" = "deny"
+":slash_tmp" = "deny"
+{{TRADINGCODEX_HOME_TOML}} = "deny"
+{{TRADINGCODEX_DB_PATH_TOML}} = "deny"
+{{TRADINGCODEX_PYTHON_TOML}} = "deny"
+"~/.codex" = "deny"
+"~/.codex/proxy" = "read"
+"~/.codex/packages/standalone" = "read"
+{{CODEX_HOME_PATH_TOML}} = "deny"
+{{CODEX_HOME_PROXY_PATH_TOML}} = "read"
+{{CODEX_HOME_STANDALONE_PATH_TOML}} = "read"
+"~/.ssh" = "deny"
+"~/.aws" = "deny"
+"~/.azure" = "deny"
+"~/.kube" = "deny"
+"~/.docker" = "deny"
+"~/.gnupg" = "deny"
+"~/.password-store" = "deny"
+"~/.config/gcloud" = "deny"
+"~/.config/gh" = "deny"
+"~/.local/share/keyrings" = "deny"
+"~/Library/Keychains" = "deny"
+"~/.env" = "deny"
+"~/.env.*" = "deny"
+"~/.netrc" = "deny"
+"~/.npmrc" = "deny"
+"~/.pypirc" = "deny"
+"~/.git-credentials" = "deny"
+"~/.zsh_history" = "deny"
+"~/.bash_history" = "deny"
+"~/.python_history" = "deny"
+"~/.node_repl_history" = "deny"
+glob_scan_max_depth = 4
+
+[permissions.trading-research.filesystem.":workspace_roots"]
+"." = "write"
+".git" = "read"
+".gitignore" = "read"
+".codex" = "deny"
+".agents" = "read"
+".tradingcodex" = "deny"
+".tradingcodex/subagents/skills" = "read"
+"AGENTS.md" = "read"
+"tcx" = "read"
+"tcx.cmd" = "read"
+"trading" = "read"
+"trading/audit" = "deny"
+"trading/approvals" = "deny"
+"trading/decisions" = "deny"
+"trading/forecasts" = "deny"
+"trading/orders" = "deny"
+"trading/reports" = "deny"
+"trading/research" = "deny"
+".env" = "deny"
+".env.*" = "deny"
+".envrc" = "deny"
+".netrc" = "deny"
+".npmrc" = "deny"
+".pypirc" = "deny"
+".ssh" = "deny"
+".aws" = "deny"
+"*/.env" = "deny"
+"*/.env.*" = "deny"
+"*/*/.env" = "deny"
+"*/*/.env.*" = "deny"
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+"**/.netrc" = "deny"
+"**/.npmrc" = "deny"
+"**/.pypirc" = "deny"
+"**/.ssh/**" = "deny"
+"**/.aws/**" = "deny"
+
+[permissions.trading-research.network]
+enabled = true
+mode = "limited"
+allow_local_binding = false
+allow_upstream_proxy = false
+dangerously_allow_all_unix_sockets = false
+
+[permissions.trading-research.network.domains]
+"*" = "allow"
+
+[permissions.trading-build]
+extends = ":workspace"
+
+[permissions.trading-build.filesystem]
+{{TRADINGCODEX_SCRATCH_PATH_TOML}} = "write"
+":tmpdir" = "deny"
+":slash_tmp" = "deny"
+{{TRADINGCODEX_HOME_TOML}} = "deny"
+{{TRADINGCODEX_DB_PATH_TOML}} = "deny"
+{{TRADINGCODEX_PYTHON_TOML}} = "deny"
+"~/.codex" = "deny"
+"~/.codex/proxy" = "read"
+"~/.codex/packages/standalone" = "read"
+{{CODEX_HOME_PATH_TOML}} = "deny"
+{{CODEX_HOME_PROXY_PATH_TOML}} = "read"
+{{CODEX_HOME_STANDALONE_PATH_TOML}} = "read"
+"~/.ssh" = "deny"
+"~/.aws" = "deny"
+"~/.azure" = "deny"
+"~/.kube" = "deny"
+"~/.docker" = "deny"
+"~/.gnupg" = "deny"
+"~/.password-store" = "deny"
+"~/.config/gcloud" = "deny"
+"~/.config/gh" = "deny"
+"~/.local/share/keyrings" = "deny"
+"~/Library/Keychains" = "deny"
+"~/.env" = "deny"
+"~/.env.*" = "deny"
+"~/.netrc" = "deny"
+"~/.npmrc" = "deny"
+"~/.pypirc" = "deny"
+"~/.git-credentials" = "deny"
+"~/.zsh_history" = "deny"
+"~/.bash_history" = "deny"
+"~/.python_history" = "deny"
+"~/.node_repl_history" = "deny"
+glob_scan_max_depth = 4
+
+[permissions.trading-build.filesystem.":workspace_roots"]
+"." = "write"
+".git" = "read"
+".gitignore" = "read"
+".codex" = "deny"
+".agents" = "read"
+".tradingcodex" = "deny"
+".tradingcodex/cli.py" = "read"
+"AGENTS.md" = "read"
+"tcx" = "read"
+"tcx.cmd" = "read"
+"trading/audit" = "deny"
+"trading/approvals" = "deny"
+"trading/decisions" = "deny"
+"trading/forecasts" = "deny"
+"trading/orders" = "deny"
+"trading/reports" = "deny"
+"trading/research" = "deny"
+".env" = "deny"
+".env.*" = "deny"
+".envrc" = "deny"
+".netrc" = "deny"
+".npmrc" = "deny"
+".pypirc" = "deny"
+".ssh" = "deny"
+".aws" = "deny"
+"*/.env" = "deny"
+"*/.env.*" = "deny"
+"*/*/.env" = "deny"
+"*/*/.env.*" = "deny"
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+"**/.netrc" = "deny"
+"**/.npmrc" = "deny"
+"**/.pypirc" = "deny"
+"**/.ssh/**" = "deny"
+"**/.aws/**" = "deny"
+
+[permissions.trading-build.network]
+enabled = false
+
 [features]
 apps = false
-browser_use = false
-browser_use_external = false
+browser_use = true
+browser_use_external = true
 browser_use_full_cdp_access = false
 computer_use = false
 hooks = true
 image_generation = false
-in_app_browser = false
+in_app_browser = true
 multi_agent = true
+network_proxy = true
 shell_zsh_fork = false
 unified_exec = false
 unified_exec_zsh_fork = false
 
 [features.multi_agent_v2]
+enabled = true
+max_concurrent_threads_per_session = 7
 hide_spawn_agent_metadata = false
 tool_namespace = "agents"
 
 [agents]
-max_threads = 6
 max_depth = 1
 
 [[skills.config]]
@@ -44,6 +214,10 @@ path = "../.agents/skills/tcx-automate/SKILL.md"
 enabled = true
 
 [[skills.config]]
+path = "../.agents/skills/tcx-dashboard/SKILL.md"
+enabled = true
+
+[[skills.config]]
 path = "../.agents/skills/tcx-server/SKILL.md"
 enabled = true
 
@@ -60,7 +234,7 @@ path = "../.agents/skills/tcx-strategy/SKILL.md"
 enabled = true
 
 [[skills.config]]
-path = "../.agents/skills/tcx-brain-create/SKILL.md"
+path = "../.agents/skills/tcx-brain/SKILL.md"
 enabled = true
 
 [[skills.config]]
@@ -91,6 +265,8 @@ env = { TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE
 enabled_tools = [
   "get_tradingcodex_status",
   "get_update_status",
+  "manage_strategy",
+  "manage_investment_brain",
   "begin_analysis_run",
   "simulate_policy",
   "get_order_status",
@@ -128,7 +304,23 @@ tool_timeout_sec = 30
 
 [shell_environment_policy]
 inherit = "core"
-set = {}
+set = { TRADINGCODEX_SCRATCH = {{TRADINGCODEX_SCRATCH_PATH_TOML}}, TMPDIR = {{TRADINGCODEX_SCRATCH_PATH_TOML}}, TEMP = {{TRADINGCODEX_SCRATCH_PATH_TOML}}, TMP = {{TRADINGCODEX_SCRATCH_PATH_TOML}} }
+ignore_default_excludes = false
+include_only = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TEMP",
+  "TMP",
+  "LANG",
+  "LC_*",
+  "TERM",
+  "SYSTEMROOT",
+  "WINDIR",
+  "PATHEXT",
+  "COMSPEC",
+  "TRADINGCODEX_SCRATCH"
+]
 exclude = [
   "*API_KEY*",
   "*SECRET*",

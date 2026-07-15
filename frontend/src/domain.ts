@@ -1,7 +1,5 @@
-import { normalizedActivityLabel, researchPhase } from "./workbench-data.js";
-
 export type RecordValue = Record<string, unknown>;
-export type Section = "work" | "skills" | "library" | "system";
+export type Section = "skills" | "library" | "system";
 export type Theme = "auto" | "dark" | "light";
 
 export type Skill = {
@@ -12,16 +10,10 @@ export type Skill = {
   boundary: string;
   kind: string;
   status: string;
-  startable: boolean;
+  availableInCodex: boolean;
   visible: boolean;
   protectedAction: boolean;
   raw: RecordValue;
-};
-
-export type Strategy = {
-  id: string;
-  label: string;
-  hash: string;
 };
 
 export type Artifact = {
@@ -35,25 +27,6 @@ export type Artifact = {
   missingEvidence: string[];
   raw: RecordValue;
 };
-
-export type Run = {
-  id: string;
-  status: string;
-  request: string;
-  raw: RecordValue;
-};
-
-export const TERMINAL_RUN_STATES = new Set([
-  "blocked",
-  "cancelled",
-  "complete",
-  "completed",
-  "error",
-  "failed",
-  "revise",
-  "succeeded",
-  "waiting",
-]);
 
 export function asRecord(value: unknown): RecordValue {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
@@ -96,19 +69,10 @@ export function normalizeSkill(value: RecordValue, index: number): Skill {
     boundary: "Guides analysis; does not grant role, approval, or execution authority.",
     kind: asText(value.source, "built-in"),
     status: asText(value.status, "active"),
-    startable: value.startable === true && !protectedAction,
+    availableInCodex: value.available_in_codex === true,
     visible: value.user_visible === true || value.scope !== "mainagent" || value.source !== "core",
     protectedAction,
     raw: value,
-  };
-}
-
-export function normalizeStrategy(value: RecordValue, index: number): Strategy {
-  const id = asText(value.id, asText(value.name, `strategy-${index + 1}`));
-  return {
-    id,
-    label: asText(value.label, titleCase(id.replace(/^strategy-/, ""))),
-    hash: asText(value.source_file_hash),
   };
 }
 
@@ -124,18 +88,6 @@ export function normalizeArtifact(value: RecordValue, index: number): Artifact {
     summary: asText(value.reader_summary),
     missingEvidence: asStringList(value.missing_evidence),
     raw: value,
-  };
-}
-
-export function normalizeRun(value: unknown): Run | null {
-  const record = asRecord(value);
-  const id = asText(record.workflow_run_id);
-  if (!id) return null;
-  return {
-    id,
-    status: asText(record.status, "queued").toLowerCase(),
-    request: asText(record.original_request),
-    raw: record,
   };
 }
 
@@ -160,19 +112,6 @@ export function titleCase(value: string): string {
     .replaceAll("_", " ")
     .replaceAll("-", " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
-
-export function runPhase(raw: RecordValue): string {
-  const finalOutput = asRecord(raw.final_output);
-  return researchPhase({
-    agentCount: recordsFrom(raw.agents).length,
-    artifactCount: recordsFrom(raw.artifacts).length,
-    hasFinalOutput: Boolean(asText(finalOutput.reader_summary) || asText(asRecord(finalOutput.preview).html)),
-  });
-}
-
-export function activityLabel(value: RecordValue): string {
-  return normalizedActivityLabel(value);
 }
 
 export function formatForecastValue(value: unknown): string {

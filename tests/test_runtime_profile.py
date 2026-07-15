@@ -1,11 +1,17 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
 import os
+import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
+from django.core.servers.basehttp import WSGIRequestHandler
 
 from tradingcodex_cli import service_autostart
 from tradingcodex_cli.commands.mode import mode
@@ -88,6 +94,206 @@ def test_service_entrypoint_refuses_insecure_non_loopback_before_socket_access(
         service_autostart.ensure_service_up(tmp_path, addr="0.0.0.0:48267")
 
     assert socket_calls == []
+
+
+def test_service_start_allows_slow_ready_health_within_default_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = {"started": False, "now": 0.0}
+
+    monkeypatch.setattr(service_autostart, "assert_service_binding_allowed", lambda _addr: None)
+    monkeypatch.setattr(service_autostart, "tradingcodex_file_lock", lambda _name: nullcontext())
+    monkeypatch.setattr(service_autostart, "_tcp_open", lambda _host, _port: state["started"])
+    monkeypatch.setattr(
+        service_autostart,
+        "_compatible_service",
+        lambda _host, _port: state["now"] >= 9.0,
+    )
+    monkeypatch.setattr(
+        service_autostart,
+        "_start_service",
+        lambda _workspace, _addr, _source: state.__setitem__("started", True),
+    )
+    monkeypatch.setattr(service_autostart.time, "monotonic", lambda: state["now"])
+    monkeypatch.setattr(
+        service_autostart.time,
+        "sleep",
+        lambda seconds: state.__setitem__("now", state["now"] + seconds),
+    )
+
+    assert service_autostart.ensure_service_up(tmp_path, addr="127.0.0.1:49193") is True
+    assert state["now"] >= 9.0
+
+
+@pytest.mark.parametrize(
+    ("local_port", "expected"),
+    [
+        (49197, False),
+        (53000, True),
+    ],
+)
+def test_tcp_open_rejects_ephemeral_self_connection(
+    monkeypatch: pytest.MonkeyPatch,
+    local_port: int,
+    expected: bool,
+) -> None:
+    class Connection:
+        def __enter__(self) -> "Connection":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            pass
+
+        def getsockname(self) -> tuple[str, int]:
+            return "127.0.0.1", local_port
+
+    monkeypatch.setattr(
+        service_autostart.socket,
+        "create_connection",
+        lambda _address, timeout: Connection(),
+    )
+
+    assert service_autostart._tcp_open("127.0.0.1", 49197) is expected
+
+
+def test_loopback_health_probe_ignores_environment_proxy(monkeypatch: pytest.MonkeyPatch) -> None:
+    requests: list[str] = []
+
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            requests.append(self.path)
+            body = json.dumps({"service": "tradingcodex", "ready": True}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:1")
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:1")
+    monkeypatch.setenv("NO_PROXY", "")
+    monkeypatch.setenv("no_proxy", "")
+    try:
+        health = service_autostart._service_health("127.0.0.1", server.server_port)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert health == {"service": "tradingcodex", "ready": True}
+    assert requests == ["/api/health/ready"]
+
+
+def test_loopback_health_probe_accepts_not_ready_identity() -> None:
+    class HealthHandler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            body = json.dumps(
+                {
+                    "service": "tradingcodex",
+                    "version": service_autostart.TRADINGCODEX_VERSION,
+                    "ready": False,
+                    "reason_codes": ["migrations_pending"],
+                }
+            ).encode("utf-8")
+            self.send_response(503)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        health = service_autostart._service_health("127.0.0.1", server.server_port)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert health["service"] == "tradingcodex"
+    assert health["ready"] is False
+    assert health["reason_codes"] == ["migrations_pending"]
+
+
+def test_service_startup_log_tail_redacts_environment_secrets(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    canary = "native-startup-secret-value"
+    monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path))
+    monkeypatch.setenv("PROVIDER_API_KEY", canary)
+    startup_log = tmp_path / "state/run/service-startup.log"
+    startup_log.parent.mkdir(parents=True)
+    startup_log.write_text(f"provider failed: {canary}\n", encoding="utf-8")
+
+    tail = service_autostart._service_startup_log_tail()
+
+    assert canary not in tail
+    assert "<redacted>" in tail
+
+
+def test_failed_detached_startup_is_terminated() -> None:
+    class Process:
+        returncode: int | None = None
+        signal_sent: int | None = None
+        terminated = False
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def send_signal(self, signum: int) -> None:
+            self.signal_sent = signum
+            self.returncode = -signum
+
+        def terminate(self) -> None:
+            self.terminated = True
+            self.returncode = 1
+
+        def wait(self, timeout: int) -> int:
+            assert timeout == 2
+            assert self.returncode is not None
+            return self.returncode
+
+        def kill(self) -> None:
+            raise AssertionError("graceful failed-startup termination should succeed")
+
+    process = Process()
+
+    service_autostart._terminate_failed_startup(process)  # type: ignore[arg-type]
+
+    if os.name == "nt":
+        assert process.terminated is True
+    else:
+        assert process.signal_sent == signal.SIGABRT
+
+
+def test_local_wsgi_bind_does_not_resolve_reverse_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        service_autostart.socket,
+        "getfqdn",
+        lambda _host: (_ for _ in ()).throw(AssertionError("reverse DNS lookup attempted")),
+    )
+
+    server = service_autostart.NonResolvingWSGIServer(
+        ("127.0.0.1", 0),
+        WSGIRequestHandler,
+    )
+    try:
+        assert server.server_name == "127.0.0.1"
+        assert server.server_port > 0
+    finally:
+        server.server_close()
 
 
 def test_remote_settings_enable_django_transport_security(tmp_path: Path) -> None:

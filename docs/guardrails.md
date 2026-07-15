@@ -71,7 +71,7 @@ Information barriers cover:
 - secret walls
 - role skill-source boundaries
 - role-specific MCP allowlists
-- the project-wide read-only analysis sandbox
+- the project-wide `trading-research` filesystem/network/environment boundary
 - PreToolUse source, control, and secret-path blocks
 
 Information barriers are also a maintainability boundary. A new role or tool

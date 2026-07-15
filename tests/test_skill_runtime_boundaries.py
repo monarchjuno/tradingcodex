@@ -48,7 +48,7 @@ def test_bundled_skills_use_the_compact_tcx_namespace(tmp_path: Path) -> None:
         if record["layer"] == "bundled_core"
     }
 
-    assert len(SKILL_SPECS) == 30
+    assert len(SKILL_SPECS) == 31
     assert set(bundled) == set(SKILL_SPECS)
     for skill_id, record in bundled.items():
         assert SKILL_SPECS[skill_id].id == skill_id

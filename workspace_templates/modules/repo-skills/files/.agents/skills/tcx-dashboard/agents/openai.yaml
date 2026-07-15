@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Dashboard"
+  short_description: "Open the read-only workspace dashboard"
+  default_prompt: "Use $tcx-dashboard to open the workspace dashboard in the Codex in-app browser and summarize what needs attention."
+policy:
+  allow_implicit_invocation: true

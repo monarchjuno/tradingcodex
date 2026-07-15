@@ -56,6 +56,23 @@ def test_mcp_surface_has_one_lightweight_run_tool_and_no_server_orchestrator() -
     assert tool.input_schema["required"] == ["request"]
     assert "structured_intent" not in tool.input_schema["properties"]
 
+    artifact_properties = TOOL_REGISTRY["create_research_artifact"].input_schema[
+        "properties"
+    ]
+    follow_up_item = artifact_properties["follow_up_requests"]["items"]
+    assert follow_up_item["type"] == "object"
+    assert follow_up_item["additionalProperties"] is False
+    assert set(follow_up_item["required"]) == {
+        "trigger",
+        "suggested_role",
+        "question",
+        "reason",
+        "materiality",
+    }
+    improvement_item = artifact_properties["improvements"]["items"]
+    assert improvement_item["type"] == "object"
+    assert improvement_item["additionalProperties"] is False
+
 
 def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
     ensure_workspace_manifest(tmp_path)
@@ -78,6 +95,7 @@ def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
             "handoff_state": "accepted",
             "confidence": "high",
             "missing_evidence": [],
+            "next_recipient": "head-manager",
             "next_action": "Head Manager review.",
             "blocked_actions": ["order", "execution"],
             "source_snapshot_ids": [],
@@ -103,6 +121,7 @@ def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
             "handoff_state": "accepted",
             "confidence": "high",
             "missing_evidence": [],
+            "next_recipient": "user",
             "next_action": "No action requested.",
             "blocked_actions": ["order", "execution"],
             "source_snapshot_ids": [],
@@ -226,8 +245,19 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
     head = (workspace / ".codex/prompts/base_instructions/head-manager.md").read_text(encoding="utf-8")
     role = (workspace / ".codex/agents/fundamental-analyst.toml").read_text(encoding="utf-8")
     skill = (workspace / ".agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
+    model_policy = json.loads(
+        (workspace / ".tradingcodex/generated/model-policy-manifest.json").read_text(
+            encoding="utf-8"
+        )
+    )
     assert 'model = "gpt-5.6-sol"' in config
     assert 'model_reasoning_effort = "xhigh"' in config
+    assert '[features.multi_agent_v2]' in config
+    assert 'enabled = true' in config
+    assert 'max_concurrent_threads_per_session = 7' in config
+    assert 'max_threads = 6' not in config
+    assert model_policy["roles"]["head-manager"]["minimum_codex_version"] == "0.144.1"
+    assert model_policy["roles"]["head-manager"]["reference_codex_version"] == "0.144.4"
     assert "required = true" in config
     assert '"begin_analysis_run"' in config
     assert "record_workflow_plan" not in config
@@ -250,5 +280,6 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
     for role_path in roles_root.glob("*.toml"):
         role_instructions = role_path.read_text(encoding="utf-8")
         assert "maximum service-returned snapshot `known_at`" in role_instructions
+        assert "one `cat path ...` command" in role_instructions
         assert "never send a date-only value" in role_instructions
         assert "Never use end-of-day or another future time" in role_instructions

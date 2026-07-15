@@ -26,7 +26,7 @@ quotes, escaped values, aliases, or `--name=value` syntax.
 ## Hard Stops
 
 - Invoke this action only from a root native Codex user turn.
-- Do not invoke it from Plan mode, Workbench, or a subagent.
+- Do not invoke it from Plan mode or a subagent.
 - Do not use it to discard a local draft; draft discard remains a separate
   portfolio-manager action.
 - Do not retry a `needs_review` or uncertain result. Inspect canonical order

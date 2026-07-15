@@ -43,7 +43,7 @@ or `--mode=<value>` syntax to the first line.
 
 ## Hard Stops
 
-- Accept only a root native Codex user turn. Reject Workbench and subagent
+- Accept only a root native Codex user turn. Reject subagent
   sources.
 - Reject Plan mode at both grant issuance and use. Start a new non-Plan root
   turn for any final order effect.

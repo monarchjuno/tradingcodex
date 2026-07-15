@@ -168,6 +168,15 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     collect_evidence = (skill_root / "shared/tcx-evidence/SKILL.md").read_text(
         encoding="utf-8"
     )
+    fundamental = (
+        skill_root / "fundamental-analyst/tcx-fundamental/SKILL.md"
+    ).read_text(encoding="utf-8")
+    macro = (skill_root / "macro-analyst/tcx-macro/SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    anti_overfit = (
+        skill_root / "shared/tcx-anti-overfit/SKILL.md"
+    ).read_text(encoding="utf-8")
     for instructions in (external_gate, collect_evidence):
         for field in ("snapshot_id", "retrieved_at", "recorded_at", "known_at"):
             assert f"`{field}`" in instructions
@@ -182,6 +191,11 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     assert "must not be later than the service receipt time" in artifact_cutoff
     assert "never send a date-only value" in collect_evidence
     assert "Never use end-of-day or another future time" in collect_evidence
+    assert "current company-facts or calendar-frame view" in external_gate
+    assert "identifier/accession" in fundamental
+    assert "first-release, vintage, or real-time-period" in macro
+    assert "observed trial count or defensible" in anti_overfit
+    assert "Treat a holdout as single-use" in anti_overfit
 
 
 def test_artifact_cutoff_error_returns_exact_snapshot_known_at(

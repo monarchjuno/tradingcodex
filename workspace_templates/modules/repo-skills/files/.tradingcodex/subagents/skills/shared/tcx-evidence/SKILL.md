@@ -65,5 +65,10 @@ Quality floor:
 - When writing markdown, include context summary, handoff state, confidence,
   missing-evidence, next-recipient, blocked-action, and source-snapshot metadata
   in frontmatter.
+- An `accepted` run-bound artifact must pass the service's strict quality gate
+  before its file and receipt are published. Correct a rejected payload; never
+  downgrade the handoff merely to evade validation. Use `follow_up_requests=[]`
+  when none apply. Otherwise supply structured objects with `trigger`,
+  `suggested_role`, `question`, `reason`, and `materiality`; never use strings.
 
 Write evidence packs under `trading/research/`.

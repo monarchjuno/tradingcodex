@@ -209,7 +209,8 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
 
     doctor = tcx(workspace, env_extra, "doctor").stdout
     assert "TradingCodex doctor passed" in doctor
-    assert "TradingCodex MCP autostarts local service" in doctor
+    assert "PASS mcp" in doctor
+    assert "doctor --verbose" in doctor
 
     prompt_cases = [
         "Analyze Apple stock",
@@ -241,7 +242,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     status = json.loads(tcx(workspace, env_extra, "subagents", "status").stdout)
     assert status["installed_count"] == 9
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 30
+    assert status["skills_installed"] == 31
     plan = json.loads(tcx(workspace, env_extra, "subagents", "plan", "--all").stdout)
     assert plan["requested_count"] == 9
     assert plan["parallel_spawn_ok"] is False

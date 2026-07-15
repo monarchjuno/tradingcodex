@@ -1,11 +1,11 @@
 ---
 name: tcx-server
-description: Operate TradingCodex server, workbench, MCP, update readiness, and read-only broker connector status without build-turn or execution authority.
+description: Operate TradingCodex server, read-only workspace viewer, MCP, update readiness, and broker connector status without build-turn or execution authority.
 ---
 
 # TCX Server
 
-Use this skill for TradingCodex status checks, service recovery, workbench URL guidance, MCP setup, update status, and safe broker connector inspection.
+Use this skill for TradingCodex status checks, service recovery, viewer URL guidance, MCP setup, update status, and safe broker connector inspection.
 
 ## Runtime Sources
 
@@ -26,11 +26,11 @@ Use this skill for TradingCodex status checks, service recovery, workbench URL g
 1. Start with the injected session context, then call only the smallest
    read-only MCP tool needed to refresh stale or missing information.
 2. Report service reachability, compatibility, readiness, package/workspace
-   versions, DB mismatch, port conflict, update availability, and the workbench
+   versions, DB mismatch, port conflict, update availability, and the viewer
    URL only when those fields are present in trusted status output.
 3. If startup context reports `version_mismatch`, `db_mismatch`, or
    `port_occupied`, explain the recorded issue and next action before
-   recommending the workbench.
+   recommending the viewer.
 4. If recovery, doctor, service lifecycle, or package update requires the
    launcher, stop and give an explicit interactive user-terminal handoff. Do
    not invoke the launcher from this skill.

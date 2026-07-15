@@ -1,6 +1,0 @@
-interface:
-  display_name: "TCX Brain Create"
-  short_description: "Curate user-owned local Brain plugins"
-  default_prompt: "$tcx-build\nUse $tcx-brain-create to curate selected Decision Memory evidence and counterexamples into a private local Investment Brain draft."
-policy:
-  allow_implicit_invocation: true

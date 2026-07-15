@@ -23,10 +23,23 @@ Required output shape:
 Quality floor:
 
 - Treat validation as review, not strategy creation.
+- Before comparing candidates, freeze the hypothesis, selection rule, parameter
+  trial budget, chronological train/validation/holdout windows, and costs. Log
+  every generated, tried, revised, or discarded variant rather than only the
+  winner.
+- Treat a holdout as single-use. Repeated inspection or tuning on its result
+  turns it into training feedback and requires a new untouched holdout or
+  live-forward period.
+- In the `data_snooping` result, state the observed trial count or defensible
+  effective count and the multiple-testing adjustment used. Use methods such as
+  a reality check, Deflated Sharpe Ratio, or probability of backtest overfitting
+  only when their assumptions and required inputs are actually supported; do
+  not make one statistic a universal gate.
 - Mark unsupported performance claims `not-decision-ready`, `revise`, or
   `blocked`.
 - Do not imply execution readiness from a chart, backtest, or signal alone.
-- Separate empirical performance from economic plausibility.
+- Separate empirical performance from economic plausibility. A high in-sample
+  Sharpe ratio alone is not evidence of a robust effect.
 
 When these checks are in scope, set `anti_overfit_required: true` and write an
 `anti_overfit_checks` object into artifact frontmatter. Include every key below

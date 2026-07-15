@@ -13,7 +13,9 @@ if [ -z "${TRADINGCODEX_SERVICE_ADDR:-}" ]; then
   export TRADINGCODEX_SERVICE_ADDR={{TRADINGCODEX_SERVICE_ADDR_SHELL}}
 fi
 {{TRADINGCODEX_DB_ENV_SHELL}}
-cd "$TRADINGCODEX_ROOT"
+if [ "$(pwd -P)" != "$TRADINGCODEX_ROOT" ]; then
+  cd "$TRADINGCODEX_ROOT"
+fi
 
 run_python_launcher() {
   candidate="$1"

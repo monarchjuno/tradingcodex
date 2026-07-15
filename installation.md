@@ -24,8 +24,7 @@ the Quick Start in `README.md`.
 
 - Git on `PATH`; every generated workspace must belong to a Git worktree.
 - `uvx` for the packaged install flow.
-- An installed and authenticated `codex` CLI for native or Workbench-started
-  analysis.
+- An installed and authenticated `codex` CLI for native analysis.
 
 When a standalone target is outside Git, `tcx attach` runs a local `git init`.
 It never stages files, creates a commit or branch reference, configures a remote,
@@ -49,18 +48,32 @@ The target workspace should be empty. A directory with only `.git` already
 initialized is fine, as is an empty directory inside an existing parent
 worktree.
 
+Use Codex CLI 0.144.1 or later on macOS, Linux, WSL, or native Windows. Version
+0.144.4 is the current TradingCodex reference for custom permission profiles,
+hooks, required MCP startup, and explicit MultiAgent V2 configuration. Verify
+with `codex --version`; `./tcx doctor --layer guidance` fails below the
+compatibility floor and warns when the installed CLI is older or newer than the
+validated reference. Release acceptance uses the exact reference version.
+The default doctor output is concise: it reports layer totals and expands only
+warnings or failures. Run `./tcx doctor --verbose` (or
+`.\tcx.cmd doctor --verbose`) to inspect every individual check.
+
 After installation, fully quit and restart Codex, then open and trust the
 generated workspace and start from a new thread so project MCP config and hooks
-are loaded. Native execution is unavailable until that project layer is
-trusted; do not substitute a shell or public-surface path. When
-TradingCodex MCP autostarts the local service, the skill-first workbench is available at
-`http://127.0.0.1:48267/`.
+are loaded. When Codex presents the generated project hooks, review and trust
+all eight TradingCodex handlers; exact-role child lifecycle hooks require that
+persisted trust. `--dangerously-bypass-hook-trust` is an automation escape
+hatch, not a replacement for normal workspace setup or lifecycle validation.
+Native execution is unavailable until that project layer is trusted; do not
+substitute a shell or public-surface path. When
+TradingCodex MCP autostarts the local service, the read-only workspace viewer is available at
+the generated workspace's recorded service URL. Release workspaces use
+`http://127.0.0.1:48267/` by default; development workspaces may use a different
+loopback port. Run `./tcx service status --json` to print the selected address.
 
-The PyPI package includes the compiled React workbench. End users and generated
-workspaces do not need Node or npm. Starting an analysis from the workbench does
-require an installed and authenticated `codex` CLI visible on the Django
-service process `PATH`; when it is unavailable, the workbench remains readable
-and reports the run-start blocker.
+The PyPI package includes the compiled React viewer. End users and generated
+workspaces do not need Node or npm. Analysis runs in native Codex; the Django
+service only reads selected workspace state.
 
 ## Install From A Source Reference
 
@@ -71,12 +84,40 @@ reference instead of the PyPI package. For example, from a source checkout:
 uvx --refresh --from /path/to/tradingcodex tcx attach . --from /path/to/tradingcodex && ./tcx doctor
 ```
 
+When the command itself is running directly from the checkout, `--dev` is the
+shorthand for selecting that checkout as the explicit source. Keep the
+generated workspace separate from the source repository:
+
+```bash
+uv run python -m tradingcodex_cli attach /path/to/empty-workspace --dev
+cd /path/to/empty-workspace
+./tcx doctor
+```
+
+`--dev` and `--from` are mutually exclusive. An installed wheel cannot infer a
+private development checkout; run the command directly from the checkout as
+above, or use the explicit outer and inner `--from` form.
+
+Unless explicitly overridden, a new `--dev` attach isolates the runtime by
+checkout. It selects a home below the platform default at
+`development/source-<checkout-hash>` and a deterministic loopback port in the
+`20000`-`29999` range. Development workspaces from the same checkout therefore
+share one development ledger and service, while another checkout and ordinary
+release workspaces remain separate. `TRADINGCODEX_HOME`,
+`TRADINGCODEX_DB_NAME`, and `TRADINGCODEX_SERVICE_ADDR` remain explicit
+overrides.
+
 Source checkouts of this repository are for development. Generated
 TradingCodex workspaces are separate Codex projects. The inner `--from` is the
 explicit executable-source provenance declaration; `uvx` does not expose its
 outer `--from` value to `tcx`. Local source paths are used only to build the
 copied durable runtime. Generated files record `local-explicit`, never the local
-path or a source-tree `PYTHONPATH`.
+path or a source-tree `PYTHONPATH`. Development commands import the live
+checkout in an editable package-runner environment, but durable runtime
+provisioning uses a clean source snapshot that excludes local `build/`,
+`dist/`, caches, bytecode, state, and databases. Removing a source file is
+therefore reflected on the next development attach or update even when an old
+build tree still exists.
 
 A bare value that is a valid package requirement remains a package name even
 when the current directory contains a same-named folder. Use `./relative-dir`
@@ -84,7 +125,7 @@ or an absolute path for a local directory. TradingCodex rejects option-like
 values, unsupported schemes, remote `file:` URLs, SCP-style locators,
 credentials, and signed/query-bearing URLs before invoking its package runner.
 
-Source developers changing the workbench use Node 22 only as a build tool:
+Source developers changing the viewer use Node 22 only as a build tool:
 
 ```bash
 npm ci --prefix frontend
@@ -107,6 +148,19 @@ installer keeps uv cache enabled only to make that provisioning efficient:
 ```bash
 ./install.sh .
 ```
+
+Source developers can select the checkout containing `install.sh` without
+repeating its path:
+
+```bash
+./install.sh --dev /path/to/empty-workspace
+./install.sh --dev --update /path/to/existing-workspace
+```
+
+The script rejects `--dev` combined with `--from` and uses the checkout for
+both the package-runner invocation and executable-source declaration. It also
+applies the checkout-scoped development home and service address described
+above.
 
 Do not run `install.sh` on native Windows. Use the PowerShell `uvx` commands
 above or install the console tool with `uv tool install tradingcodex`, then use
@@ -139,7 +193,7 @@ yourself. Retry only after choosing one of those paths; v1 has no prerelease
 fallback.
 
 The native Windows CI smoke covers the wheel, launcher, generated config,
-hooks, MCP pipes, doctor, packaged workbench assets, and local service
+hooks, MCP pipes, doctor, packaged viewer assets, and local service
 lifecycle. It does not claim a real Windows Codex CLI session; that limitation
 remains explicit until separately exercised.
 
@@ -173,11 +227,13 @@ uvx --refresh --from tradingcodex tcx update . --from tradingcodex
 refreshes generated indexes, applies central DB migrations, records workspace
 provenance, and runs `./tcx doctor` unless `--no-doctor` is passed.
 
-Inside a generated Codex workspace, read-only and Plan sessions cannot run
-workspace updates because update rewrites protected `.codex`
-prompt/config/hook surfaces. If TradingCodex is already installed and startup
+Inside a generated Codex workspace, the default `trading-research` profile and
+Plan mode cannot run workspace updates because update rewrites protected `.codex`
+prompt/config/hook surfaces. Research may still create and edit ordinary
+user-owned files outside `trading/`; that authority does not include generated
+control files or managed TradingCodex state. If TradingCodex is already installed and startup
 health says the workspace can be aligned to that installed version,
-`head-manager` will ask you either to start a `workspace-write` root native turn
+`head-manager` will ask you either to select `trading-build` and start a root native turn
 whose exact physical first line is `$tcx-build`, or run this workspace-only
 update from your terminal:
 
@@ -188,7 +244,7 @@ update from your terminal:
 In that valid `$tcx-build` turn, `head-manager` may run only the reported
 workspace-local `update_status.command` (`./tcx update --skip-refresh`), then it
 stops and tells you to fully restart Codex. The marker is current-turn intent
-and does not elevate a read-only session; Plan mode cannot issue the grant. If
+and does not elevate the default Research profile; Plan mode cannot issue the grant. If
 a package update is required first, `update_status.command` is deliberately
 empty. Run the reported `uvx --refresh ... tcx update .` or installer-script
 update command from an interactive user terminal, then fully restart Codex.
@@ -200,6 +256,20 @@ stored:
 ```bash
 ./tcx update --from /path/to/tradingcodex
 ```
+
+From the source checkout, the development shorthands are:
+
+```bash
+uv run python -m tradingcodex_cli update /path/to/workspace --dev
+./install.sh --dev --update /path/to/workspace
+```
+
+A development update preserves the workspace's recorded home and explicit DB
+override, then regenerates its checkout-isolated service address. It refuses
+to convert a release/index workspace in place; attach a separate development
+workspace instead. This prevents a development MCP bootstrap from connecting
+to a release ledger merely because both processes would otherwise choose the
+default port.
 
 TradingCodex rejects credentialed URLs, inline secrets, HTTP sources, signed or
 query-bearing URLs, and fragments before it logs, renders, or records package
@@ -224,7 +294,10 @@ Generated workspaces project `gpt-5.6-sol`/xhigh for root `head-manager`,
 and Terra/high for all nine fixed subagents. Final execution is service-owned
 and runs no model.
 MultiAgent V2 exposes exact custom-role routing through the `agents` namespace;
-each task uses `fork_turns="none"` and a fresh role-bound child.
+each task uses `fork_turns="none"` and a fresh role-bound child. The generated
+V2 table explicitly sets `enabled = true` and a seven-thread session ceiling
+(one root plus six child slots); it does not mix the V1-only
+`agents.max_threads` setting into the V2 contract.
 Inspect `.tradingcodex/generated/model-policy-manifest.json` and
 `./tcx doctor --layer guidance` for registry/projection status. There is no
 runtime model fallback or rollback mode. A manifest support status of
@@ -240,9 +313,9 @@ Generated `.codex/config.toml` starts TradingCodex MCP with either an explicit
 validated stable Python or the versioned managed environment under
 `TRADINGCODEX_HOME/runtime/python/`. It never records uvx `archive-v0` or
 editable `builds-v0`; local-source update preserves the managed interpreter
-across its temporary runner. This avoids package-manager writes inside read-only
-analysis sessions and survives `uv cache clean`. MCP startup also autostarts the
-local Django workbench service and propagates the recorded package spec into
+across its temporary runner. This avoids package-manager writes inside
+Research-profile analysis sessions and survives `uv cache clean`. MCP startup also autostarts the
+local Django service that hosts the viewer, Admin, and API, and propagates the recorded package spec into
 the detached service. `tcx update` refreshes the package and regenerates the
 interpreter binding.
 
@@ -252,14 +325,18 @@ remain explicit workspace account scopes; investor suitability stays in the
 separate Investor Context file.
 
 Open the generated workspace in Codex and trust the project. After Codex
-connects, these local service surfaces are available:
+connects, these local service surfaces are available at the service URL
+reported by `./tcx service status --json`:
 
-- `http://127.0.0.1:48267/` for the local React workbench
-- `http://127.0.0.1:48267/admin/` for the Django operations console
-- `http://127.0.0.1:48267/api/health/live` for process liveness
-- `http://127.0.0.1:48267/api/health/ready` for DB, migration, and state-path readiness
+- `/` for the read-only React workspace viewer
+- `/admin/` for the Django operations console
+- `/api/health/live` for process liveness
+- `/api/health/ready` for DB, migration, and state-path readiness
 
-For CLI-only use outside Codex, the workbench service can still be started
+The release default is `http://127.0.0.1:48267/`; development bootstrap uses
+its recorded checkout-isolated loopback port unless explicitly overridden.
+
+For CLI-only use outside Codex, the local service can still be started
 manually:
 
 ```bash

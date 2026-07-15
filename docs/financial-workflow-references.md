@@ -14,6 +14,20 @@ question unless the user explicitly asks for valuation, portfolio fit,
 recommendation, order drafting, approval, or execution. No ticker keyword maps
 to a default team.
 
+## Reference Posture
+
+Primary regulatory, standards-body, and original research sources define the
+product rationale. Consultation papers are directional evidence, not binding
+standards. Open-source projects, vendor documentation, and practitioner writing
+below are design analogies only; they cannot justify execution authority,
+performance claims, or another orchestration layer.
+
+Controls stay proportional to the actual use case and materiality. A narrow
+factual request should not inherit the full workflow for a recommendation or
+order. A high-consequence decision should add the relevant source, data,
+independent-challenge, suitability, and service gates without turning every
+request into the same fixed team or checklist.
+
 ## Workflow Principles
 
 | Principle | Product implication | Reference |
@@ -31,6 +45,9 @@ to a default team.
 | Financial agent teams need explicit opposition | Decision-support synthesis should test the favorable case against a bearish or skeptical case, stale data, missing investor context, policy conflicts, and selected-strategy conflicts before naming a decision state. | TradingAgents bull/bear researcher debate; risk management team |
 | AI-assisted finance must stay auditable and bounded | Agent workflows should keep role boundaries, source/as-of posture, handoff states, policy gates, duplicate-request controls, and audit evidence visible. | NIST AI Risk Management Framework |
 | AI/ML in capital markets needs governance, testing, monitoring, data quality, and explainability | Agentic workflow features should keep dispatch, role outputs, source quality, and audit trails inspectable. | IOSCO AI/ML guidance for market intermediaries and asset managers |
+| AI controls should follow use-case materiality | Apply lighter checks to low-risk inspection and stronger governance to material research, recommendation, portfolio, and execution-sensitive use. Do not use AI governance as a reason to force every request through the same team. | FSB 2026 responsible-AI sound-practices consultation; directional, not a standard |
+| Data and third-party dependencies are model risks | Preserve source identity, knowledge cutoffs, data-quality notes, provider boundaries, and fail-closed connector review instead of treating a model answer as self-authenticating. | BIS FSI 2026 AI data-governance review; FSB 2025 AI-vulnerability monitoring report |
+| Shared-model decisions need explicit disagreement tests | Material decisions should surface contrary evidence and independent challenge, while treating correlated LLM behavior as a risk to test rather than an established TradingCodex performance claim. | BIS Innovation Hub Project Logos research scope |
 | Plain English increases investor comprehension without deleting complexity | User-facing web output should show plain-language workflow summaries first, with professional evidence and caveats behind them. | SEC Plain English Handbook |
 
 ## Source Map
@@ -45,6 +62,11 @@ to a default team.
 | [NIST AI Risk Management Framework](https://www.nist.gov/itl/ai-risk-management-framework) | Agentic finance workflows need visible governance, context mapping, measurement, and risk-management checkpoints. |
 | [NIST AI RMF Core](https://airc.nist.gov/airmf-resources/airmf/5-sec-core/) | Request scoping, handoff states, quality checks, and audit outputs should map to govern, map, measure, and manage functions. |
 | [IOSCO AI/ML report for market intermediaries and asset managers](https://www.iosco.org/library/pubdocs/pdf/IOSCOPD684.pdf) | AI-assisted capital-markets features need governance, testing, monitoring, data-quality controls, explainability, and outsourcing/third-party oversight posture. |
+| [IOSCO 2025 AI in capital markets consultation](https://www.iosco.org/library/pubdocs/pdf/IOSCOPD788.pdf) | GenAI expands research, trading, operations, risk, and compliance use cases while preserving model/data, malicious-use, concentration, outsourcing, third-party, and human-interaction risks. Its consultation status does not make it a binding TradingCodex requirement. |
+| [FSB 2026 responsible-AI sound-practices consultation](https://www.fsb.org/2026/06/fsb-consults-on-sound-practices-for-the-responsible-adoption-of-artificial-intelligence-ai/) | Use organisation-wide governance and lifecycle, cyber, ICT, and third-party controls in proportion to the actual use and materiality. The FSB explicitly describes these as consultation practices rather than an international standard or one prescriptive implementation. |
+| [FSB 2025 AI adoption and vulnerability monitoring](https://www.fsb.org/uploads/P101025.pdf) | Keep model, data-quality, governance, third-party concentration, market-correlation, cyber, fraud, and disinformation risks observable through provenance and monitoring rather than hidden behind the agent interface. |
+| [BIS FSI 2026, "In data we trust?"](https://www.bis.org/fsi/publ/insights73.htm) | Data privacy, quality, security, third-party dependency, and provider concentration support point-in-time source snapshots, redaction, provider review, and fail-closed data boundaries. |
+| [BIS Innovation Hub Project Logos](https://www.bis.org/about/bisih/topics/suptech_regtech/logos.htm) | LLM portfolio-manager homogeneity and correlated responses are hypotheses being tested in simulation. TradingCodex uses contrary evidence and independent review but does not claim the project proves real-market harm or product superiority. |
 | [SEC Plain English Handbook](https://www.sec.gov/pdf/handbook.pdf) | User-facing screens should start with plain-English workflow meaning before professional evidence, assumptions, caveats, and artifacts. |
 | [Every, "Compound Engineering"](https://every.to/guides/compound-engineering) | Engineering work should teach the system reusable capabilities; TradingCodex applies this by making role outputs preserve compact context, reader summaries, source posture, and missing-evidence notes for future workflows. |
 | [Will Larson, "Learning from Every's Compound Engineering"](https://lethain.com/everyinc-compound-engineering/) | The useful pattern is separating research/planning, work, review, and compounding memory; TradingCodex mirrors that with request scoping, role artifacts, quality checks, postmortem review, and improve records. |
@@ -64,24 +86,23 @@ to a default team.
 
 ## Task Scope And Dynamic Coordination Contract
 
-The Work section is a local skill-first scoping surface. Preview remains a pure
-preparation step; starting a run invokes the same generated `head-manager`
-through bounded `codex exec`, and only that coordinator dynamically selects and
-revises roles. Neither mode may approve orders, execute trades, handle
-broker/secret actions, or widen role and service authority. The surface should:
+The native Codex task is the only analysis and skill-invocation surface. A user
+begins with natural language or an exact projected skill, and only the generated
+Head Manager dynamically selects and revises roles. The read-only browser viewer
+may inspect resulting state but cannot preview prompts, start or resume runs, or
+widen role and service authority. Native task handling should:
 
 - preserve the user's objective, subject scope, explicit prohibitions, and
   safety boundary without assigning a semantic lane
 - translate rough investor intuition into a plain-English working hypothesis
 - show current evidence needs and blocked actions without presenting a
   precompiled stage order or selected team
-- keep judgment controls, Strategy baseline, and method lenses available in a
-  review section so users can inspect professional reasoning without making the
-  first screen feel like an expert checklist
+- apply judgment controls, the Strategy baseline, and method lenses without
+  turning the initial user request into an expert checklist
 - expose method lenses such as investor-context suitability, portfolio risk, factor
   exposure, execution-boundary, or AI-governance references with a short
   plain-language reason each lens matters
-- show roles after Head Manager actually chooses them and explain the
+- record roles only after Head Manager actually chooses them and explain the
   request-specific question each role owns
 - show blocked actions before artifacts exist, with a plain-language reason
   for each blocked action
@@ -93,8 +114,8 @@ broker/secret actions, or widen role and service authority. The surface should:
   same suitability question every time
 - translate missing investor-context fields into direct user questions, with a short
   reason each answer is required
-- keep the generated Codex prompt compact enough for native dispatch and place
-  the raw prompt in a handoff section rather than making it the first-read UX
+- keep child dispatch prompts compact and run-bound rather than copying the
+  entire root task history
 - instruct agents to write plain-English first, then professional evidence,
   assumptions, and caveats
 - instruct agents to preserve reusable context, source snapshots, missing
@@ -142,6 +163,17 @@ strategy authoring path, not as a side effect of analysis.
 - IOSCO AI/ML guidance highlights governance and oversight, algorithm
   development/testing/monitoring, data quality and bias, transparency and
   explainability, outsourcing, and ethical concerns for capital-markets AI.
+- The 2026 FSB consultation emphasizes use-case materiality and proportionality
+  across governance, model lifecycle, cyber, ICT, and third-party controls. It
+  remains a consultation until the announced final report, so TradingCodex uses
+  it as current direction rather than a binding standard.
+- The 2025 FSB monitoring report and 2026 BIS FSI review reinforce observable
+  model/data/provider dependencies. TradingCodex maps that to source snapshots,
+  cutoffs, connector approval, redaction, and explicit unknown states rather
+  than a new semantic router.
+- BIS Project Logos is an active simulated-market research project. It supports
+  testing disagreement and correlation risk, but it is not evidence that this
+  product improves returns or prevents systemic outcomes.
 - Addy Osmani frames loop engineering as designing the system that prompts
   agents, built from automations, worktrees, skills, connectors, subagents, and
   memory outside a single conversation.

@@ -157,7 +157,50 @@ FORECAST_TARGET_TYPES = {"binary", "categorical", "continuous"}
 
 def evaluate_artifact_quality(workspace_root: Path | str, artifact_path: str, *, strict: bool = False) -> dict[str, Any]:
     root = Path(workspace_root).expanduser().resolve(strict=False)
-    result: dict[str, Any] = {
+    result = _empty_quality_result(artifact_path, strict=strict)
+
+    try:
+        path = safe_workspace_path(root, artifact_path, allowed_roots=QUALITY_FILE_ROOTS)
+    except ValueError as exc:
+        result["status"] = "fail"
+        result["warnings"].append(str(exc))
+        return result
+
+    rel = path.relative_to(root).as_posix()
+    result["path"] = rel
+    result["artifact_type"] = classify_artifact_path(rel)
+    if not path.exists() or not path.is_file():
+        result["status"] = "fail"
+        result["warnings"].append("artifact path does not exist")
+        return result
+
+    return _evaluate_artifact_text(
+        rel,
+        path.read_text(encoding="utf-8"),
+        result,
+        strict=strict,
+    )
+
+
+def evaluate_artifact_quality_text(
+    artifact_path: str,
+    text: str,
+    *,
+    strict: bool = False,
+) -> dict[str, Any]:
+    """Evaluate intended artifact bytes before their stable file is published."""
+
+    result = _empty_quality_result(artifact_path, strict=strict)
+    return _evaluate_artifact_text(
+        artifact_path,
+        text,
+        result,
+        strict=strict,
+    )
+
+
+def _empty_quality_result(artifact_path: str, *, strict: bool) -> dict[str, Any]:
+    return {
         "path": artifact_path,
         "exists": False,
         "bytes": 0,
@@ -179,32 +222,26 @@ def evaluate_artifact_quality(workspace_root: Path | str, artifact_path: str, *,
         "warnings": [],
     }
 
-    try:
-        path = safe_workspace_path(root, artifact_path, allowed_roots=QUALITY_FILE_ROOTS)
-    except ValueError as exc:
-        result["status"] = "fail"
-        result["warnings"].append(str(exc))
-        return result
 
-    rel = path.relative_to(root).as_posix()
-    result["path"] = rel
-    result["artifact_type"] = classify_artifact_path(rel)
-    if not path.exists() or not path.is_file():
-        result["status"] = "fail"
-        result["warnings"].append("artifact path does not exist")
-        return result
-
-    text = path.read_text(encoding="utf-8")
+def _evaluate_artifact_text(
+    artifact_path: str,
+    text: str,
+    result: dict[str, Any],
+    *,
+    strict: bool,
+) -> dict[str, Any]:
+    result["path"] = artifact_path
+    result["artifact_type"] = classify_artifact_path(artifact_path)
     result["exists"] = True
     result["bytes"] = len(text.encode("utf-8"))
     result["non_empty"] = bool(text.strip())
     result["context_efficiency"]["estimated_tokens"] = estimate_tokens(text)
 
-    if rel.endswith(".jsonl"):
+    if artifact_path.endswith(".jsonl"):
         _evaluate_jsonl(text, result, strict=strict)
-    elif rel.endswith(".json"):
+    elif artifact_path.endswith(".json"):
         _evaluate_json(text, result, strict=strict)
-    elif rel.endswith(".md"):
+    elif artifact_path.endswith(".md"):
         _evaluate_markdown(text, result, strict=strict)
 
     blocking_missing = bool(result["required_fields_missing"]) if strict else False

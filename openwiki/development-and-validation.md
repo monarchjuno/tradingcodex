@@ -26,8 +26,7 @@ workspaces do not run Node.
 | Docs/OpenWiki/AGENTS only | link/file existence checks, quick read of changed Markdown |
 | CLI command | focused tests for command behavior, generated wrapper smoke if workspace-facing |
 | Django model/service/API/web | focused pytest plus `python manage.py check` |
-| React workbench | frontend test/typecheck/build, committed-output diff, focused API/process tests, real-browser desktop/narrow/keyboard/error checks |
-| Workbench Codex runner | fake subprocess argv/cwd/env/event/concurrency/resume tests, then real Codex smoke when available |
+| React workspace viewer | frontend test/typecheck/build, committed-output diff, focused GET API tests, real-browser desktop/narrow/keyboard/error checks |
 | MCP registry/handler/allowlist | `tools/list` smoke plus focused MCP tests |
 | Research memory/artifact quality | create/search/export/source snapshot flow and `tcx quality-check --strict` |
 | Generated templates/hooks/prompts/skills | disposable workspace smoke and generated contract inspection |
@@ -65,12 +64,22 @@ when present, and `trading/audit/codex-hooks.jsonl`.
 
 When skill text, role TOML, head-manager instructions, hooks, routing, or handoff behavior changes, run this when Codex CLI/auth is available:
 
+Use a dedicated maintainer `CODEX_HOME`, open the disposable workspace in
+interactive Codex once, and persistently approve all eight generated project
+hooks before the native run. The one-run hook-trust bypass is not valid evidence
+for V2 child lifecycle hooks. Resolve the workspace to one physical path and
+reuse it throughout; hook trust keys include the source path as well as the
+current hash.
+
 ```bash
 cd "$SOURCE_ROOT"
-CODEX_PROJECT_TRUST="$("$SOURCE_PYTHON" -c 'import json, pathlib, sys; root = str(pathlib.Path(sys.argv[1]).resolve()); print(f"projects={{{json.dumps(root)}={{trust_level=\"trusted\"}}}}")' "$SMOKE_ROOT/workspace")"
-codex exec --ignore-user-config -c "$CODEX_PROJECT_TRUST" -c 'mcp_servers.tradingcodex.required=true' \
-  -C "$SMOKE_ROOT/workspace" --skip-git-repo-check --dangerously-bypass-hook-trust \
-  -s read-only --json --output-last-message "$SMOKE_ROOT/codex-smoke.txt" \
+CANON_WORKSPACE="$(realpath "$SMOKE_ROOT/workspace")"
+python tests/codex_cli_contract.py --workspace "$CANON_WORKSPACE" --require-reference --require-hook-trust
+CODEX_PROJECT_TRUST="$("$SOURCE_PYTHON" -c 'import json, pathlib, sys; root = str(pathlib.Path(sys.argv[1]).resolve()); print(f"projects={{{json.dumps(root)}={{trust_level=\"trusted\"}}}}")' "$CANON_WORKSPACE")"
+codex exec -c "$CODEX_PROJECT_TRUST" -c 'mcp_servers.tradingcodex.required=true' \
+  --strict-config \
+  -C "$CANON_WORKSPACE" --skip-git-repo-check \
+  --json --output-last-message "$SMOKE_ROOT/codex-smoke.txt" \
   'Fixed-role dispatch smoke only. Do not produce investment analysis. For "ACME company facts only. No valuation, portfolio review, order, approval, trading, or execution.", begin a lightweight analysis run, dynamically choose the single smallest useful fixed role, dispatch it with exact agent_type and a compact fork_turns=none message asking it to return only ROLE_READY, wait for that child, and stop in waiting state without synthesis.' \
   > "$SMOKE_ROOT/codex-smoke.jsonl"
 ```
@@ -80,9 +89,17 @@ resolve to `$SMOKE_ROOT/workspace`; the caller cwd remains `$SOURCE_ROOT` so
 relative MCP binding regressions cannot hide. Confirm every spawn names Head
 Manager's dynamically chosen exact `agent_type`, uses compact/no-history
 context, and starts the role's projected model. Inspect the spawned child
-rollout and require its actual sandbox to be `read-only`. If exact selection is unavailable, require
+rollout and require its actual permission profile to be `trading-research`,
+including ordinary user-owned writes outside `trading/` and protected
+`trading/`/control paths. If exact selection is unavailable, require
 `waiting_for_subagent_dispatch` with no generic spawn, role/source emulation, or
 empty wait.
+
+The reference preflight is pinned to Codex CLI 0.144.4. It verifies strict
+config loading, MCP and sandbox configuration, explicit MultiAgent V2
+enablement, the `agents` namespace feature posture, the disabled unified-
+exec/computer-use surfaces, and persisted trust for every generated project
+hook before the expensive native run.
 
 If Codex CLI or authentication is unavailable, record the blocker and still run generated workspace, hook, and starter-prompt checks.
 
@@ -91,16 +108,12 @@ For packaging/platform work, build the wheel and run
 that clean-wheel smoke on Ubuntu, native macOS, and native Windows; Windows must
 invoke `tcx.cmd`, not Bash `./tcx`. Run real Codex CLI only after all non-Codex
 checks, and do not infer a Windows Codex-client result from launcher CI.
-The wheel smoke must load `/` and the packaged workbench JavaScript/CSS without
+The wheel smoke must load `/` and the packaged viewer JavaScript/CSS without
 installing Node.
 
-For workbench-run changes, first use a fake `codex` executable to prove fixed
-argv with `shell=False`, vetted workspace cwd, stripped environment, normalized
-redacted JSONL, one active process per run, and stored-thread follow-up. Then run
-one real analysis-only workbench smoke when Codex/auth is available. Verify
-explicit prohibitions, dynamically justified exact-role dispatch, accepted
-artifacts, and no order, approval, execution, cancellation, broker mutation, or
-secret action.
+For viewer changes, verify GET-only routes, registered-workspace rejection,
+sanitized skill/artifact detail, and the absence of any Codex subprocess or
+mutation endpoint. Then run desktop and narrow browser checks.
 
 ## MCP Smoke
 

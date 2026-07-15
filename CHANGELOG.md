@@ -2,7 +2,58 @@
 
 ## Unreleased
 
-- Move all 30 bundled skills into the reserved compact `tcx-` namespace, with
+## 1.0.0 - 2026-07-15
+
+- Raise the validated Codex CLI reference to 0.144.4 while retaining the
+  proven 0.144.1 compatibility floor, explicitly enable
+  MultiAgent V2, replace the incompatible V1 `agents.max_threads` setting with
+  the V2 session-wide thread ceiling, add CLI version diagnostics, and add a
+  strict config/feature/MCP maintainer preflight. Native lifecycle acceptance
+  now requires persisted project-hook trust, because the one-run hook-trust
+  bypass is not inherited when a V2 child reloads an exact role config.
+- Add explicit development bootstrap shortcuts: source checkouts can run `tcx
+  attach/update --dev`, while the POSIX installer supports `--dev` and
+  `--dev --update` with the checkout bound as both package runner and declared
+  executable source. Generated workspaces continue to store only
+  `local-explicit`, never the private checkout path. Default development
+  bootstrap now isolates each checkout with its own runtime home, ledger, and
+  deterministic loopback service port; generated service commands honor that
+  address, and development update refuses to convert a release workspace in
+  place. Development commands import the live checkout through an editable
+  package-runner environment, while durable local runtimes are built from a
+  clean runtime-source snapshot that excludes stale build, distribution,
+  cache, bytecode, state, and database products.
+- Remove the web Work execution runner, preview/start/follow-up APIs, and
+  workbench-only hook mode; replace the product web with a read-only
+  Library/Skills/System viewer whose left rail selects only registered,
+  validated attached workspaces. Optimize half-width desktop windows with a
+  compact workspace selector and full-width list-to-detail transitions, keep
+  long status labels inside every supported viewport, move keyboard focus into
+  narrow Library/Skills details and back to their indexes, and restore
+  main-content focus after workspace switching.
+- Harden native workspace startup by keeping hook stdin/stdout in the launcher
+  process, using direct proxy-free loopback readiness checks with a native-host
+  response allowance, rejecting macOS ephemeral-port self-connections, and
+  retaining redacted detached-startup diagnostics while terminating timed-out
+  children instead of leaving orphans. Remove reverse-DNS lookup from the local
+  Django bind path, and validate these paths from the same clean wheel on macOS
+  and Windows.
+
+- Make `tcx doctor` concise by default: run only the selected layer plus global
+  service preflight, summarize layer totals, expand warnings and failures, and
+  retain full per-check evidence behind `--verbose`.
+- Strengthen point-in-time research guidance for filing/accession identity and
+  first-release or vintage macro data. Record all tried variants, effective
+  trial counts, frozen selection rules, and single-use holdout posture, while
+  keeping PBO, reality-check, and deflated-Sharpe diagnostics conditional on
+  supported assumptions and inputs.
+- Let exact fixed-role children read only their projected role-owned/shared
+  skill documents and Markdown references, including the read-only batched
+  `cat` form Codex naturally emits. Redirects, pipelines, substitutions,
+  executable compounds, other-role skills, configs, generated indexes, and
+  runtime state remain fail-closed.
+
+- Move all 31 bundled skills into the reserved compact `tcx-` namespace, with
   one suffix word preferred and two allowed only for clarity. User-owned
   `strategy-*`, `investment-brain-*`, and optional role skill namespaces stay
   separate, and unchanged retired generated files migrate on `tcx update`.
@@ -20,12 +71,26 @@
   invoke the actual work skill rather than `tcx-automate` recursively.
 - Retire persistent Build mode. Only an exact root first line `$tcx-build`
   creates a current-turn, workspace/session/turn-bound Build grant; Plan mode
-  is rejected and the marker never elevates Codex's filesystem sandbox.
-  Generated Build turns use native `apply_patch`, a narrow command lane, and
-  hook-owned one-time proofs for canonical connector DB changes.
-- Route managed Strategy authoring through the same exact Build-turn skill,
-  hook, and lifecycle-service boundary; direct generated skill/projection edits
-  are no longer the native Codex UX. General server, Investor Context, and
+  is rejected and the marker never elevates Codex's native permission profile.
+  Generated workspaces default to `trading-research`, which permits general
+  shell/Python, credential-free public retrieval, and user-owned file changes
+  outside `trading/` while denying runtime/DB, credentials, protected control
+  files, local/private network targets, and direct durable TradingCodex writes.
+  Explicit `trading-build` turns open controlled `trading/` connector work with
+  network and sensitive state still denied; hook-owned proofs continue to gate
+  trusted lifecycle and canonical connector DB changes.
+- Give Strategy and Investment Brain management their own exact root markers,
+  `$tcx-strategy` and `$tcx-brain`, in the normal `trading-research` profile.
+  Their DB-canonical current-turn grants are capability-scoped and cannot cross
+  into Build, one another, Plan mode, subagents, orders, credentials, global
+  config, or publication. Codex-native source authoring and ordinary workspace
+  computation stay in the normal permission profile, while registry and
+  projection lifecycle uses the proof-protected `manage_strategy` and
+  `manage_investment_brain` MCP tools. Research no longer exposes the generated
+  CLI or attached runtime for those actions, and model-side lifecycle launcher
+  calls now return a precise MCP/user-terminal handoff. Reversible source and
+  draft creation no longer asks for redundant confirmation; activation and
+  destructive lifecycle actions remain explicit. General server, Investor Context, and
   unsupported Decision Memory lifecycle commands now return explicit
   user-terminal handoffs instead of attempting a blocked model shell.
 - Replace agent-side connector `connect`/write-style scaffold MCP operations
@@ -47,7 +112,7 @@
   is in flight. Stop/new-turn cleanup never resets it, and the same session
   blocks new Build/order-sensitive prompts until terminal while ordinary
   research remains available.
-- Increase the bundled core skill count from 29 to 30 without adding an
+- Increase the bundled core skill count from 29 to 31 without adding an
   execution subagent.
 - Remove final submit, cancel, and broker-status-refresh mutations from public
   MCP, REST, generic CLI guidance, and Workbench while preserving the existing
@@ -62,8 +127,6 @@
   dispatch audit now records exact role/fork/task plus child-brief hash and
   size, never the brief body.
 
-## 1.0.0 - 2026-07-13
-
 - Establish the first supported TradingCodex public contract across the CLI,
   Django service, MCP gateway, React workbench, and generated workspaces.
 - Start from clean v1 workspace, runtime-home, database, migration, policy,
@@ -75,12 +138,15 @@
 - Add explicit, workspace-file-native Investment Brain plugins with strict
   local/Git installation, immutable versions, Head Manager-only projection,
   lazy sealed references, rollback, collision checks, and run provenance.
-- Add the user-owned `tcx-brain-create` path while keeping Strategy, Investor
-  Context, Decision Memory, current evidence, and Core safety as distinct
-  authority layers.
+- Add the user-owned `tcx-brain` source and managed-plugin lifecycle entrypoint
+  while keeping Strategy, Investor Context, Decision Memory, current evidence,
+  and Core safety as distinct authority layers.
 - Authenticate run-bound research artifacts and synthesis inputs with
   service-issued receipts, external signing-key custody, source snapshots, and
   exact Brain/Strategy/Context lineage.
+- Validate accepted run-bound artifacts against the strict quality contract
+  before receipt or stable publication, expose structured follow-up and
+  improvement MCP schemas, and exclude non-accepted handoffs from synthesis.
 - Enforce V2 spawn-field allowlists, source-snapshot knowledge cutoffs,
   no-future artifact time bounds, and strict claim tagging for Head Manager
   synthesis.

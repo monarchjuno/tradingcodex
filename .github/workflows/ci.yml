@@ -59,13 +59,12 @@ jobs:
       - name: Install package with development extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev]" uv
 
       - name: Run release-blocking negative and concurrency tests
         run: >-
           pytest
           tests/test_security_invariants.py
-          tests/test_improvement_invariants.py
           tests/test_mcp_broker_release_health.py
           tests/test_runtime_profile.py
           tests/test_broker_center_prd.py
@@ -97,7 +96,7 @@ jobs:
       - name: Install package with development extras
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]"
+          python -m pip install -e ".[dev]" uv
 
       - name: Run tests
         run: pytest
@@ -130,7 +129,7 @@ jobs:
       - name: Build and validate distributions
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build twine
+          python -m pip install build twine uv
           python -m build
           python -m twine check dist/*
 
@@ -171,6 +170,9 @@ jobs:
         with:
           name: tradingcodex-wheel
           path: dist
+
+      - name: Install durable runtime provisioner
+        run: python -m pip install uv
 
       - name: Run native launcher, config, process, and service smoke
         run: python tests/platform_wheel_smoke.py --wheel-dir dist

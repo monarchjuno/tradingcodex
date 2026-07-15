@@ -41,10 +41,18 @@ Quality floor:
 - State what matters most for the company instead of listing generic ratios.
 - Explain drivers, risks, and uncertainty in plain causal terms.
 - Separate facts from interpretation.
+- Reconcile filing-derived aggregates to the underlying filing or disclosure:
+  identifier/accession, accepted or published time, form, fiscal period, units,
+  and amendment posture. For a historical cutoff, use only the version
+  available then; a latest company-facts view cannot silently replace it.
 - Distinguish issuer/company fundamentals from security actionability; good fundamentals alone are not a buy decision.
 - Use `factual-baseline`, `screen-grade`, or `not-decision-ready` when missing evidence prevents a stronger conclusion.
 - Do not fabricate financial metrics, source facts, filings, or validation results.
 - Name missing evidence and confidence.
 - End with unresolved questions and evidence needed for a stronger conclusion.
+- Keep unresolved questions in the report body or `missing_evidence`. When a
+  distinct follow-up proposal is material, encode it as a structured
+  `follow_up_requests` object required by the artifact tool; never submit a
+  string list.
 
 Write outputs under `trading/reports/fundamental/`.

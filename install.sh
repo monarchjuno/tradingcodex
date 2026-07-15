@@ -3,9 +3,11 @@ set -eu
 
 PYTHON_VERSION=""
 PACKAGE_SPEC="tradingcodex"
+PACKAGE_SPEC_SET="0"
 WORKSPACE=""
 RUN_DOCTOR="1"
 UPDATE="0"
+DEV="0"
 
 usage() {
   cat <<'USAGE'
@@ -17,6 +19,7 @@ Usage:
 
 Options:
   --from <package-spec>  Install from a PyPI name, path, URL, or PEP 508 spec.
+  --dev                 Bootstrap from this TradingCodex source checkout.
   --python <version>    Python version for uvx. Default: uv selects a compatible Python.
   --update              Update an existing TradingCodex workspace.
   --no-doctor           Skip ./tcx doctor after bootstrap or update.
@@ -26,6 +29,8 @@ Examples:
   install.sh .
   install.sh ~/tradingcodex-workspaces/apple-research
   install.sh --update .
+  install.sh --dev /path/to/empty-workspace
+  install.sh --dev --update /path/to/existing-workspace
   install.sh --from /path/to/tradingcodex .
 USAGE
 }
@@ -38,7 +43,12 @@ while [ "$#" -gt 0 ]; do
         exit 2
       fi
       PACKAGE_SPEC="$2"
+      PACKAGE_SPEC_SET="1"
       shift 2
+      ;;
+    --dev)
+      DEV="1"
+      shift
       ;;
     --python)
       if [ "$#" -lt 2 ]; then
@@ -91,6 +101,25 @@ if [ -z "$WORKSPACE" ]; then
   exit 2
 fi
 
+if [ "$DEV" = "1" ] && [ "$PACKAGE_SPEC_SET" = "1" ]; then
+  echo "install.sh: --dev and --from cannot be used together" >&2
+  exit 2
+fi
+
+if [ "$DEV" = "1" ]; then
+  SOURCE_ROOT=$(CDPATH= cd -P "$(dirname "$0")" && pwd)
+  if [ ! -f "$SOURCE_ROOT/pyproject.toml" ] \
+    || [ ! -f "$SOURCE_ROOT/tradingcodex_cli/__main__.py" ] \
+    || [ ! -f "$SOURCE_ROOT/tradingcodex_service/version.py" ] \
+    || [ ! -d "$SOURCE_ROOT/workspace_templates/modules" ]; then
+    echo "install.sh: --dev requires install.sh from a TradingCodex source checkout" >&2
+    exit 2
+  fi
+  PACKAGE_SPEC="$SOURCE_ROOT"
+  _TRADINGCODEX_DEV_SOURCE_ROOT="$SOURCE_ROOT"
+  export _TRADINGCODEX_DEV_SOURCE_ROOT
+fi
+
 ensure_uvx() {
   if command -v uvx >/dev/null 2>&1; then
     return 0
@@ -124,7 +153,11 @@ run_uvx() {
 }
 
 run_tradingcodex() {
-  if [ -n "$PYTHON_VERSION" ]; then
+  if [ "$DEV" = "1" ] && [ -n "$PYTHON_VERSION" ]; then
+    run_uvx --isolated --refresh --python "$PYTHON_VERSION" --with-editable "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
+  elif [ "$DEV" = "1" ]; then
+    run_uvx --isolated --refresh --with-editable "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
+  elif [ -n "$PYTHON_VERSION" ]; then
     run_uvx --isolated --refresh --python "$PYTHON_VERSION" --from "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
   else
     run_uvx --isolated --refresh --from "$PACKAGE_SPEC" python -m tradingcodex_cli "$@"
@@ -187,8 +220,12 @@ validate_package_spec() {
 validate_package_spec
 ensure_uvx
 
-if [ "$UPDATE" = "1" ]; then
+if [ "$UPDATE" = "1" ] && [ "$DEV" = "1" ]; then
+  echo "install.sh: updating TradingCodex development workspace: $WORKSPACE" >&2
+elif [ "$UPDATE" = "1" ]; then
   echo "install.sh: updating TradingCodex workspace: $WORKSPACE" >&2
+elif [ "$DEV" = "1" ]; then
+  echo "install.sh: bootstrapping TradingCodex development workspace: $WORKSPACE" >&2
 else
   echo "install.sh: bootstrapping TradingCodex workspace: $WORKSPACE" >&2
 fi
@@ -197,8 +234,12 @@ fi
 # is never persisted into generated launchers or project MCP configuration.
 unset UV_NO_CACHE
 
-if [ "$UPDATE" = "1" ]; then
+if [ "$UPDATE" = "1" ] && [ "$DEV" = "1" ]; then
+  run_tradingcodex update "$WORKSPACE" --dev --no-doctor
+elif [ "$UPDATE" = "1" ]; then
   run_tradingcodex update "$WORKSPACE" --from "$PACKAGE_SPEC" --no-doctor
+elif [ "$DEV" = "1" ]; then
+  run_tradingcodex attach "$WORKSPACE" --dev
 else
   run_tradingcodex attach "$WORKSPACE" --from "$PACKAGE_SPEC"
 fi

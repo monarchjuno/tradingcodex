@@ -479,6 +479,25 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
                         current_bytes,
                     )
             rendered_artifact = _render_research_markdown(frontmatter, markdown_body)
+            if run_bound and frontmatter.get("handoff_state") == "accepted":
+                from tradingcodex_service.application.artifact_quality import (
+                    evaluate_artifact_quality_text,
+                )
+
+                quality = evaluate_artifact_quality_text(
+                    export_path,
+                    rendered_artifact,
+                    strict=True,
+                )
+                if quality["status"] != "pass":
+                    issues = [
+                        *quality["required_fields_missing"],
+                        *quality["warnings"],
+                    ]
+                    raise ValueError(
+                        "accepted run-bound research artifact failed strict quality: "
+                        + "; ".join(dict.fromkeys(str(issue) for issue in issues))
+                    )
             artifact_file_sha256 = hashlib.sha256(
                 rendered_artifact.encode("utf-8")
             ).hexdigest()

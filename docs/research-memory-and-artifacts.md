@@ -138,6 +138,15 @@ derived from the artifact type and explicit fields such as
 `investor_context_gate_required`; Head Manager decides when those judgments are
 needed from the live request and evidence.
 
+An `accepted` run-bound artifact must pass the strict artifact-quality contract
+against the exact rendered bytes before the service creates a receipt or
+publishes the stable file. A failed write leaves no accepted file or receipt so
+the producing role can correct and resubmit it. In particular,
+`follow_up_requests` and `improvements` are structured objects, not shorthand
+strings. Non-accepted `revise`, `blocked`, and `waiting` artifacts may record an
+incomplete handoff, but Head Manager synthesis accepts only authenticated,
+current-run inputs whose handoff state is `accepted`.
+
 The markdown body should preserve source-aware claims, evidence, assumptions,
 handoff conclusions, and any role-owned limitations. Material narrative claims
 should use `[factual]`, `[inference]`, or `[assumption]` tags when the
@@ -172,6 +181,14 @@ recorded_at <= system_recorded_at`. The writer and all research-spec,
 forecasting, and investment-analysis consumers enforce this same v1 contract.
 An artifact or replay manifest rejects a snapshot that does not exist or whose
 `known_at` is later than its declared `knowledge_cutoff`.
+Source-specific point-in-time evidence also preserves the identity needed to
+reconstruct what was actually knowable. Filing-derived aggregates retain the
+underlying filing or disclosure identifier, accepted/published time, form,
+fiscal period, units, and amendment posture; a current company-facts or
+calendar-frame view is only screening evidence unless the exact cutoff-valid
+filing is bound. Historical macro work binds a first-release, vintage, or
+real-time-period observation when available. A currently revised series is
+hindsight evidence and cannot silently stand in for the historical value.
 Artifact-producing agents therefore use a full timezone-aware RFC 3339
 `knowledge_cutoff` and, when binding source snapshots, set it at or after the
 maximum service-returned snapshot `known_at` value, preferably that exact
@@ -332,6 +349,12 @@ parameter-trial budget, and typed conclusions `keep_researching`,
 without inheriting a quant-signal contract. This validates manifests and
 evidence; it is not an embedded backtest engine or proof that reported external
 metrics were recomputed.
+The data-snooping check records the observed or defensible effective trial
+count, candidate-selection rule, chronological split, holdout exposure, and
+multiple-testing adjustment. Reusing a holdout turns it into training feedback.
+Probability-of-overfitting, reality-check, or deflated-Sharpe statistics are
+useful only when the required inputs and assumptions are supported; none is a
+universal prerequisite for non-quant research.
 
 Validation Cards use the same typed evidence posture. `not_assessed` never
 supports an `evidence_quality_label` of `validated`; validated cards require
@@ -468,7 +491,8 @@ workspace. Use `append_research_artifact_version` or
 
 In a Codex-native analysis, a producing role supplies report/source metadata,
 the assigned `workflow_run_id`, and exact `input_artifact_ids` when it consumes
-upstream work. Its filesystem sandbox is read-only, so the final role report is
+upstream work. Its Research profile keeps `trading/` read-only even though
+user-owned paths outside that tree are writable, so the final role report is
 written only through the authenticated MCP writer. The service authenticates
 the producer, verifies every input belongs to the same run, derives input
 hashes, and writes the schema version, body hash, version, creator, and sealed
@@ -544,7 +568,8 @@ decides dynamically whether to revise, add a role, challenge, wait, block, or
 synthesize. Shell reads, glob discovery, latest pointers, and server terminal
 state are not synthesis authority. Malformed unmanaged markdown is reported as
 invalid repository content but cannot poison lookup or creation of an
-unrelated canonical artifact.
+unrelated canonical artifact. An authenticated input is still ineligible for
+synthesis until its receipt-bound handoff state is `accepted`.
 
 Synthesis retains the service-derived Brain lineage and explains how the Brain
 materially affected inquiry or interpretation, any conflict with Strategy,

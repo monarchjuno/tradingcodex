@@ -251,6 +251,18 @@ def build_customization_status(workspace_root: Path | str, *, full_access_detect
             "permission_is_advisory": True,
             "full_access_detected": bool(full_access_detected),
         },
+        "managed_skill_authorization": {
+            "status": "exact_capability_turn_required",
+            "exact_first_lines": {
+                "brain": "$tcx-brain",
+                "strategy": "$tcx-strategy",
+            },
+            "recommended_profile": "trading-research",
+            "lifecycle_transport": "proof_protected_mcp",
+            "runtime_filesystem_access": False,
+            "cross_scope": False,
+            "build_wrapper_allowed": False,
+        },
         # Compatibility projection for older `tcx build status --json`
         # consumers. It is inert and always has build_enabled=false.
         "mode_status": get_runtime_mode_status(root, full_access_detected=full_access_detected),

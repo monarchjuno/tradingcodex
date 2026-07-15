@@ -84,7 +84,7 @@ not a black-box trading bot.
 
 | User posture | Product response |
 | --- | --- |
-| Individual investor using Codex for research | Provide a skill-first workbench, structured workflows, visible run state, source posture, plain-language summaries, and readable artifacts. |
+| Individual investor using Codex for research | Provide native Codex workflows plus a read-only multi-workspace viewer for source posture, summaries, and artifacts. |
 | Operator validating non-live submissions | Provide deterministic policy, approval, connection, duplicate-request, and audit checks. |
 | Developer extending adapters or universe routing | Provide modular Django apps for runtime state, service-layer contracts, MCP registry metadata, and template-driven workspace generation. |
 | Research-heavy user with multiple Codex projects | Keep research handoffs workspace-local and Codex-readable while preserving central runtime provenance and profile-scoped paper portfolios. |
@@ -125,7 +125,7 @@ guidance emitted by the product should remain English.
 | Codex-native workflow | Preserve Codex project conventions, role files, hooks, skills, and generated prompts so the user works in familiar Codex surfaces. |
 | Durable service plane | Put durable behavior behind Django services so Web, Admin, API, MCP, and CLI do not fork policy or execution logic. |
 | Runtime ledger | Treat portfolio state, order lifecycle, non-research MCP ledger rows, and audit events as central DB records. Treat agent, skill, research handoff, and source-snapshot state as workspace files. |
-| Skill-first agent workbench | Organize `/` into Work, Approaches, Research, and lower-emphasis Settings while preserving the stable hash routes. Keep new-analysis composition separate from selected-run reading, put verified synthesis before diagnostics, and let users inspect sources, artifacts, uncertainty, and follow-up state without making custom skills or strategies prerequisites. |
+| Workspace viewer | Organize `/` into Library, Skills, and System with a registered-workspace selector. Keep it read-only; native Codex owns analysis, follow-up, and skill invocation. |
 | Deterministic executable boundary | Admit final submit/cancel only through an exact complete immediate root-native action or an exact-first-line `$tcx-order-allow` current-turn grant with hook-injected proof. Both paths retain service checks for requester identity, permission, policy fit, payload shape, exact approval, duplicate-request state, connection, live confirmation, and audit trail. |
 | Strong role model | Keep one `head-manager`, nine fixed analytical and decision-support subagents, and role-owned skills as a durable coordination model, including an independent judgment-review gate. Final execution is service-owned and runs no model. |
 | Multi-universe extensibility | Let public equity be deepest first while preserving paths for ETF/index, crypto, macro/rates/FX/commodities, options, credit-signal, and cross-asset workflows. |
@@ -140,10 +140,10 @@ guidance emitted by the product should remain English.
 | Built-in named live broker execution | Core ships paper only; broker-specific live support is request-built provider work behind the TradingCodex broker control plane and must pass provider review, policy, approval, duplicate-request, connection, sync, and audit gates. |
 | Raw credential storage | Secrets do not belong in generated workspaces, prompt output, API responses, MCP responses, logs, or audit output. |
 | REST or raw/direct MCP execution mutation | Public REST and generic CLI surfaces do not submit or cancel orders, and direct MCP callers cannot mint current-turn proof. Root Head Manager sees only `use_order_turn_grant`, which is inert without proof injected for an exact `$tcx-order-allow` turn. Immediate and protected-turn entries converge on the same service-owned policy, approval, idempotency, adapter, and audit kernel. |
-| A second scheduler or unbounded web runner | Recurring TradingCodex work uses Codex app Scheduled Tasks, whose saved prompt enters as an ordinary root turn on each run. Django may launch and supervise one bounded `codex exec` analysis process per Workbench run, but it does not schedule recurring work, select or directly spawn roles, accept arbitrary commands, or expose order, approval, execution, cancellation, broker, or secret actions. |
+| A second scheduler or web runner | Recurring and interactive TradingCodex work uses native Codex tasks. Django exposes a read-only workspace viewer and does not launch, resume, schedule, or supervise Codex processes. |
 | SDK-backed orchestration by default | Django should not become the agent runtime in v1. Future SDK modes require explicit feature flags and docs. |
 | Workspace-local investment ledgers | Generated workspaces own Codex-readable agent, skill, and research handoff files, but canonical execution-sensitive investment state belongs to the central local DB. |
-| Workspace-as-account UX | Workspaces are Codex workbenches, not selectable investor profiles. Internal portfolio/account/strategy scope still isolates paper state, while suitability context is a separate optional workspace file. |
+| Workspace-as-account UX | Attached workspaces are selectable inspection scopes, not selectable investor profiles. Internal portfolio/account/strategy scope still isolates paper state, while suitability context is a separate optional workspace file. |
 | Canonical editable LLM Wiki | A Wiki may be generated for navigation, but immutable and append-only decision, source, forecast, outcome, and review records remain canonical. |
 | Automatic strategy or prompt learning | Historical or forward evidence may propose a reviewed change; it cannot silently rewrite a strategy, skill, prompt, policy, or execution boundary. |
 | Public-equity-only product | Public equity is the first deep sleeve, not the long-term product boundary. |
@@ -166,18 +166,18 @@ such as `research-only`, `screen-grade`, `not-decision-ready`, or `blocked`.
 ## Current Defaults
 
 - Central local SQLite database at `state/tradingcodex.sqlite3` under the canonical macOS, Windows, or Linux application-data home.
-- `TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workbench for file-native agent, skill, and research state.
+- `TRADINGCODEX_WORKSPACE_ROOT` selects the Codex workspace for file-native agent, skill, and research state.
 - Research markdown under `trading/research` and `trading/reports` is workspace-native; source snapshots are workspace JSON files under `trading/research/source-snapshots/`.
 - Staff/local-only Admin and OpenAPI docs.
 - Live broker adapters disabled and unimplemented.
 - Paper and validation-only execution paths only.
 - Django Ninja for REST/control APIs.
 - React 19, TypeScript, and Vite 8 source under `frontend/`, with committed
-  workbench assets served by Django and WhiteNoise and no Node production
+  viewer assets served by Django and WhiteNoise and no Node production
   runtime.
-- Skill-first Work, Approaches, Research, and Settings sections with bounded
-  web-started analysis and follow-up runs through the same generated
-  `head-manager`.
+- Read-only Library, Skills, and System sections with registered-workspace
+  selection. Analysis, follow-up, and skill invocation remain native Codex
+  operations.
 - Custom Django/ASGI endpoint for MCP, backed by a typed tool registry and DB-visible tool ledger.
 - Python workspace generator and Python generated hooks.
 - Documentation in `docs/` remains the source of truth for product direction, safety rules, role boundaries, and execution policy.
