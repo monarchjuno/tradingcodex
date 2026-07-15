@@ -72,7 +72,10 @@ initialize a missing repository boundary.
 
 1. loads `workspace_templates/modules/*/module.json`
 2. resolves module dependencies and conflicts
-3. resolves the platform-native v1 home or explicit override
+3. restores a validated release workspace's recorded explicit home, explicit
+   DB override, and projected service address when an external package runner
+   did not inherit its generated wrapper environment, then resolves the
+   platform-native v1 home or explicit override
 4. validates the v1 workspace and generated-file inventory before an update
 5. preserves an existing Git worktree or initializes a standalone local one,
    then merges only the delimited privacy-first `.gitignore` block

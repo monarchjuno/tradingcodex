@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import tomllib
 from pathlib import Path
 
 from tradingcodex_cli.commands.doctor import doctor
@@ -85,14 +86,16 @@ def update(argv: list[str]) -> None:
     args = parser.parse_args(argv)
     target = Path(args.project_dir).resolve()
     validated_workspace = validate_generated_workspace(target)
+    existing_lock = validated_workspace["module_lock"]
     if args.dev:
         development_source = _development_source_root()
         _configure_development_runtime(
             development_source,
-            existing_lock=validated_workspace["module_lock"],
+            existing_lock=existing_lock,
         )
         explicit_source = development_source
     else:
+        _configure_recorded_update_runtime(target, existing_lock)
         explicit_source = args.package_spec
     _configure_bootstrap_source(
         explicit_source,
@@ -219,6 +222,48 @@ def _configure_development_runtime(
         if not isinstance(resolution.home, Path):
             raise ValueError("TradingCodex development home did not resolve to a native path")
         os.environ["TRADINGCODEX_SERVICE_ADDR"] = _development_service_addr(resolution.home)
+
+
+def _configure_recorded_update_runtime(
+    target: Path,
+    existing_lock: dict[str, object],
+) -> None:
+    """Restore explicit release-workspace runtime identity for package-runner updates.
+
+    ``uvx ... tcx update`` does not execute the generated workspace wrapper, so
+    custom home, database, and service-address values would otherwise fall back
+    to platform defaults. Explicit process values remain authoritative so users
+    can deliberately move a workspace to a new runtime identity.
+    """
+
+    if (
+        existing_lock.get("home_source") == "environment_override"
+        and not str(os.environ.get("TRADINGCODEX_HOME") or "").strip()
+    ):
+        os.environ["TRADINGCODEX_HOME"] = str(existing_lock["tradingcodex_home"])
+        os.environ["TRADINGCODEX_HOME_SOURCE"] = "environment_override"
+    if (
+        existing_lock.get("db_source") == "environment_override"
+        and not str(os.environ.get("TRADINGCODEX_DB_NAME") or "").strip()
+    ):
+        os.environ["TRADINGCODEX_DB_NAME"] = str(existing_lock["tradingcodex_db_path"])
+    if not str(os.environ.get("TRADINGCODEX_SERVICE_ADDR") or "").strip():
+        recorded_addr = _recorded_service_addr(target)
+        if recorded_addr:
+            os.environ["TRADINGCODEX_SERVICE_ADDR"] = recorded_addr
+
+
+def _recorded_service_addr(target: Path) -> str:
+    config_path = target / ".codex" / "config.toml"
+    try:
+        config = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return ""
+    servers = config.get("mcp_servers")
+    tradingcodex = servers.get("tradingcodex") if isinstance(servers, dict) else None
+    environment = tradingcodex.get("env") if isinstance(tradingcodex, dict) else None
+    value = environment.get("TRADINGCODEX_SERVICE_ADDR") if isinstance(environment, dict) else None
+    return str(value or "").strip()
 
 
 def _development_service_addr(home: Path | str) -> str:

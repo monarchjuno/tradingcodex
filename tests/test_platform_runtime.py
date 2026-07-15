@@ -786,7 +786,7 @@ def test_service_version_mismatch_never_exposes_explicit_local_source(
     monkeypatch.setenv("TRADINGCODEX_MCP_PACKAGE_SPEC", str(local_source))
     monkeypatch.setenv(PACKAGE_SOURCE_KIND_ENV, "local-explicit")
 
-    action = _version_mismatch_next_action("1.0.2", "127.0.0.1:48267")
+    action = _version_mismatch_next_action("1.0.3", "127.0.0.1:48267")
 
     assert str(local_source) not in action
     assert "<package-spec>" in action
@@ -859,7 +859,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
     assert first_python.is_file()
 
     version_path = source / "tradingcodex_service/version.py"
-    version_path.write_text('TRADINGCODEX_VERSION = "1.0.2"\n', encoding="utf-8")
+    version_path.write_text('TRADINGCODEX_VERSION = "1.0.3"\n', encoding="utf-8")
     before_explicit_override = {
         path: path.read_bytes()
         for path in (
@@ -914,7 +914,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
     lock = json.loads(
         (workspace / ".tradingcodex/generated/module-lock.json").read_text(encoding="utf-8")
     )
-    assert lock["tradingcodex_version"] == "1.0.2"
+    assert lock["tradingcodex_version"] == "1.0.3"
     assert lock["tradingcodex_package_spec"] == LOCAL_EXECUTABLE_SOURCE_PROVENANCE
 
     main_path = source / "tradingcodex_cli/__main__.py"
@@ -957,7 +957,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
         timeout=60,
         check=True,
     )
-    assert version.stdout.strip() == f"{marker}:1.0.2"
+    assert version.stdout.strip() == f"{marker}:1.0.3"
 
     request = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n'
     config_paths = [
@@ -1446,7 +1446,7 @@ def test_update_rejects_workspace_downgrade_before_writing(
     bootstrap_workspace(workspace)
     lock_path = workspace / ".tradingcodex/generated/module-lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    lock["tradingcodex_version"] = "1.0.2"
+    lock["tradingcodex_version"] = "1.0.3"
     lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
     before = {path.relative_to(workspace).as_posix(): path.read_bytes() for path in workspace.rglob("*") if path.is_file()}
 
@@ -1473,6 +1473,61 @@ def test_v1_update_keeps_an_explicit_home_override(
     updated = json.loads(lock_path.read_text(encoding="utf-8"))
     assert updated["tradingcodex_home"] == str(selected.resolve())
     assert updated["home_source"] == "environment_override"
+
+
+def test_package_runner_update_restores_recorded_explicit_runtime_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from tradingcodex_cli.commands.bootstrap import _configure_recorded_update_runtime
+
+    workspace = tmp_path / "workspace"
+    selected_home = tmp_path / "custom-home"
+    selected_db = tmp_path / "custom-ledger" / "tradingcodex.sqlite3"
+    selected_addr = "127.0.0.1:49123"
+    monkeypatch.setenv("TRADINGCODEX_HOME", str(selected_home))
+    monkeypatch.setenv("TRADINGCODEX_DB_NAME", str(selected_db))
+    monkeypatch.setenv("TRADINGCODEX_SERVICE_ADDR", selected_addr)
+    bootstrap_workspace(workspace)
+    lock = read_module_lock(workspace)
+
+    for name in (
+        "TRADINGCODEX_HOME",
+        "TRADINGCODEX_HOME_SOURCE",
+        "TRADINGCODEX_DB_NAME",
+        "TRADINGCODEX_SERVICE_ADDR",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    _configure_recorded_update_runtime(workspace, lock)
+
+    assert os.environ["TRADINGCODEX_HOME"] == str(selected_home.resolve())
+    assert os.environ["TRADINGCODEX_HOME_SOURCE"] == "environment_override"
+    assert os.environ["TRADINGCODEX_DB_NAME"] == str(selected_db.resolve())
+    assert os.environ["TRADINGCODEX_SERVICE_ADDR"] == selected_addr
+
+
+def test_package_runner_update_does_not_pin_a_platform_default_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from tradingcodex_cli.commands.bootstrap import _configure_recorded_update_runtime
+
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    lock = {
+        "home_source": "platform_default",
+        "tradingcodex_home": str(tmp_path / "recorded-platform-home"),
+        "db_source": "home_default",
+        "tradingcodex_db_path": str(tmp_path / "recorded-platform-home" / "state" / "tradingcodex.sqlite3"),
+    }
+    monkeypatch.delenv("TRADINGCODEX_HOME", raising=False)
+    monkeypatch.delenv("TRADINGCODEX_HOME_SOURCE", raising=False)
+
+    _configure_recorded_update_runtime(workspace, lock)
+
+    assert "TRADINGCODEX_HOME" not in os.environ
+    assert "TRADINGCODEX_HOME_SOURCE" not in os.environ
 
 
 def test_native_process_kwargs_and_external_mcp_pipe_reader() -> None:

@@ -227,6 +227,14 @@ uvx --refresh --from tradingcodex tcx update . --from tradingcodex
 refreshes generated indexes, applies central DB migrations, records workspace
 provenance, and runs `./tcx doctor` unless `--no-doctor` is passed.
 
+When the package refresh is launched directly through `uvx`, the updater also
+restores an existing explicit `TRADINGCODEX_HOME`, explicit
+`TRADINGCODEX_DB_NAME`, and projected loopback service address from the
+validated workspace before regeneration. Explicit environment values on the
+new update command still win, so a deliberate runtime move remains possible.
+Platform-default homes are resolved again on the destination platform rather
+than pinning an absolute path from a copied workspace.
+
 Inside a generated Codex workspace, the default `trading-research` profile and
 Plan mode cannot run workspace updates because update rewrites protected `.codex`
 prompt/config/hook surfaces. Research may still create and edit ordinary

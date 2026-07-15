@@ -80,7 +80,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.0.1"
+    assert TRADINGCODEX_VERSION == "1.0.2"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]
@@ -145,7 +145,7 @@ def test_v1_release_checklist_does_not_preapprove_gates() -> None:
     assert re.search(r"(?<![\d.])v?0\.\d+\.\d+\b", deployment) is None
     assert re.search(r"(?<![\d.])v?0\.\d+\.\d+\b", checklist) is None
     assert "- [x]" not in checklist.lower()
-    assert "release_version=1.0.1" in checklist
+    assert "release_version=1.0.2" in checklist
 
 
 def test_attach_contract_has_no_overwrite_or_init_compatibility() -> None:
@@ -374,7 +374,7 @@ def test_update_status_requires_package_refresh_for_newer_workspace(monkeypatch,
             "schema_version": 1,
             "generated_at": "2026-07-11T00:00:00Z",
             "workspace_id": "tcxw_" + "a" * 32,
-            "tradingcodex_version": "1.0.2",
+            "tradingcodex_version": "1.0.3",
             "tradingcodex_package_spec": "tradingcodex",
             "tradingcodex_home": str((tmp_path / "home").resolve()),
             "home_source": "environment_override",
@@ -534,7 +534,7 @@ def test_update_status_never_treats_local_provenance_as_an_executable_spec(
                 "schema_version": 1,
                 "generated_at": "2026-07-11T00:00:00Z",
                 "workspace_id": "tcxw_" + "a" * 32,
-                "tradingcodex_version": "1.0.2",
+                "tradingcodex_version": "1.0.3",
                 "tradingcodex_package_spec": "local-explicit",
                 "tradingcodex_home": str((tmp_path / "home").resolve()),
                 "home_source": "environment_override",
@@ -721,7 +721,7 @@ def test_external_mcp_operator_actions_reject_noninteractive_callers(
     assert issued == []
 
 
-def test_release_publish_is_tag_bound_and_waits_for_native_wheel_smokes() -> None:
+def test_release_publish_is_tag_bound_and_reuses_one_verified_build() -> None:
     workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8"))
     trigger = workflow.get("on") or workflow.get(True)
     assert trigger["workflow_dispatch"]["inputs"]["release_version"]["required"] is True
@@ -742,12 +742,23 @@ def test_release_publish_is_tag_bound_and_waits_for_native_wheel_smokes() -> Non
         if step["name"] == "Validate distribution metadata and filenames"
     )
     assert "parse_wheel_filename" in distribution["run"]
-    native = jobs["native-platform-wheel-smoke"]
-    assert native["needs"] == "build"
-    assert native["runs-on"] == "${{ matrix.os }}"
-    assert native["strategy"]["matrix"]["os"] == ["macos-latest", "windows-latest"]
-    assert jobs["publish-pypi"]["needs"] == "native-platform-wheel-smoke"
-    assert any("platform_wheel_smoke.py" in step.get("run", "") for step in native["steps"])
+    assert set(jobs) == {"build", "publish-pypi"}
+    assert jobs["publish-pypi"]["needs"] == "build"
+    assert any(
+        "platform_wheel_smoke.py" in step.get("run", "")
+        for step in jobs["build"]["steps"]
+    )
     assert (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8").count("python -m build") == 1
     assert any("download-artifact" in step.get("uses", "") for step in jobs["publish-pypi"]["steps"])
     assert not any("python -m build" in step.get("run", "") for step in jobs["publish-pypi"]["steps"])
+
+
+def test_github_actions_keep_the_normal_and_pages_paths_to_one_job_each() -> None:
+    ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
+    pages = yaml.safe_load(
+        (ROOT / ".github/workflows/deploy-user-guide.yml").read_text(encoding="utf-8")
+    )
+    assert set(ci["jobs"]) == {"quality"}
+    assert set(pages["jobs"]) == {"deploy"}
+    assert len(ci["jobs"]["quality"]["steps"]) <= 7
+    assert len(pages["jobs"]["deploy"]["steps"]) == 4

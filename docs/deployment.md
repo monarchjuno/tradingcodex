@@ -109,8 +109,12 @@ files are never replaced.
 
 ## Maintainer Prerequisites
 
-Release verification uses Python 3.11 and Node 22, while CI keeps the supported
-Python 3.11, 3.12, 3.13, and 3.14 range green. Node is a maintainer-only build
+Release verification uses Python 3.11 and Node 22. The hosted CI budget runs
+the complete source, frontend, and package gates once on Python 3.11 instead
+of multiplying every push across the supported Python range and native
+platforms. Maintainers run additional supported-version or native-platform
+checks locally or through an explicit temporary/manual workflow when a change
+touches compatibility-sensitive code. Node is a maintainer-only build
 dependency.
 
 Configure PyPI Trusted Publishing for:
@@ -159,9 +163,11 @@ also require the disposable-workspace and Codex-native checks documented in
 
 ## CI And Release Automation
 
-`.github/workflows/ci.yml` is test-only. It runs frontend verification, safety
-invariants, the supported Python matrix, clean package construction, and native
-macOS and Windows wheel smokes. It never publishes.
+`.github/workflows/ci.yml` is test-only. One Ubuntu/Python 3.11 job runs the
+frontend build, complete Python suite and framework gates, clean package
+construction, and the wheel smoke. Guide-only pushes skip this workflow because
+the Pages workflow validates and deploys only static guide files. CI never
+publishes.
 
 `.github/workflows/release.yml` is manual-only. Every run requires an explicit
 `release_version`. A dry run may build from any selected ref with
@@ -174,11 +180,13 @@ macOS and Windows wheel smokes. It never publishes.
 - the tagged commit is on `origin/main`
 - the wheel and source-distribution filenames carry the same version
 - the built wheel passes the Ubuntu smoke
-- the exact uploaded artifact passes native macOS and Windows smokes
 - the protected `pypi` environment approves Trusted Publishing
 
-The same uploaded artifact is downloaded by both native jobs and the PyPI
-publisher. No job rebuilds the distribution after verification.
+The release workflow has one build/verification job. When publication is
+requested, one protected PyPI job downloads that exact artifact and uploads it;
+no job rebuilds the distribution after verification. Native macOS and Windows
+release smokes are local or explicitly scheduled maintainer gates rather than
+automatic jobs on every release.
 
 ## User Guide Pages
 
@@ -189,10 +197,10 @@ prompts, workspace viewing, reusable skills, and everyday recovery. The detailed
 product rules remain canonical in `README.md`, `installation.md`, and `docs/`;
 the guide links back to those sources rather than replacing them.
 
-`.github/workflows/deploy-user-guide.yml` uploads only `guidebook/` and deploys
-it to GitHub Pages after a push to `main` that changes the guide or its workflow.
-It can also be run manually. It does not build or deploy the Python package,
-the Django service, or a production Node runtime.
+`.github/workflows/deploy-user-guide.yml` uses one job to configure, upload,
+and deploy only `guidebook/` to GitHub Pages after a push to `main` that changes
+the guide or its workflow. It can also be run manually. It does not build or
+deploy the Python package, the Django service, or a production Node runtime.
 
 GitHub Pages is configured to use **GitHub Actions** as its publishing source.
 The guide for this repository is published at
@@ -214,8 +222,9 @@ The guide for this repository is published at
    ```
 
 5. In GitHub Actions, run `Manual Release` from that tag with the exact
-   `release_version`. Use `publish_pypi=false` for a rehearsal and
-   `publish_pypi=true` only for the approved publication.
+   `release_version`. Use `publish_pypi=true` for an approved publication; use
+   the optional `publish_pypi=false` rehearsal when release risk warrants an
+   additional hosted build.
 
 Pushing a branch or tag does not publish by itself.
 
@@ -252,7 +261,7 @@ sh "$SOURCE_ROOT/install.sh" \
 On native Windows PowerShell:
 
 ```powershell
-$ReleaseVersion = "1.0.1"
+$ReleaseVersion = "1.0.2"
 $Workspace = Join-Path $env:TEMP "tcx-pypi-$ReleaseVersion"
 New-Item -ItemType Directory -Force $Workspace | Out-Null
 Set-Location $Workspace

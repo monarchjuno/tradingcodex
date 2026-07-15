@@ -1212,6 +1212,15 @@ service address projected by the launcher. Explicit process environment values s
 doctor then validates both home and DB projection and requires update when the
 generated ledger contract is stale.
 
+An index/package-runner update such as `uvx --refresh --from tradingcodex tcx
+update . --from tradingcodex` does not pass through the generated wrapper.
+Before regeneration, update therefore restores a validated workspace's
+recorded explicit home and DB override plus the service address from its
+generated project MCP configuration. It does not pin a recorded
+`platform_default` absolute path, so a copied workspace can resolve the native
+default on its destination platform. A new explicit process value remains the
+only implicit-free way to select a different runtime identity.
+
 TOML, YAML, JSON, POSIX shell, CMD, and Python values are serialized with
 format-specific literals. This is required for macOS paths with spaces and
 Windows drive-letter/backslash paths. Generated code/config uses LF line

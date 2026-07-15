@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 1.0.2 - 2026-07-15
+
+- Preserve an attached release workspace's explicit `TRADINGCODEX_HOME`,
+  explicit database override, and projected service address when an update is
+  launched through `uvx` instead of the generated wrapper. This prevents a
+  custom or isolated v1.0.0 workspace from silently switching to the platform
+  default ledger during a package refresh.
+- Fix the public guide's full-width desktop grid so viewport gutters no longer
+  collapse the reading column, and align the provider-to-order header with the
+  primary Guide/Reference/GitHub navigation. Add route, fragment, mobile-menu,
+  and desktop-layout contract tests.
+- Reduce hosted automation usage: normal CI, GitHub Pages deployment, and
+  release verification now use one job each; PyPI publication adds only its
+  protected upload job. Guide-only pushes skip the source CI workflow.
+
 ## 1.0.1 - 2026-07-15
 
 - Add the shared `tcx-artifact` skill to all nine producing fixed roles so

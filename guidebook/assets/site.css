@@ -36,7 +36,7 @@ code { color: #e9e9e4; font-size: .9em; }
 .header-nav a:hover, .header-nav a[aria-current="page"] { color: var(--text); }
 .header-note { justify-self: end; color: var(--quiet); font-family: var(--font-mono); font-size: .7rem; }
 
-.docs-shell { display: grid; grid-template-columns: 15rem minmax(0, 48rem) 12.5rem; gap: clamp(2rem, 5vw, 5.75rem); width: min(1460px, 100%); min-height: calc(100vh - 3.9rem); margin: 0 auto; padding: 2.75rem max(1.5rem, calc((100vw - 1460px) / 2)); }
+.docs-shell { display: grid; grid-template-columns: 15rem minmax(0, 48rem) 12.5rem; gap: clamp(2rem, 5vw, 5.75rem); width: 100%; max-width: 1460px; min-height: calc(100vh - 3.9rem); margin: 0 auto; padding: 2.75rem 1.5rem; }
 .sidebar { min-width: 0; }
 .sidebar-nav, .on-this-page { position: sticky; top: 6.25rem; }
 .sidebar-nav { display: grid; gap: .13rem; }
