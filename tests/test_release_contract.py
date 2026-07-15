@@ -65,6 +65,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
         "print(json.dumps({'event': sys.argv[1], 'payload': payload}))\n",
         encoding="utf-8",
     )
+    monkeypatch.delenv("TRADINGCODEX_WORKSPACE_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(sys, "stdin", io.StringIO('{"platform":"windows"}\n'))
 
