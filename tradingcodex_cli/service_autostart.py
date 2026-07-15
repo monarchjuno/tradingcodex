@@ -9,11 +9,14 @@ import re
 import shlex
 import shutil
 import socket
+import socketserver
 import subprocess
 import sys
 import time
 import urllib.request
 from pathlib import Path
+
+from django.core.servers.basehttp import WSGIServer
 
 from tradingcodex_cli.versioning import version_less_than as _version_less_than
 from tradingcodex_service.application.common import paths_equivalent
@@ -30,6 +33,17 @@ DEFAULT_SERVICE_HEALTH_TIMEOUT = 2.0
 DEFAULT_SERVICE_LOG_MAX_BYTES = 5 * 1024 * 1024
 DEFAULT_SERVICE_LOG_BACKUPS = 3
 _LOOPBACK_HTTP_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+
+class NonResolvingWSGIServer(WSGIServer):
+    """Bind without a reverse-DNS lookup for the local server name."""
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        host, port = self.server_address[:2]
+        self.server_name = str(host)
+        self.server_port = int(port)
+        self.setup_environ()
 
 
 def configured_service_addr() -> str:

@@ -281,7 +281,12 @@ def service(argv: list[str]) -> None:
     if sub != "runserver":
         raise ValueError(f"Usage: {PROGRAM_NAME} service runserver [addrport] [django runserver args]\n       {PROGRAM_NAME} service ensure [addrport]\n       {PROGRAM_NAME} service stop [addrport]\n       {PROGRAM_NAME} service status [addrport] [--json]")
     from django.core.management import execute_from_command_line
-    from tradingcodex_cli.service_autostart import compatible_service_running, service_http_url
+    from django.core.management.commands.runserver import Command as DjangoRunserverCommand
+    from tradingcodex_cli.service_autostart import (
+        NonResolvingWSGIServer,
+        compatible_service_running,
+        service_http_url,
+    )
 
     configure_workspace_env(Path.cwd())
     os.environ.setdefault("DJANGO_SETTINGS_MODULE", "tradingcodex_service.settings")
@@ -292,6 +297,7 @@ def service(argv: list[str]) -> None:
     if compatible_service_running(addr):
         print(f"TradingCodex service already running at {service_http_url(addr)}")
         return
+    DjangoRunserverCommand.server_cls = NonResolvingWSGIServer
     execute_from_command_line(["manage.py", "runserver", *runserver_args])
 
 

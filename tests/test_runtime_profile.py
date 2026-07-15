@@ -11,6 +11,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from django.core.servers.basehttp import WSGIRequestHandler
 
 from tradingcodex_cli import service_autostart
 from tradingcodex_cli.commands.mode import mode
@@ -275,6 +276,24 @@ def test_failed_detached_startup_is_terminated() -> None:
         assert process.terminated is True
     else:
         assert process.signal_sent == signal.SIGABRT
+
+
+def test_local_wsgi_bind_does_not_resolve_reverse_dns(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        service_autostart.socket,
+        "getfqdn",
+        lambda _host: (_ for _ in ()).throw(AssertionError("reverse DNS lookup attempted")),
+    )
+
+    server = service_autostart.NonResolvingWSGIServer(
+        ("127.0.0.1", 0),
+        WSGIRequestHandler,
+    )
+    try:
+        assert server.server_name == "127.0.0.1"
+        assert server.server_port > 0
+    finally:
+        server.server_close()
 
 
 def test_remote_settings_enable_django_transport_security(tmp_path: Path) -> None:

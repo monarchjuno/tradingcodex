@@ -35,8 +35,9 @@
   process, using direct proxy-free loopback readiness checks with a native-host
   response allowance, rejecting macOS ephemeral-port self-connections, and
   retaining redacted detached-startup diagnostics while terminating timed-out
-  children instead of leaving orphans. Validate those paths from the same clean
-  wheel on macOS and Windows.
+  children instead of leaving orphans. Remove reverse-DNS lookup from the local
+  Django bind path, and validate these paths from the same clean wheel on macOS
+  and Windows.
 
 - Make `tcx doctor` concise by default: run only the selected layer plus global
   service preflight, summarize layer totals, expand warnings and failures, and

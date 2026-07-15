@@ -931,6 +931,9 @@ an early exit or timeout reports its bounded tail together with the child
 process state instead of discarding the only startup evidence. A child that
 still has not become compatible at the timeout is stack-dumped where supported
 and terminated so a failed ensure does not leave an orphan service process.
+The local Django server records the literal bind address as its WSGI server
+name instead of performing a reverse-DNS lookup during bind; loopback startup
+therefore does not depend on host resolver latency.
 
 The autostart path must be:
 
