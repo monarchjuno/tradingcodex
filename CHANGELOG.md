@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.0.0 - 2026-07-15
+
 - Raise the validated Codex CLI reference to 0.144.4 while retaining the
   proven 0.144.1 compatibility floor, explicitly enable
   MultiAgent V2, replace the incompatible V1 `agents.max_threads` setting with
@@ -24,10 +26,11 @@
 - Remove the web Work execution runner, preview/start/follow-up APIs, and
   workbench-only hook mode; replace the product web with a read-only
   Library/Skills/System viewer whose left rail selects only registered,
-  validated attached workspaces. Keep long execution-mode labels inside every
-  supported viewport, move keyboard focus into narrow Library/Skills details
-  and back to their indexes, and restore main-content focus after workspace
-  switching.
+  validated attached workspaces. Optimize half-width desktop windows with a
+  compact workspace selector and full-width list-to-detail transitions, keep
+  long status labels inside every supported viewport, move keyboard focus into
+  narrow Library/Skills details and back to their indexes, and restore
+  main-content focus after workspace switching.
 
 - Make `tcx doctor` concise by default: run only the selected layer plus global
   service preflight, summarize layer totals, expand warnings and failures, and
@@ -116,8 +119,6 @@
   launch instead of silently continuing without service authority. Native
   dispatch audit now records exact role/fork/task plus child-brief hash and
   size, never the brief body.
-
-## 1.0.0 - 2026-07-13
 
 - Establish the first supported TradingCodex public contract across the CLI,
   Django service, MCP gateway, React workbench, and generated workspaces.
