@@ -997,8 +997,8 @@ def _require_any(result: dict[str, Any], strict: bool, fields: dict[str, Any], n
         _decision_issue(result, strict, label)
 
 
-def _decision_issue(result: dict[str, Any], strict: bool, field: str) -> None:
-    result["warnings"].append(f"decision quality missing {field}")
+def _decision_issue(result: dict[str, Any], strict: bool, field: str, message: str | None = None) -> None:
+    result["warnings"].append(message or f"decision quality missing {field}")
     if strict:
         result["required_fields_missing"].append(f"decision_quality.{field}")
 
@@ -1010,18 +1010,37 @@ def _evaluate_thesis_lifecycle(lifecycle: dict[str, Any], frontmatter: dict[str,
         return
     source_refs = _coerce_frontmatter_list(frontmatter.get("source_snapshot_ids")) + _coerce_frontmatter_list(frontmatter.get("evidence_ids")) + _coerce_frontmatter_list(lifecycle.get("evidence_refs"))
     if state == "testing" and not source_refs:
-        _decision_issue(result, strict, "thesis_lifecycle.testing_evidence")
+        _decision_issue(
+            result,
+            strict,
+            "thesis_lifecycle.testing_evidence",
+            "thesis_lifecycle.state=testing requires evidence_refs, source_snapshot_ids, or evidence_ids",
+        )
     if state == "validated":
         if _is_blank(lifecycle.get("evidence_run_card")) and not _coerce_frontmatter_list(lifecycle.get("evidence_run_cards")):
             _decision_issue(result, strict, "thesis_lifecycle.evidence_run_card")
-        if _is_blank(lifecycle.get("validation_card")) and not _coerce_frontmatter_list(lifecycle.get("validation_artifacts")):
-            _decision_issue(result, strict, "thesis_lifecycle.validation_card")
+        if (
+            _is_blank(lifecycle.get("validation_card"))
+            and not _coerce_frontmatter_list(lifecycle.get("validation_cards"))
+            and not _coerce_frontmatter_list(lifecycle.get("validation_artifacts"))
+        ):
+            _decision_issue(
+                result,
+                strict,
+                "thesis_lifecycle.validation_card",
+                "thesis_lifecycle.state=validated requires validation_card or validation_cards",
+            )
         if _is_blank(lifecycle.get("reviewer_acceptance")):
             _decision_issue(result, strict, "thesis_lifecycle.reviewer_acceptance")
     if state == "rejected" and _is_blank(lifecycle.get("invalidation_note")):
         _decision_issue(result, strict, "thesis_lifecycle.invalidation_note")
     if state == "monitoring" and _is_blank(lifecycle.get("monitoring_artifact")) and _is_blank(lifecycle.get("review_cadence")):
-        _decision_issue(result, strict, "thesis_lifecycle.monitoring_artifact_or_cadence")
+        _decision_issue(
+            result,
+            strict,
+            "thesis_lifecycle.monitoring_artifact_or_cadence",
+            "thesis_lifecycle.state=monitoring requires either monitoring_artifact or review_cadence",
+        )
 
 
 def _coerce_frontmatter_list(value: Any) -> list[Any]:

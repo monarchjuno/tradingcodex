@@ -1,15 +1,15 @@
-# TradingCodex 1.0.0 Release Status
+# TradingCodex 1.0.1 Release Status
 
-Status: release-branch implementation, broad suite, native workflow, browser,
-and exact Ubuntu/macOS/Windows distribution acceptance validated; merge CI,
-tag-bound rehearsal, tag, and publication remain pending
+Status: local source, frontend, disposable native workflow, and exact
+distribution gates complete; candidate CI, tag-bound rehearsal, tag, and
+publication remain pending
 Updated: 2026-07-15
 
-This page records the current `1.0.0` release state. It is not an implementation
+This page records the current `1.0.1` release state. It is not an implementation
 roadmap and does not treat source changes as proof that an exact distribution
 artifact or public release has passed its gates.
 
-## v1.0.0 Contract
+## v1.0.1 Contract
 
 - `tradingcodex_service/version.py` is the single version source for package
   metadata, `tcx --version`, generated workspaces, release input, and tags.
@@ -33,22 +33,49 @@ artifact or public release has passed its gates.
 
 | Area | Current state | Evidence or remaining gate |
 | --- | --- | --- |
-| Version identity | Verified in the working tree | `TRADINGCODEX_VERSION` is `1.0.0`; `pyproject.toml` reads it dynamically; `tcx --version` uses the same source. |
+| Version identity | Verified in the working tree | `TRADINGCODEX_VERSION` is `1.0.1`; `pyproject.toml` reads it dynamically; `tcx --version` uses the same source. |
 | Schema baseline | Verified in the working tree | Project apps contain only `0001_v1_initial`; migration-graph and model-state checks live in `tests/test_v1_migrations.py`. |
-| Workspace baseline | Current-reference preflight, release-branch native acceptance, and exact-wheel CI verified | A disposable development workspace passed strict pinned-reference config, explicit V2, persisted trust for all eight project hooks, the final artifact-to-synthesis workflow, and the disabled-dispatch fail-closed check after the prepublication quality-gate fix. GitHub CI then passed the exact release-branch wheel on macOS and Windows. |
-| Interfaces and safety | Verified on the release branch | GitHub CI passed 614 tests on each of Python 3.11, 3.12, 3.13, and 3.14, plus Django checks, migration checks, compile passes, focused safety invariants, frontend verification, clean-wheel construction, and native acceptance. |
+| Workspace baseline | Exact candidate native acceptance passes locally | The v1.0.1 candidate projects the shared artifact skill to all producing roles, requires the current reference Codex client, and exposes the nested MCP contracts. A disposable generated workspace passed strict config/hook preflight plus artifact, forecast, and proof-protected Brain MCP smokes. |
+| Interfaces and safety | Full local candidate suite passes | MCP schema, lifecycle-error, skill-projection, resource-template discovery, Codex-version, forecast receipt-time, Django, migration, compile, and full test gates pass. |
 | Frontend | Viewer source, build, and browser acceptance pass | Ten focused tests, typecheck/build, deterministic committed assets, three-section routing, read-only source checks, 1440px/900px/600px layouts, keyboard focus, workspace switching, long-label containment, and invalid-selection failure rendering pass. |
 | Release automation | Structurally verified | The release contract suite verifies tag and artifact gating; a manual `publish_pypi=false` rehearsal remains required. |
-| Distribution artifacts | Exact release-branch artifacts verified on Ubuntu, macOS, and Windows | Fresh `1.0.0` sdist/wheel build, `twine check`, and packaged-wheel smoke passed locally; GitHub CI built one clean wheel, passed its Ubuntu smoke, and reused the uploaded artifact for native macOS and Windows smokes. |
-| Git tag and PyPI | Not performed by this status | Merge/CI, annotated `v1.0.0` tag, protected-environment approval, and manual publication remain release-operator actions. |
+| Distribution artifacts | Exact local candidate passes | Fresh `1.0.1` sdist/wheel build, `twine check`, and the isolated macOS packaged-wheel smoke pass. Native CI reuse on Ubuntu, macOS, and Windows remains required. |
+| Git tag and PyPI | Not performed by this status | Merge/CI, annotated `v1.0.1` tag, protected-environment approval, and manual publication remain release-operator actions. |
 | Post-publish verification | Blocked on publication | Exact-version POSIX and native Windows attach/doctor smokes run only after PyPI contains the immutable artifacts. |
 
 Release-branch status describes candidate source shape, not release sign-off.
 The merged commit and exact uploaded artifacts remain authoritative.
 
-Current release-branch evidence recorded on 2026-07-15 is listed below. It
-authorizes merge of the candidate but does not substitute for CI on the merged
-commit or the tag-bound rehearsal of the immutable release artifacts:
+The local v1.0.1 candidate evidence recorded on 2026-07-15 is:
+
+- `python3.11 -m pytest`: **617 passed** with three dependency-level Pydantic
+  deprecation warnings and no failures.
+- `python3.11 manage.py check`, migration dry-run, compile pass, skill
+  validation, JSON-schema validation, and diff checks: passed.
+- `npm ci --prefix frontend`, the ten-test frontend suite, typecheck/build, and
+  deterministic committed-asset comparison: passed.
+- A fresh `tradingcodex-1.0.1` sdist and wheel built in isolation; both passed
+  `twine check`, and the wheel passed the macOS isolated-install platform smoke
+  with runtime version `1.0.1`.
+- A fresh generated development workspace passed `tcx doctor` and the strict
+  current-reference Codex CLI contract, including all eight trusted hooks.
+- Native artifact persistence completed with one exact
+  `fundamental-analyst` child after it loaded `tcx-artifact`; the accepted
+  artifact id was
+  `research_report-ACME-synthetic-fixture-fundamental-artifact-persistence-smoke-76d0866c5fa1`.
+- Native forecast persistence completed in one exact child without an MCP
+  retry: artifact
+  `fundamental_report-receipt-race-fixed-synthetic-recurring-revenue-smoke-e3e03d1566da`
+  produced forecast `forecast-261e59a11d6d4bb39fe0e8c80c95042d`.
+  The omitted caller timestamp resolved to one service receipt time, so
+  `issued_at` equaled `recorded_at`.
+- A fresh exact `$tcx-brain` management turn received the hook-owned build-turn
+  proof and completed the protected list call, confirming the current-reference
+  deferred MCP proof path.
+
+The v1.0.0 baseline evidence recorded on 2026-07-15 is listed below. It does
+not substitute for v1.0.1 validation, CI on the candidate commit, or the
+tag-bound rehearsal of the immutable patch artifacts:
 
 - GitHub Actions [CI run 29403737708](https://github.com/monarchjuno/tradingcodex/actions/runs/29403737708)
   passed on release-branch commit `12649b0`: the safety and financial invariant
@@ -223,13 +250,13 @@ Trusted Publisher configuration must be reviewed before publication.
 ## Tag And Publication State
 
 This document does not assert that the final commit is on `main`, CI is green,
-the tag exists, or PyPI contains `1.0.0`. After every final-commit and artifact
+the tag exists, or PyPI contains `1.0.1`. After every final-commit and artifact
 gate passes:
 
 1. Merge the release commit to `main` and wait for CI.
-2. Create and push the annotated tag `v1.0.0` at that commit.
+2. Create and push the annotated tag `v1.0.1` at that commit.
 3. Rehearse the manual workflow with `publish_pypi=false` and
-   `release_version=1.0.0`.
+   `release_version=1.0.1`.
 4. With protected-environment approval, run the same tag with
    `publish_pypi=true`.
 5. Verify the immutable PyPI files, release notes, and exact-version POSIX and

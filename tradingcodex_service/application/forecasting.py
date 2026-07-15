@@ -37,7 +37,7 @@ def issue_forecast(workspace_root: Path | str, args: dict[str, Any]) -> dict[str
     root = Path(workspace_root)
     ledger = _ledger_path(root)
     recorded_at = _system_now()
-    issued_at = _iso(args.get("issued_at") or now_iso(), "issued_at")
+    issued_at = _iso(args.get("issued_at") or recorded_at, "issued_at")
     knowledge_cutoff = _iso(args.get("knowledge_cutoff"), "knowledge_cutoff")
     if knowledge_cutoff > issued_at:
         raise ValueError("knowledge_cutoff must not be after issued_at")
@@ -143,7 +143,7 @@ def revise_forecast(workspace_root: Path | str, args: dict[str, Any]) -> dict[st
             "prior_event_id": current.get("event_id"),
             "prior_version": current.get("version"),
             "revision_reason": _required_text(args, "revision_reason"),
-            "revised_at": _iso(args.get("revised_at") or now_iso(), "revised_at"),
+            "revised_at": _iso(args.get("revised_at") or recorded_at, "revised_at"),
             "recorded_at": recorded_at,
             "idempotency_key": idempotency_key or uuid.uuid4().hex,
         }

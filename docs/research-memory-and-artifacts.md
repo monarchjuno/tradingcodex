@@ -243,6 +243,12 @@ Codex and subagents should use service-layer tools when available:
   `create_blind_review_assignment`, `get_blind_review_packet`,
   `record_blind_human_review`, and `compare_evaluation_runs`
 
+For forecast issue and revision, agents normally omit `issued_at` and
+`revised_at`. The service assigns the event time and `recorded_at` from one
+receipt timestamp, avoiding client-clock drift and preserving the invariant
+that an event cannot occur after its system record. Explicit caller timestamps
+remain timezone-aware and fail closed when they are in the future.
+
 `source_snapshot_ids` are service-issued references, not agent-authored labels.
 When reproducibility requires a snapshot, the producing role calls
 `record_source_snapshot` first and copies only the exact returned `snapshot_id`

@@ -11,6 +11,26 @@
         "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
       },
       "additionalProperties": false
+    },
+    "thesisLifecycle": {
+      "type": "object",
+      "required": ["state"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["exploring", "testing", "validated", "rejected", "monitoring"]
+        },
+        "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "evidence_run_card": { "type": ["object", "string"] },
+        "evidence_run_cards": { "type": "array" },
+        "validation_card": { "type": ["object", "string"] },
+        "validation_cards": { "type": "array" },
+        "reviewer_acceptance": { "type": ["object", "string"] },
+        "invalidation_note": { "type": "string", "minLength": 1 },
+        "monitoring_artifact": { "type": ["object", "string"] },
+        "review_cadence": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": true
     }
   },
   "type": "object",
@@ -83,8 +103,18 @@
     "forecast_target": { "type": "string" },
     "forecast_horizon": { "type": "string" },
     "probability": {},
-    "probability_range": {},
-    "base_rate": {},
+    "probability_range": {
+      "oneOf": [
+        {
+          "type": "array",
+          "items": { "type": "number", "minimum": 0, "maximum": 1 },
+          "minItems": 2,
+          "maxItems": 2
+        },
+        { "type": "string", "pattern": "^[0-9]+(?:\\.[0-9]+)?%?\\s*-\\s*[0-9]+(?:\\.[0-9]+)?%?$" }
+      ]
+    },
+    "base_rate": { "type": "object" },
     "missing_base_rate_note": { "type": "string" },
     "evidence_ids": { "type": "array" },
     "contrary_evidence": { "type": "array" },
@@ -95,7 +125,7 @@
     "source_trust_notes": { "type": "array" },
     "scenario_cases": { "type": "array" },
     "scenario_summary": { "type": "string" },
-    "thesis_lifecycle": { "type": "object" },
+    "thesis_lifecycle": { "$ref": "#/$defs/thesisLifecycle" },
     "current_price_as_of": { "type": "string" },
     "market_anchor_as_of": { "type": "string" },
     "investor_context_gaps": { "type": "array" },

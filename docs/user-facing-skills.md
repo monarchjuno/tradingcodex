@@ -6,7 +6,7 @@ shape, automate, or review workflows without granting extra authority.
 
 ## Naming Contract
 
-All 31 bundled TradingCodex skills use the `tcx-` namespace. Prefer one word
+All 32 bundled TradingCodex skills use the `tcx-` namespace. Prefer one word
 after the prefix and use at most two words when clarity or safety requires it,
 as in `tcx-order-submit` or `tcx-investor-context`. Folder names, frontmatter
 names, registry ids, projected paths, UI metadata, and explicit `$` invocations
@@ -15,6 +15,10 @@ must match exactly. Legacy built-in names are not projected as aliases.
 The namespace is reserved for bundled product skills. User-owned
 `strategy-*`, `investment-brain-*`, and optional role skills remain separate;
 an optional skill cannot claim a `tcx-*` id.
+
+The shared internal `tcx-artifact` skill is projected to every producing fixed
+role. It teaches the exact research-artifact, thesis-lifecycle, and forecast
+ledger contracts; users do not invoke it as a Head Manager entrypoint.
 
 ## Primary Entrypoints
 

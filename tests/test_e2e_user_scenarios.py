@@ -242,7 +242,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     status = json.loads(tcx(workspace, env_extra, "subagents", "status").stdout)
     assert status["installed_count"] == 9
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 31
+    assert status["skills_installed"] == 32
     plan = json.loads(tcx(workspace, env_extra, "subagents", "plan", "--all").stdout)
     assert plan["requested_count"] == 9
     assert plan["parallel_spawn_ok"] is False
@@ -254,10 +254,11 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         "tcx-data-qc",
         "tcx-scenarios",
         "tcx-forecast",
+        "tcx-artifact",
         "tcx-fundamental",
     ]
     judgment_inspect = json.loads(tcx(workspace, env_extra, "subagents", "inspect", "judgment-reviewer").stdout)
-    assert judgment_inspect["effective_skills"] == ["tcx-judgment"]
+    assert judgment_inspect["effective_skills"] == ["tcx-artifact", "tcx-judgment"]
 
     optional_body = workspace / "source-quality-body.md"
     optional_body.write_text("# Source Quality Check\n\nCheck source dates and cite stale evidence warnings.\n", encoding="utf-8")

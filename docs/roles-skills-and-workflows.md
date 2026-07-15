@@ -118,6 +118,14 @@ Required quality includes source/as-of posture, non-empty readiness label,
 context and reader summaries, confidence, missing evidence, next action,
 blocked actions, and explicit handoff state.
 
+Every producing fixed role receives the shared `tcx-artifact` skill. It maps
+the service's state-specific thesis lifecycle, single-range probability,
+follow-up request, RFC 3339, and complete forecast base-rate requirements into
+a compact persistence procedure. MCP schemas expose the same nested fields so
+deferred tool discovery supplies the contract before the call. A role applies
+all returned corrections in one targeted retry and stops in `waiting` if the
+same contract error repeats.
+
 For run-bound artifacts, provide `workflow_run_id` and exact consumed
 `input_artifact_ids`. The service derives producer identity, schema version,
 content hash, and input hashes. `plan_hash`, `stage_id`, and `task_id` are not v1
@@ -328,7 +336,7 @@ judgment, or mutate state. Operational diagnosis and recovery remain
 
 ## Validation
 
-Validate the nine-role fixed roster and projections, 31 skill bundles, absence
+Validate the nine-role fixed roster and projections, 32 skill bundles, absence
 of raw public execution-mutation tools, protected grant-tool proof behavior,
 deterministic native-action and `$tcx-order-allow` hook behavior,
 exact V2 dispatch, multilingual analysis requests,

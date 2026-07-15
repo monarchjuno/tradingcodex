@@ -737,11 +737,11 @@ uvx --refresh --from tradingcodex tcx update . --from tradingcodex
 Generated root config sets `default_permissions = "trading-research"` and
 defines two custom profiles. It deliberately omits legacy `sandbox_mode` from
 the root and every fixed-role TOML because any loaded `sandbox_mode` overrides
-custom permission profiles in Codex. This contract supports Codex CLI 0.144.1
+custom permission profiles in Codex. This contract requires Codex CLI 0.144.4
 or later on a locally supported platform. Version 0.144.4 is the current
-release-validation reference for permission profiles, hooks, required MCP
-startup, and the explicit V2 feature table. Older compatible patch versions
-warn but do not fail ordinary doctor checks. These remain version-sensitive
+release-validation reference for permission profiles, hooks, required MCP,
+deferred MCP calls, and the explicit V2 feature table. Older versions fail the
+Codex runtime doctor check. These remain version-sensitive
 surfaces, so release validation includes strict config/feature inspection and
 a real native smoke.
 See the [Codex permissions reference](https://learn.chatgpt.com/docs/permissions).

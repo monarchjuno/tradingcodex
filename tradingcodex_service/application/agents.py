@@ -58,7 +58,7 @@ class ModelPolicy:
 MODEL_POLICY_REVISION = "v1-role-policy-v3"
 MODEL_PROMPT_REVISION = "2026-07-gpt56-v1"
 MODEL_TOOL_PROFILE_REVISION = "2026-07-role-allowlists-v1"
-MINIMUM_CODEX_VERSION = "0.144.1"
+MINIMUM_CODEX_VERSION = "0.144.4"
 REFERENCE_CODEX_VERSION = "0.144.4"
 MODEL_POLICIES = {
     "orchestrator": ModelPolicy(
@@ -220,7 +220,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="fundamental-analyst",
         label="Fundamental Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-fundamental"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-fundamental"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -248,7 +248,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="technical-analyst",
         label="Technical Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-anti-overfit", "tcx-forecast", "tcx-technical"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-anti-overfit", "tcx-forecast", "tcx-artifact", "tcx-technical"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -276,7 +276,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="news-analyst",
         label="News Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-news"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-news"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -304,7 +304,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="macro-analyst",
         label="Macro Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-macro"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-macro"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -332,7 +332,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="instrument-analyst",
         label="Instrument Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-instrument"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-instrument"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -361,7 +361,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="valuation-analyst",
         label="Valuation Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-valuation"),
+        builtin_skills=("tcx-source-gate", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-valuation"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -390,7 +390,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="portfolio-manager",
         label="Portfolio Manager",
         group="portfolio",
-        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-portfolio", "tcx-order-draft"),
+        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-portfolio", "tcx-order-draft"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -421,7 +421,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="risk-manager",
         label="Risk Manager",
         group="risk",
-        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-risk", "tcx-policy", "tcx-order-approve"),
+        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-risk", "tcx-policy", "tcx-order-approve"),
         mcp_allowlist=(
             "simulate_policy",
             "validate_approval_receipt",
@@ -452,7 +452,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="judgment-reviewer",
         label="Judgment Reviewer",
         group="review",
-        builtin_skills=("tcx-judgment",),
+        builtin_skills=("tcx-artifact", "tcx-judgment"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -637,6 +637,12 @@ SKILL_SPECS: dict[str, SkillSpec] = {
     ),
     "tcx-evidence": SkillSpec("tcx-evidence", "TCX Evidence", RESEARCH_ROLES, scope="subagent_shared"),
     "tcx-forecast": SkillSpec("tcx-forecast", "TCX Forecast", FORECASTING_DISCIPLINE_ROLES, scope="subagent_shared"),
+    "tcx-artifact": SkillSpec(
+        "tcx-artifact",
+        "TCX Artifact",
+        FORECASTING_DISCIPLINE_ROLES + JUDGMENT_REVIEW_ROLES,
+        scope="subagent_shared",
+    ),
     "tcx-judgment": SkillSpec("tcx-judgment", "TCX Judgment", JUDGMENT_REVIEW_ROLES, scope="subagent_role"),
     "tcx-scenarios": SkillSpec("tcx-scenarios", "TCX Scenarios", THESIS_SCENARIO_TREE_ROLES, scope="subagent_shared"),
     "tcx-data-qc": SkillSpec("tcx-data-qc", "TCX Data QC", NUMERIC_DATA_QC_ROLES, scope="subagent_shared"),

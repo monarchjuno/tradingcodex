@@ -128,6 +128,22 @@ def test_mcp_transport_principal_cannot_be_spoofed_or_omitted(monkeypatch, tmp_p
     assert spoofed and "does not match" in spoofed["error"]["message"]
 
 
+def test_mcp_resource_template_discovery_returns_an_empty_supported_list(tmp_path: Path) -> None:
+    workspace = tmp_path / "resource-template-workspace"
+    bootstrap_workspace(workspace)
+
+    response = handle_mcp_rpc(
+        workspace,
+        {"jsonrpc": "2.0", "id": 1, "method": "resources/templates/list"},
+    )
+
+    assert response == {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {"resourceTemplates": []},
+    }
+
+
 def test_mcp_registry_failure_exposes_only_static_safe_reads(monkeypatch, tmp_path: Path) -> None:
     import tradingcodex_service.mcp_runtime as runtime
 

@@ -52,7 +52,7 @@ Keep three product layers separate when editing:
   strategies, and explicit Investment Brain plugins that extend the baseline
   without weakening the kernel.
 
-All 31 bundled skill ids use the reserved compact `tcx-` namespace with one
+All 32 bundled skill ids use the reserved compact `tcx-` namespace with one
 suffix word when possible and no more than two. User-owned `strategy-*`,
 `investment-brain-*`, and optional role skills remain separate namespaces.
 

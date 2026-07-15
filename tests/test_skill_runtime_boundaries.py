@@ -48,7 +48,7 @@ def test_bundled_skills_use_the_compact_tcx_namespace(tmp_path: Path) -> None:
         if record["layer"] == "bundled_core"
     }
 
-    assert len(SKILL_SPECS) == 31
+    assert len(SKILL_SPECS) == 32
     assert set(bundled) == set(SKILL_SPECS)
     for skill_id, record in bundled.items():
         assert SKILL_SPECS[skill_id].id == skill_id
@@ -67,6 +67,9 @@ def test_bundled_skills_use_the_compact_tcx_namespace(tmp_path: Path) -> None:
         for agent in state["agents"].values()
         for skill_id in agent["builtin_skills"]
     )
+    for role, agent in state["agents"].items():
+        if role != "head-manager":
+            assert "tcx-artifact" in agent["builtin_skills"]
 
     legacy_ids = {
         "automate-workflow",

@@ -53,6 +53,7 @@ from tradingcodex_service.application.common import (
     workspace_launcher_command,
 )
 from tradingcodex_service.application.customization import write_codex_mcp_server_config
+from tradingcodex_service.version import TRADINGCODEX_VERSION
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -785,7 +786,7 @@ def test_service_version_mismatch_never_exposes_explicit_local_source(
     monkeypatch.setenv("TRADINGCODEX_MCP_PACKAGE_SPEC", str(local_source))
     monkeypatch.setenv(PACKAGE_SOURCE_KIND_ENV, "local-explicit")
 
-    action = _version_mismatch_next_action("1.0.1", "127.0.0.1:48267")
+    action = _version_mismatch_next_action("1.0.2", "127.0.0.1:48267")
 
     assert str(local_source) not in action
     assert "<package-spec>" in action
@@ -858,7 +859,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
     assert first_python.is_file()
 
     version_path = source / "tradingcodex_service/version.py"
-    version_path.write_text('TRADINGCODEX_VERSION = "1.0.1"\n', encoding="utf-8")
+    version_path.write_text('TRADINGCODEX_VERSION = "1.0.2"\n', encoding="utf-8")
     before_explicit_override = {
         path: path.read_bytes()
         for path in (
@@ -913,7 +914,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
     lock = json.loads(
         (workspace / ".tradingcodex/generated/module-lock.json").read_text(encoding="utf-8")
     )
-    assert lock["tradingcodex_version"] == "1.0.1"
+    assert lock["tradingcodex_version"] == "1.0.2"
     assert lock["tradingcodex_package_spec"] == LOCAL_EXECUTABLE_SOURCE_PROVENANCE
 
     main_path = source / "tradingcodex_cli/__main__.py"
@@ -956,7 +957,7 @@ def test_real_custom_source_attach_patch_update_and_same_version_refresh(
         timeout=60,
         check=True,
     )
-    assert version.stdout.strip() == f"{marker}:1.0.1"
+    assert version.stdout.strip() == f"{marker}:1.0.2"
 
     request = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n'
     config_paths = [
@@ -1029,7 +1030,7 @@ def test_uv_cache_removal_leaves_launchers_and_all_role_mcp_runnable(
         timeout=30,
         check=True,
     )
-    assert version.stdout.strip() == "1.0.0"
+    assert version.stdout.strip() == TRADINGCODEX_VERSION
 
     request = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n'
     for config in parsed:
@@ -1445,7 +1446,7 @@ def test_update_rejects_workspace_downgrade_before_writing(
     bootstrap_workspace(workspace)
     lock_path = workspace / ".tradingcodex/generated/module-lock.json"
     lock = json.loads(lock_path.read_text(encoding="utf-8"))
-    lock["tradingcodex_version"] = "1.0.1"
+    lock["tradingcodex_version"] = "1.0.2"
     lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
     before = {path.relative_to(workspace).as_posix(): path.read_bytes() for path in workspace.rglob("*") if path.is_file()}
 

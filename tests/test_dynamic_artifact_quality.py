@@ -81,6 +81,27 @@ def test_explicit_quality_requirements_still_fail_closed(tmp_path: Path) -> None
     assert "decision_quality.contrary_evidence" in result["required_fields_missing"]
 
 
+def test_monitoring_lifecycle_error_names_the_two_supported_fields(tmp_path: Path) -> None:
+    artifact_path = _write_artifact(
+        tmp_path,
+        "decision_quality_required: true\n"
+        "contrary_evidence: []\n"
+        "update_triggers: []\n"
+        "invalidation_conditions: []\n"
+        "source_trust_notes: []\n"
+        "thesis_lifecycle:\n"
+        "  state: monitoring\n",
+    )
+
+    result = evaluate_decision_quality(tmp_path, artifact_path, strict=True)
+
+    assert "decision_quality.thesis_lifecycle.monitoring_artifact_or_cadence" in result["required_fields_missing"]
+    assert (
+        "thesis_lifecycle.state=monitoring requires either monitoring_artifact or review_cadence"
+        in result["warnings"]
+    )
+
+
 def test_explicit_context_gate_is_not_suppressed_by_producer_role(tmp_path: Path) -> None:
     artifact_path = _write_artifact(
         tmp_path,

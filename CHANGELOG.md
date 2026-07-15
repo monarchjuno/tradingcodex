@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.0.1 - 2026-07-15
+
+- Add the shared `tcx-artifact` skill to all nine producing fixed roles so
+  deferred MCP calls receive the exact research-artifact, thesis-lifecycle,
+  retry, and forecast persistence procedure.
+- Expand `create_research_artifact` and `issue_forecast` MCP schemas to expose
+  state-specific lifecycle fields, one-range probability rules, RFC 3339
+  timestamps, and the complete base-rate contract before a call is attempted.
+  Artifact validation errors now name the supported alternative fields, and
+  MCP resource-template discovery returns an empty supported list. Omitted
+  forecast `issued_at` and revision `revised_at` values now reuse the same
+  service receipt timestamp as `recorded_at`, eliminating a microsecond race
+  that rejected otherwise valid agent calls.
+- Require Codex CLI 0.144.4, the validated reference for generated permission
+  profiles, V2 fixed-role dispatch, hooks, and deferred TradingCodex MCP calls.
+  Older clients now fail the runtime doctor check with upgrade guidance.
+
 ## 1.0.0 - 2026-07-15
 
 - Raise the validated Codex CLI reference to 0.144.4 while retaining the

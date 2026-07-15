@@ -12,8 +12,8 @@ from tradingcodex_cli.commands import doctor
     ("installed", "ok", "warn"),
     [
         ("0.144.0", False, False),
-        ("0.144.1", True, True),
-        ("0.144.2", True, True),
+        ("0.144.1", False, False),
+        ("0.144.2", False, False),
         ("0.144.4", True, False),
         ("0.145.0", True, True),
     ],
@@ -41,10 +41,10 @@ def test_codex_cli_reference_version_check(
     assert result["ok"] is ok
     assert bool(result.get("warn")) is warn
     assert f"installed={installed}" in result["detail"]
-    assert "required>=0.144.1" in result["detail"]
+    assert "required>=0.144.4" in result["detail"]
     assert "reference=0.144.4" in result["detail"]
     if installed in {"0.144.1", "0.144.2"}:
-        assert "compatible but older than reference" in result["detail"]
+        assert "older than required" in result["detail"]
     if installed == "0.145.0":
         assert "newer client requires harness revalidation" in result["detail"]
 

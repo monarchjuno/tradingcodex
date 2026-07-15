@@ -102,11 +102,16 @@ the `agents` namespace, and omit the incompatible V1 `agents.max_threads` key.
 
 ## Skill Namespace
 
-The 31 bundled skills all use `tcx-` plus one suffix word when possible and at
+The 32 bundled skills all use `tcx-` plus one suffix word when possible and at
 most two words. Folder, frontmatter, registry, projection, UI metadata, and `$`
 invocation ids are identical; legacy core aliases are not projected. `tcx-` is
 reserved for bundled skills. User-owned `strategy-*`, `investment-brain-*`,
 and optional role skills keep separate namespaces.
+
+`tcx-artifact` is the shared persistence contract for all nine producing fixed
+roles. Edit its source under `workspace_templates/modules/repo-skills/` together
+with MCP schemas and artifact/forecast validators when nested tool contracts
+change.
 Pristine Strategy authoring uses the bundled required-section contract and
 does not auto-load a host-global authoring skill; external skills remain
 explicit user-selected extensions.
@@ -192,7 +197,7 @@ kernel.
 
 ## Validation
 
-Regenerate a clean workspace. Verify nine fixed roles and all 31 skills,
+Regenerate a clean workspace. Verify nine fixed roles and all 32 skills,
 including the three native execution bundles, with no retired execution
 role/skill. MCP `tools/list` must omit raw submit/cancel/refresh mutations,
 expose `use_order_turn_grant` only to Head Manager, and omit obsolete

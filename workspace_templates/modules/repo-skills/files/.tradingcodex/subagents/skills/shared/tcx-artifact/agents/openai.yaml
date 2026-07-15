@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Artifact"
+  short_description: "Persist valid research artifacts and forecasts"
+  default_prompt: "Use $tcx-artifact to prepare and persist a valid TradingCodex artifact or forecast handoff."
+policy:
+  allow_implicit_invocation: true

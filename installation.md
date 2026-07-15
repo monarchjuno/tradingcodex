@@ -48,7 +48,7 @@ The target workspace should be empty. A directory with only `.git` already
 initialized is fine, as is an empty directory inside an existing parent
 worktree.
 
-Use Codex CLI 0.144.1 or later on macOS, Linux, WSL, or native Windows. Version
+Use Codex CLI 0.144.4 or later on macOS, Linux, WSL, or native Windows. Version
 0.144.4 is the current TradingCodex reference for custom permission profiles,
 hooks, required MCP startup, and explicit MultiAgent V2 configuration. Verify
 with `codex --version`; `./tcx doctor --layer guidance` fails below the

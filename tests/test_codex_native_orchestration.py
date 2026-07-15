@@ -72,6 +72,25 @@ def test_mcp_surface_has_one_lightweight_run_tool_and_no_server_orchestrator() -
     improvement_item = artifact_properties["improvements"]["items"]
     assert improvement_item["type"] == "object"
     assert improvement_item["additionalProperties"] is False
+    lifecycle = artifact_properties["thesis_lifecycle"]
+    assert lifecycle["required"] == ["state"]
+    assert lifecycle["properties"]["state"]["enum"] == [
+        "exploring",
+        "testing",
+        "validated",
+        "rejected",
+        "monitoring",
+    ]
+    assert {"monitoring_artifact", "review_cadence"} <= set(lifecycle["properties"])
+    forecast_properties = TOOL_REGISTRY["issue_forecast"].input_schema["properties"]
+    assert forecast_properties["horizon"]["format"] == "date-time"
+    assert forecast_properties["issued_at"]["description"].startswith("Optional")
+    assert forecast_properties["base_rate"]["required"] == [
+        "cohort",
+        "source_snapshot_id",
+        "sample_size",
+        "selection_rule",
+    ]
 
 
 def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
@@ -256,7 +275,7 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
     assert 'enabled = true' in config
     assert 'max_concurrent_threads_per_session = 7' in config
     assert 'max_threads = 6' not in config
-    assert model_policy["roles"]["head-manager"]["minimum_codex_version"] == "0.144.1"
+    assert model_policy["roles"]["head-manager"]["minimum_codex_version"] == "0.144.4"
     assert model_policy["roles"]["head-manager"]["reference_codex_version"] == "0.144.4"
     assert "required = true" in config
     assert '"begin_analysis_run"' in config

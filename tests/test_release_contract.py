@@ -80,7 +80,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.0.0"
+    assert TRADINGCODEX_VERSION == "1.0.1"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]
@@ -145,7 +145,7 @@ def test_v1_release_checklist_does_not_preapprove_gates() -> None:
     assert re.search(r"(?<![\d.])v?0\.\d+\.\d+\b", deployment) is None
     assert re.search(r"(?<![\d.])v?0\.\d+\.\d+\b", checklist) is None
     assert "- [x]" not in checklist.lower()
-    assert "release_version=1.0.0" in checklist
+    assert "release_version=1.0.1" in checklist
 
 
 def test_attach_contract_has_no_overwrite_or_init_compatibility() -> None:
@@ -374,7 +374,7 @@ def test_update_status_requires_package_refresh_for_newer_workspace(monkeypatch,
             "schema_version": 1,
             "generated_at": "2026-07-11T00:00:00Z",
             "workspace_id": "tcxw_" + "a" * 32,
-            "tradingcodex_version": "1.0.1",
+            "tradingcodex_version": "1.0.2",
             "tradingcodex_package_spec": "tradingcodex",
             "tradingcodex_home": str((tmp_path / "home").resolve()),
             "home_source": "environment_override",
@@ -534,7 +534,7 @@ def test_update_status_never_treats_local_provenance_as_an_executable_spec(
                 "schema_version": 1,
                 "generated_at": "2026-07-11T00:00:00Z",
                 "workspace_id": "tcxw_" + "a" * 32,
-                "tradingcodex_version": "1.0.1",
+                "tradingcodex_version": "1.0.2",
                 "tradingcodex_package_spec": "local-explicit",
                 "tradingcodex_home": str((tmp_path / "home").resolve()),
                 "home_source": "environment_override",

@@ -134,6 +134,51 @@ def test_research_and_forecast_lists_filter_run_before_limit(monkeypatch, tmp_pa
     assert [item["forecast_id"] for item in forecasts] == ["older-target"]
 
 
+def test_omitted_forecast_event_times_use_the_same_system_receipt_time(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    base_snapshot_id = _snapshot(tmp_path, "base-rate", 0.45)
+    forecast_id = f"receipt-time-{uuid.uuid4().hex[:10]}"
+    issue_times = iter(
+        [
+            "2026-01-02T00:00:00.000000Z",
+            "2026-01-02T00:00:00.000001Z",
+        ]
+    )
+    monkeypatch.setattr(forecasting_module, "now_iso", lambda: next(issue_times))
+    payload = _forecast_payload(base_snapshot_id, forecast_id)
+    payload.pop("issued_at")
+
+    issued = call_mcp_tool(
+        tmp_path,
+        "issue_forecast",
+        {"principal_id": "fundamental-analyst", **payload},
+    )["forecast"]
+
+    assert issued["issued_at"] == issued["recorded_at"]
+
+    revision_times = iter(
+        [
+            "2026-01-03T00:00:00.000000Z",
+            "2026-01-03T00:00:00.000001Z",
+        ]
+    )
+    monkeypatch.setattr(forecasting_module, "now_iso", lambda: next(revision_times))
+    revised = call_mcp_tool(
+        tmp_path,
+        "revise_forecast",
+        {
+            "principal_id": "fundamental-analyst",
+            "forecast_id": forecast_id,
+            "revision_reason": "receipt-time regression check",
+            "probability": 0.61,
+        },
+    )["forecast"]
+
+    assert revised["revised_at"] == revised["recorded_at"]
+
+
 def test_mcp_research_and_forecast_lifecycle_enforces_role_separation(monkeypatch, tmp_path: Path) -> None:
     clock = ["2026-01-03T00:00:00Z"]
     monkeypatch.setattr(forecasting_module, "now_iso", lambda: clock[0])

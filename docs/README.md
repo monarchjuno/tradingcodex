@@ -47,7 +47,7 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 
 | Document | Purpose |
 | --- | --- |
-| [release-readiness.md](./release-readiness.md) | v1.0.0 source readiness, final-commit and exact-artifact validation, and pending tag, publication, and post-publish gates. |
+| [release-readiness.md](./release-readiness.md) | v1.0.1 source readiness, final-commit and exact-artifact validation, and pending tag, publication, and post-publish gates. |
 
 ## Workflow And Agent Documents
 

@@ -252,7 +252,7 @@ sh "$SOURCE_ROOT/install.sh" \
 On native Windows PowerShell:
 
 ```powershell
-$ReleaseVersion = "1.0.0"
+$ReleaseVersion = "1.0.1"
 $Workspace = Join-Path $env:TEMP "tcx-pypi-$ReleaseVersion"
 New-Item -ItemType Directory -Force $Workspace | Out-Null
 Set-Location $Workspace

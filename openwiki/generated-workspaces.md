@@ -116,7 +116,7 @@ case: only its delimited TradingCodex privacy block is managed.
 Generated workspaces should contain:
 
 - the release-managed files described above
-- nine fixed role TOMLs, no `execution-operator`, and 31 bundled skills,
+- nine fixed role TOMLs, no `execution-operator`, and 32 bundled skills,
   including root explicit-only `tcx-order-allow`, `tcx-order-submit`, and
   `tcx-order-cancel`
 - a `.gitignore` whose TradingCodex local/private-state block is managed without
@@ -228,7 +228,7 @@ runs need `trading-build`, and Brain/Strategy management uses
 Prefer an isolated worktree or workspace and retain a reviewable diff for
 scheduled changes.
 
-All 31 bundled skill ids use the reserved compact `tcx-` namespace with one
+All 32 bundled skill ids use the reserved compact `tcx-` namespace with one
 suffix word when possible and never more than two. Generated folder,
 frontmatter, registry, UI metadata, and projection ids must match. User-owned
 `strategy-*`, `investment-brain-*`, and optional role skills are separate

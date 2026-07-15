@@ -205,7 +205,9 @@ def _codex_cli_runtime_check() -> dict[str, Any]:
     compatible = parsed >= minimum
     differs_from_reference = parsed != reference
     reference_note = ""
-    if compatible and parsed < reference:
+    if not compatible:
+        reference_note = "; older than required; upgrade Codex before using the generated harness"
+    elif parsed < reference:
         reference_note = "; compatible but older than reference; upgrade before release validation"
     elif parsed > reference:
         reference_note = "; newer client requires harness revalidation"

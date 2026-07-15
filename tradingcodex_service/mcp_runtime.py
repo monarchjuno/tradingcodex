@@ -183,6 +183,57 @@ STRING_LIST_SCHEMA = {
     "type": "array",
     "items": {"type": "string", "minLength": 1},
 }
+PROBABILITY_RANGE_SCHEMA = {
+    "type": ["array", "string"],
+    "description": (
+        "One lower/upper probability range only, either a two-number array such as [0.3, 0.4] "
+        "or a string such as '30-40%'. Put multiple scenario ranges in scenario_cases instead."
+    ),
+    "items": {"type": "number", "minimum": 0, "maximum": 1},
+    "minItems": 2,
+    "maxItems": 2,
+}
+THESIS_LIFECYCLE_SCHEMA = json_object_schema(
+    {
+        "state": {
+            "type": "string",
+            "enum": ["exploring", "testing", "validated", "rejected", "monitoring"],
+            "description": "Current thesis state; state-specific evidence is required by the artifact quality gate.",
+        },
+        "evidence_refs": STRING_LIST_SCHEMA,
+        "evidence_run_card": {"type": ["object", "string"]},
+        "evidence_run_cards": {"type": "array"},
+        "validation_card": {"type": ["object", "string"]},
+        "validation_cards": {"type": "array"},
+        "reviewer_acceptance": {"type": ["object", "string"]},
+        "invalidation_note": {"type": "string", "minLength": 1},
+        "monitoring_artifact": {"type": ["object", "string"]},
+        "review_cadence": {"type": "string", "minLength": 1},
+    },
+    ["state"],
+    additional_properties=True,
+)
+FORECAST_BASE_RATE_SCHEMA = json_object_schema(
+    {
+        "cohort": {"type": "string", "minLength": 1},
+        "source_snapshot_id": {"type": "string", "minLength": 1},
+        "sample_size": {"type": "integer", "minimum": 1},
+        "selection_rule": {"type": "string", "minLength": 1},
+        "as_of": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Optional RFC 3339 base-rate timestamp at or before knowledge_cutoff.",
+        },
+        "value": {"type": "number"},
+        "probabilities": {
+            "type": "object",
+            "description": "Required for categorical targets; keys must match forecast probabilities and values must sum to 1.",
+        },
+        "prediction": {"type": "number"},
+    },
+    ["cohort", "source_snapshot_id", "sample_size", "selection_rule"],
+    additional_properties=True,
+)
 FOLLOW_UP_REQUEST_SCHEMA = json_object_schema(
     {
         "trigger": {"type": "string", "enum": sorted(FOLLOW_UP_TRIGGERS)},
@@ -236,7 +287,10 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "context_summary": {"type": "string"},
     "reader_summary": {"type": "string"},
     "handoff_state": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
-    "confidence": {"type": "string"},
+    "confidence": {
+        "type": ["string", "number"],
+        "description": "Prefer one of low, medium, or high; numeric confidence is also accepted for compatibility.",
+    },
     "missing_evidence": {"type": "array"},
     "next_recipient": {"type": "string"},
     "next_action": {"type": "string"},
@@ -265,8 +319,14 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "forecast_target": {"type": "string"},
     "forecast_horizon": {"type": "string"},
     "probability": {},
-    "probability_range": {},
-    "base_rate": {},
+    "probability_range": PROBABILITY_RANGE_SCHEMA,
+    "base_rate": {
+        "type": "object",
+        "description": (
+            "Artifact metadata only. To create a ledger forecast, call issue_forecast after this artifact is accepted "
+            "and use its complete base_rate contract."
+        ),
+    },
     "missing_base_rate_note": {"type": "string"},
     "evidence_ids": {"type": "array"},
     "contrary_evidence": {"type": "array"},
@@ -277,7 +337,7 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "source_trust_notes": {"type": "array"},
     "scenario_cases": {"type": "array"},
     "scenario_summary": {"type": "string"},
-    "thesis_lifecycle": {"type": "object"},
+    "thesis_lifecycle": THESIS_LIFECYCLE_SCHEMA,
     "current_price_as_of": {"type": "string"},
     "market_anchor_as_of": {"type": "string"},
     "investor_context_gaps": {"type": "array"},
@@ -353,20 +413,31 @@ FORECAST_ISSUE_FIELDS = {
     "target_type": {"type": "string", "enum": ["binary", "categorical", "continuous"]},
     "unit": {"type": "string"},
     "benchmark": {"type": "string"},
-    "horizon": {"type": "string"},
-    "issued_at": {"type": "string"},
+    "horizon": {
+        "type": "string",
+        "format": "date-time",
+        "description": "RFC 3339 resolution timestamp with an explicit timezone.",
+    },
+    "issued_at": {
+        "type": "string",
+        "format": "date-time",
+        "description": "Optional RFC 3339 timestamp; normally omit it so the service records receipt time.",
+    },
     "knowledge_cutoff": {
         "type": "string",
         "format": "date-time",
         "description": "RFC 3339 timestamp with an explicit timezone.",
     },
     "probability": {"type": "number", "minimum": 0, "maximum": 1},
-    "probability_range": {"type": ["array", "string"]},
-    "probabilities": {"type": "object"},
+    "probability_range": PROBABILITY_RANGE_SCHEMA,
+    "probabilities": {
+        "type": "object",
+        "description": "Categorical probabilities keyed by outcome; values must sum to 1.",
+    },
     "prediction": {"type": "number"},
     "interval": {"type": "object"},
     "quantiles": {"type": "object"},
-    "base_rate": {"type": "object"},
+    "base_rate": FORECAST_BASE_RATE_SCHEMA,
     "evidence_ids": {"type": "array"},
     "contrary_evidence": {"type": "array"},
     "invalidation_conditions": {"type": "array"},
@@ -987,7 +1058,8 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         description=(
             "Store markdown research as a workspace-native file. For an analysis run, pass workflow_run_id and any exact "
             "input_artifact_ids consumed. The service derives producer identity, verifies run-local lineage, and computes content hashes; "
-            "it does not require a server plan or task binding. Include a non-empty readiness_label."
+            "it does not require a server plan or task binding. Include a non-empty readiness_label. When "
+            "decision_quality_required=true, thesis_lifecycle.state and its state-specific evidence are required."
         ),
         category="research",
         risk_level="write",
@@ -1277,7 +1349,10 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="issue_forecast",
-        description="Issue an immutable evidence-only forecast with a base rate and resolution contract.",
+        description=(
+            "Issue an immutable evidence-only forecast after its research artifact is accepted. Use RFC 3339 horizon and "
+            "knowledge_cutoff values, normally omit issued_at, and provide the complete base_rate cohort/source/sample/selection contract."
+        ),
         category="research",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("issue_forecast"),
@@ -2562,6 +2637,8 @@ def handle_mcp_rpc(
         return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"tools": list_mcp_tools()}}
     if method == "resources/list":
         return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"resources": []}}
+    if method == "resources/templates/list":
+        return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"resourceTemplates": []}}
     if method == "prompts/list":
         return {"jsonrpc": "2.0", "id": message.get("id"), "result": {"prompts": []}}
     if method == "tools/call":
