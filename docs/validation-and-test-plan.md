@@ -67,6 +67,9 @@ Unit tests should cover:
 - adapter registry and disabled live adapter behavior
 - audit append behavior and request/result hash generation
 - file-native research artifact creation, versioning, search, source snapshot recording, and markdown export
+- v2 artifact catalog lazy projection across current and legacy Markdown/JSON/
+  forecast records, immutable-source preservation, cutoff fail-closed search,
+  invalid-record quarantine, and incremental change/removal refresh
 - central DB path resolution through `TRADINGCODEX_HOME` and `TRADINGCODEX_DB_NAME`
 - workspace identity/provenance recording without workspace-local DB partitioning
 - duplicate research ids fail closed within a workspace unless an explicit append/version path is used
@@ -208,7 +211,7 @@ Focused source tests are split across `tests/test_runtime_paths.py` and
 selection, explicit override validation, strict v1 workspace/module-lock
 rejection, symlink/case identity, DB override, spaces/backslashes/drive paths,
 typed config rendering, both launchers, native lock/atomic behavior, process
-flags, and external-MCP pipe reading.
+flags and fixed read-only Codex inventory subprocess handling.
 
 After building a wheel, run:
 
@@ -221,7 +224,7 @@ GitHub Actions keeps the complete Python/Django suite on Ubuntu and runs that
 same clean-wheel helper on native macOS and Windows. The helper uses
 `tempfile`, a space-containing wheel path and workspace, parses root plus all
 role TOML and generated YAML/JSON, runs `tcx` on POSIX or `tcx.cmd` on Windows,
-executes doctor/DB/hook/MCP/external-MCP smokes, and proves local service
+executes doctor/DB/hook/MCP/capability-inventory smokes, and proves local service
 ensure/status/stop on the release-default loopback port, or the next available
 non-ephemeral product-range port. It also loads `/` and the packaged
 content-hashed JavaScript and CSS under
@@ -250,6 +253,9 @@ printf '%s\n' '---' 'artifact_id: research-smoke' '---' '# Research Smoke' '' '[
   > trading/research/.drafts/research-smoke-v2.md
 ./tcx research append research-smoke --markdown-file trading/research/.drafts/research-smoke-v2.md
 ./tcx research search "Updated evidence"
+./tcx research catalog list
+./tcx research catalog search "Updated evidence"
+./tcx research catalog rebuild
 ./tcx research export research-smoke
 ./tcx research run-card trading/research/research-smoke.evidence.md
 ./tcx research validation-card trading/research/research-smoke.evidence.md
@@ -262,6 +268,9 @@ The smoke flow should confirm:
 - version and content hash updates
 - duplicate create with changed content is rejected within the same workspace
 - markdown export path generation
+- parallel catalog projection reports `full`, `legacy_partial`, and `invalid`
+  coverage without modifying source artifacts
+- point-in-time catalog search excludes missing, malformed, and later cutoffs
 - authenticated supervisor or postmortem flows record investment-judgment
   lesson events
 - doctor verifies the append-only `.tradingcodex/mainagent/improve.jsonl`
@@ -296,18 +305,14 @@ Verify at least:
   but not sync, approval, submit, cancel, mapping mutation, or order-ticket
   mutation tools
 - stdio emits no non-MCP logs to stdout
-- external MCP discovery classifies market-data, account-read, and
-  execution-like tools while keeping raw execution proxy blocked
-- external MCP registration rejects unsupported transports and non-HTTP(S)
-  URLs for HTTP transports, including user-info, local-file, and custom schemes
-- MCP registry, router, external-tool, permission, and call-ledger models are
-  read-only in Admin, and opaque
-  environment-secret values cannot persist through labels, commands, arguments,
-  URLs, responses, ledgers, or audits
-- `./tcx mcp external list/import-codex/register/check/discover/review-tool`
-  covers External MCP Gate lifecycle operations; every mutation is exercised
-  through an interactive-confirmation stand-in and exact one-use authority
-- schema drift disables reviewed tools until re-reviewed
+- `list_codex_capabilities` merges MCP, standalone skill, and installed plugin
+  metadata by scope while preserving disabled state and duplicate names
+- inventory handles malformed plugin manifests, missing Codex CLI, invalid
+  JSON, and timeouts as bounded `partial` or `unavailable` results
+- inventory output contains no commands, arguments, URL details, environment
+  values, headers, tokens, credential paths, raw config, skill bodies, or hook code
+- the final MCP schema and Admin contain only TradingCodex-owned
+  `McpToolDefinition` and `McpToolCall` state
 
 ## Broker Provider Smoke
 
@@ -442,8 +447,9 @@ Scenarios should include:
   `manage_investment_brain` or `manage_strategy`; Research runtime/launcher
   access remains denied, Build cannot substitute for either, mixed markers and
   cross-scope commands fail, and Plan/subagent contexts remain blocked
-- External MCP lifecycle/consent and provider-source approval reject agent MCP,
-  agent shell, and noninteractive terminal callers; an unapproved or changed
+- user-installed Codex capabilities remain callable through native Codex and
+  cannot mint TradingCodex principals, grants, reserved namespace entries, or
+  order proof; an unapproved or changed
   workspace provider is never imported by provider listing or connector status
 - throughout every active Build turn/profile, native `apply_patch` is the edit
   surface and the hook admits only public GET/HEAD, enumerated read-only HTTPS
@@ -463,8 +469,8 @@ Scenarios should include:
   model-authored general POST remains blocked, and Build-native browser, web,
   HTTP, fetch, and navigation tools cannot bypass the shell allowlist while
   Research browser behavior remains available. Generated hook tests must prove
-  the `PreToolUse` matcher is catch-all, including a browser-control call hidden
-  behind an external MCP name whose arguments contain no URL marker
+  native user MCP calls are not blanket-blocked while TradingCodex protected
+  paths, principals, grants, and order proof remain closed
 - direct HTTP(S)-only provider staging admits `curl --create-dirs` only for one
   URL and one explicit direct `<provider-id>/<file>` output when that provider
   directory does not exist. The hook only validates the command; curl creates

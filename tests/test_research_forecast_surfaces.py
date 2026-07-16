@@ -272,6 +272,9 @@ def test_generated_projection_and_registry_keep_evidence_roles_narrow(tmp_path: 
         "record_evaluation_run",
         "record_blind_human_review",
         "compare_evaluation_runs",
+        "list_artifact_catalog",
+        "search_artifact_catalog",
+        "rebuild_artifact_catalog",
     }
     assert expected.issubset(TOOL_REGISTRY)
     assert TOOL_REGISTRY["create_causal_equity_analysis"].allowed_roles == {"valuation-analyst"}
@@ -280,8 +283,9 @@ def test_generated_projection_and_registry_keep_evidence_roles_narrow(tmp_path: 
     assert TOOL_REGISTRY["promote_lesson"].capability_required == "judgment_review.write"
     assert TOOL_REGISTRY["create_evaluation_corpus"].allowed_roles == {"head-manager"}
     assert TOOL_REGISTRY["record_blind_human_review"].allowed_roles == {"judgment-reviewer"}
+    assert TOOL_REGISTRY["rebuild_artifact_catalog"].allowed_roles == {"head-manager"}
     assert all("execution-operator" not in TOOL_REGISTRY[name].allowed_roles for name in expected)
-    assert {"get_research_spec", "list_research_specs", "get_forecast", "list_forecasts", "get_forecast_calibration_report"}.issubset(SAFE_HOME_TOOL_NAMES)
+    assert {"get_research_spec", "list_research_specs", "get_forecast", "list_forecasts", "get_forecast_calibration_report", "list_artifact_catalog", "search_artifact_catalog"}.issubset(SAFE_HOME_TOOL_NAMES)
     snapshot_schema = TOOL_REGISTRY["record_source_snapshot"].input_schema
     assert {"source_locator", "provider_query", "known_at", "retrieved_at", "revision", "vintage", "timezone", "universe_membership"}.issubset(snapshot_schema["properties"])
     assert snapshot_schema["additionalProperties"] is False
@@ -293,9 +297,9 @@ def test_generated_projection_and_registry_keep_evidence_roles_narrow(tmp_path: 
     valuation_tools = set(tomllib.loads((workspace / ".codex/agents/valuation-analyst.toml").read_text(encoding="utf-8"))["mcp_servers"]["tradingcodex"]["enabled_tools"])
     judgment_tools = set(tomllib.loads((workspace / ".codex/agents/judgment-reviewer.toml").read_text(encoding="utf-8"))["mcp_servers"]["tradingcodex"]["enabled_tools"])
     assert not (workspace / ".codex/agents/execution-operator.toml").exists()
-    assert {"create_research_spec", "create_evaluation_corpus", "score_forecast"}.issubset(root_tools)
-    assert {"create_causal_equity_analysis", "issue_forecast"}.issubset(valuation_tools)
-    assert {"record_blind_judgment_prior", "complete_judgment_review", "resolve_forecast", "promote_lesson", "record_blind_human_review"}.issubset(judgment_tools)
+    assert {"create_research_spec", "create_evaluation_corpus", "score_forecast", "list_artifact_catalog", "search_artifact_catalog", "rebuild_artifact_catalog"}.issubset(root_tools)
+    assert {"create_causal_equity_analysis", "issue_forecast", "search_artifact_catalog"}.issubset(valuation_tools)
+    assert {"record_blind_judgment_prior", "complete_judgment_review", "resolve_forecast", "promote_lesson", "record_blind_human_review", "search_artifact_catalog"}.issubset(judgment_tools)
 
 
 def test_api_and_cli_expose_frozen_research_and_forecast_operations(monkeypatch, tmp_path: Path, capsys) -> None:
@@ -345,6 +349,17 @@ def test_api_and_cli_expose_frozen_research_and_forecast_operations(monkeypatch,
     assert response.status_code == 200, response.content
     assert response.json()["forecast"]["author"] == "fundamental-analyst"
     assert client.get(f"/api/research/forecasts/{forecast_id}").json()["forecast"]["forecast_id"] == forecast_id
+    catalog = client.get("/api/research/catalog").json()
+    assert {"research_spec", "source_snapshot", "forecast"}.issubset(
+        {entry["artifact_type"] for entry in catalog["entries"]}
+    )
+    catalog_search = client.post(
+        "/api/research/catalog/search",
+        data=json.dumps({"query": "positive benchmark-relative value"}),
+        content_type="application/json",
+    )
+    assert catalog_search.status_code == 200, catalog_search.content
+    assert catalog_search.json()["entries"][0]["artifact_type"] == "research_spec"
 
     cli_forecast_id = f"cli-forecast-{uuid.uuid4().hex[:10]}"
     cli_forecast_file = tmp_path / "cli-forecast.json"

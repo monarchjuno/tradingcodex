@@ -110,11 +110,11 @@ protocol-owned identity/status paths, reserved namespaces, and marked blocks:
 - runtime DB, authority, secrets, credentials, and private local state stay
   external or ignored; ordinary non-reserved user files remain untouched
 
-`.tradingcodex/config.yaml` and `.codex/config.toml` are release-managed, not
-general customization files. The latter preserves the managed External MCP
-block and rebuilds Strategy, Brain, role-skill, and additional-instruction
-projections from canonical overlay state. `.gitignore` is the inverse special
-case: only its delimited TradingCodex privacy block is managed.
+`.tradingcodex/config.yaml` and `.codex/config.toml` are release-managed. Update
+rebuilds TradingCodex-owned entries and projections while preserving
+non-reserved user MCP, plugin, and skill configuration plus user capability
+directories. `.gitignore` is the inverse special case: only its delimited
+TradingCodex privacy block is managed.
 
 Generated workspaces should contain:
 
@@ -216,8 +216,9 @@ MCP-backed browser call while a Build grant is active.
 Trusted Build-only `./tcx`/`tcx.cmd` commands and protected MCP
 calls remain grant/proof-gated; Plan mode blocks Build entirely. Unstarted protected-call
 reservations expire after two minutes; calls that entered the service finish
-before deferred revocation becomes terminal. External MCP lifecycle/consent
-and workspace-provider source approval stay interactive user-terminal actions.
+before deferred revocation becomes terminal. User capability lifecycle belongs
+to Codex, while workspace-provider source approval stays an interactive
+user-terminal action.
 Broader unit, smoke, and build validation also runs from an explicit user or
 maintainer terminal rather than the active Build turn.
 
@@ -293,13 +294,11 @@ Compiled viewer assets ship in the Python package; attach/update never copy
 `frontend/`, create `node_modules`, or invoke npm. The viewer reads canonical
 workspace state and never starts analysis or stores reasoning/tool output.
 
-Project/root Codex MCP servers should be discovered or written through
-`tcx build codex-mcp ...`. Importing one of those entries into the External MCP
-Gate uses `tcx mcp external import-codex` from an interactive operator terminal;
-the former Build import path now returns migration guidance without mutating
-state. Registration, probing, discovery, and review inside the gate are likewise
-separate interactive user-terminal actions. Generated subagents should not get
-direct unmanaged external MCP allowlists.
+Project/root user MCP servers, skills, and plugins are configured through
+Codex, not `tcx`. Codex exposes them natively to root and fixed-role agents;
+role TOML overrides only the TradingCodex MCP entry and projected `tcx-*`
+skills. TradingCodex neither recommends nor classifies user capabilities and
+offers only a sanitized read-only inventory.
 The built-in TradingCodex MCP defaults safe enabled tools to Codex `approve`;
 raw submit, cancel, and broker-status-refresh mutations are absent from every
 config and from public `tools/list`. Root Head Manager alone lists

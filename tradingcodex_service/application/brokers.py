@@ -35,14 +35,12 @@ from tradingcodex_service.application.portfolio import (
     portfolio_keys,
 )
 from tradingcodex_service.application.operator_authority import (
-    EXTERNAL_MCP_BROKER_CONNECT,
     PROVIDER_SOURCE_APPROVE,
     PROVIDER_SOURCE_REVOKE,
     OperatorAuthority,
     OperatorServiceAuthority,
     consume_operator_authority,
     consume_service_operator_authority,
-    external_mcp_broker_connection_resource,
     provider_source_approval_resource,
     provider_source_revocation_resource,
 )
@@ -308,7 +306,6 @@ BROKER_DISABLED_EXECUTION_POSTURES = {"provider_development_required", "service_
 NON_LIVE_EXECUTION_POSTURES = {"paper_only", *BROKER_VALIDATION_EXECUTION_POSTURES}
 EXECUTION_ENABLED_POSTURES = {*NON_LIVE_EXECUTION_POSTURES, *BROKER_LIVE_EXECUTION_POSTURES}
 SUPPORTED_BROKER_EXECUTION_POSTURES = {*EXECUTION_ENABLED_POSTURES, *BROKER_DISABLED_EXECUTION_POSTURES}
-EXTERNAL_MCP_PROVIDER_ID = "external-mcp"
 PAPER_PROVIDER = BrokerAdapterProvider(
     provider_id="paper",
     display_name="Paper",
@@ -1602,8 +1599,6 @@ def broker_provider_source_status(
         return {"kind": "unknown", "service_restart_required": False, "drift_status": "none"}
     if provider_id == PAPER_PROVIDER.provider_id:
         return {"kind": "builtin", "provider_id": provider_id, "service_restart_required": False, "drift_status": "none"}
-    if provider_id == EXTERNAL_MCP_PROVIDER_ID:
-        return {"kind": "external_mcp", "provider_id": provider_id, "service_restart_required": False, "drift_status": "none"}
     if provider_id in _BROKER_ADAPTER_PROVIDERS:
         return {"kind": "registered", "provider_id": provider_id, "service_restart_required": False, "drift_status": "none"}
     root = Path(workspace_root or os.environ.get("TRADINGCODEX_WORKSPACE_ROOT") or ".").expanduser().resolve()
@@ -1924,100 +1919,14 @@ class PaperBrokerAdapter(BrokerAdapter):
         return submit_paper_order(self.workspace_root, order)
 
 
-class ExternalMcpBrokerAdapter(BrokerAdapter):
-    def __init__(self, connection: Any) -> None:
-        self.connection = connection
-
-    def health_check(self) -> BrokerHealth:
-        status = "ok" if self.connection.status in {"read_only", "trading_locked", "trading_enabled"} else "disabled"
-        return BrokerHealth(status, "external MCP broker is manifest-backed; raw execution proxy is not available")
-
-    def discover_accounts(self) -> list[BrokerAccountDTO]:
-        accounts = self.connection.metadata.get("accounts") if isinstance(self.connection.metadata, dict) else None
-        if not isinstance(accounts, list):
-            return []
-        discovered: list[BrokerAccountDTO] = []
-        for item in accounts:
-            if not isinstance(item, dict) or not item.get("broker_account_id"):
-                raise ValueError("external MCP broker accounts require broker_account_id")
-            if item.get("account_type") in (None, ""):
-                raise ValueError("external MCP broker accounts require an explicit account_type")
-            if item.get("base_currency") in (None, ""):
-                raise ValueError("external MCP broker accounts require an explicit base_currency")
-            discovered.append(BrokerAccountDTO(
-                broker_account_id=str(item["broker_account_id"]),
-                account_label=str(item.get("account_label") or ""),
-                account_type=str(item["account_type"]),
-                base_currency=_required_currency_code(item["base_currency"], "base_currency"),
-                masked_identifier=str(item.get("masked_identifier") or ""),
-                trading_enabled=False,
-                metadata=item,
-            ))
-        return discovered
-
-    def get_cash(self, account_id: str) -> list[CashDTO]:
-        return []
-
-    def get_positions(self, account_id: str) -> list[PositionDTO]:
-        return []
-
-
-class NativeApiBrokerAdapter(BrokerAdapter):
-    def __init__(self, connection: Any) -> None:
-        self.connection = connection
-
-    def health_check(self) -> BrokerHealth:
-        return BrokerHealth("disabled", "native API broker adapters are manifest-backed and disabled until reviewed")
-
-    def describe_capabilities(self) -> dict[str, Any]:
-        metadata = self.connection.metadata if isinstance(self.connection.metadata, dict) else {}
-        profile = metadata.get("capability_profile")
-        return profile if isinstance(profile, dict) else {}
-
-    def discover_accounts(self) -> list[BrokerAccountDTO]:
-        return []
-
-    def get_cash(self, account_id: str) -> list[CashDTO]:
-        return []
-
-    def get_positions(self, account_id: str) -> list[PositionDTO]:
-        return []
-
-    def get_instrument_constraints(self, symbol: str, args: dict[str, Any] | None = None) -> BrokerInstrumentConstraints:
-        return _constraints_from_profile(self.describe_capabilities(), symbol, args or {})
-
-    def validate_order_translation(self, order: dict[str, Any]) -> OrderValidationResult:
-        profile = self.describe_capabilities()
-        reasons = _translation_reasons(profile, order)
-        payload = {
-            "provider_id": self.connection.provider_id,
-            "broker_id": self.connection.broker_id,
-            "canonical_order": canonical_order_from_order(order, profile),
-            "broker_payload_preview": _broker_payload_preview(profile, order),
-            "execution_posture": profile.get("execution_posture") or "live_disabled",
-        }
-        return OrderValidationResult(not reasons, reasons, payload)
-
-    def preview_order(self, order: dict[str, Any]) -> dict[str, Any]:
-        validation = self.validate_order_translation(order)
-        return {
-            "status": "previewed" if validation.valid else "rejected",
-            "valid": validation.valid,
-            "reasons": validation.reasons,
-            "translation": validation.payload or {},
-        }
-
-
 def _connection_identity(connection: Any) -> tuple[str, str]:
     transport = str(getattr(connection, "transport", "") or "").strip()
     provider_id = _validate_provider_id(getattr(connection, "provider_id", ""))
-    if transport not in {"paper", "mcp", "api"}:
+    if transport not in {"paper", "api"}:
         raise ValueError(f"unsupported broker transport: {transport or '(missing)'}")
     if transport == "paper" and provider_id != PAPER_PROVIDER.provider_id:
         raise ValueError(f"paper transport requires provider_id={PAPER_PROVIDER.provider_id}")
-    if transport == "mcp" and provider_id != EXTERNAL_MCP_PROVIDER_ID:
-        raise ValueError(f"mcp transport requires provider_id={EXTERNAL_MCP_PROVIDER_ID}")
-    if transport == "api" and provider_id in {PAPER_PROVIDER.provider_id, EXTERNAL_MCP_PROVIDER_ID}:
+    if transport == "api" and provider_id == PAPER_PROVIDER.provider_id:
         raise ValueError(f"provider_id={provider_id} is not valid for api transport")
     metadata = connection.metadata if isinstance(connection.metadata, dict) else {}
     profile = metadata.get("capability_profile") if isinstance(metadata.get("capability_profile"), dict) else {}
@@ -2033,8 +1942,6 @@ def adapter_for_connection(connection: Any, workspace_root: Path | str | None = 
     transport, provider_id = _connection_identity(connection)
     if transport == "paper":
         return PaperBrokerAdapter(workspace_root)
-    if transport == "mcp":
-        return ExternalMcpBrokerAdapter(connection)
     provider = get_broker_adapter_provider(provider_id, workspace_root)
     if provider is None:
         raise ValueError(f"unknown broker provider: {provider_id}")
@@ -2651,125 +2558,6 @@ def ensure_paper_broker_connection(workspace_root: Path | str | None = None, act
     return connection
 
 
-def create_external_mcp_broker_connection(
-    workspace_root: Path | str,
-    *,
-    broker_id: str,
-    display_name: str,
-    router_name: str,
-    discovery_payload: str | dict[str, Any] | None = None,
-    credential_ref: str = "",
-    operator_authority: OperatorAuthority | None = None,
-) -> dict[str, Any]:
-    """Authorize one aggregate External MCP broker import from a user entry."""
-
-    root = Path(workspace_root).expanduser().resolve()
-    canonical_broker_id = str(broker_id or "").strip()
-    canonical_display_name = str(display_name or "")
-    canonical_router_name = str(router_name or "").strip()
-    canonical_credential_ref = str(credential_ref or "")
-    resource = external_mcp_broker_connection_resource(
-        broker_id=canonical_broker_id,
-        display_name=canonical_display_name,
-        router_name=canonical_router_name,
-        discovery_payload=discovery_payload,
-        credential_ref=canonical_credential_ref,
-    )
-    service_authority = consume_operator_authority(
-        operator_authority,
-        root,
-        action=EXTERNAL_MCP_BROKER_CONNECT,
-        resource=resource,
-    )
-    return _create_external_mcp_broker_connection_from_service(
-        root,
-        broker_id=canonical_broker_id,
-        display_name=canonical_display_name,
-        router_name=canonical_router_name,
-        discovery_payload=discovery_payload,
-        credential_ref=canonical_credential_ref,
-        operator_service_authority=service_authority,
-    )
-
-
-def _create_external_mcp_broker_connection_from_service(
-    workspace_root: Path | str,
-    *,
-    broker_id: str,
-    display_name: str,
-    router_name: str,
-    discovery_payload: str | dict[str, Any] | None,
-    credential_ref: str,
-    operator_service_authority: OperatorServiceAuthority,
-) -> dict[str, Any]:
-    """Trusted aggregate mutation; accepts only a sealed service capability."""
-
-    root = Path(workspace_root).expanduser().resolve()
-    if not isinstance(operator_service_authority, OperatorServiceAuthority):
-        raise PermissionError("a sealed operator service authority is required")
-    consume_service_operator_authority(
-        operator_service_authority,
-        root,
-        action=EXTERNAL_MCP_BROKER_CONNECT,
-        resource=external_mcp_broker_connection_resource(
-            broker_id=broker_id,
-            display_name=display_name,
-            router_name=router_name,
-            discovery_payload=discovery_payload,
-            credential_ref=credential_ref,
-        ),
-    )
-    ensure_runtime_database(root)
-    from apps.integrations.models import BrokerConnection
-    from apps.mcp.models import McpRouter
-    from apps.mcp.services import create_or_update_router, import_external_mcp_discovery
-
-    router = McpRouter.objects.filter(name=router_name).first()
-    if router is None:
-        router = create_or_update_router(
-            name=router_name,
-            label=display_name,
-            transport="stdio",
-            credential_ref=credential_ref,
-            enabled=False,
-            actor="local-operator",
-        )
-    imported = {"imported": 0, "tool_ids": []}
-    if discovery_payload:
-        imported = import_external_mcp_discovery(router, discovery_payload, actor="local-operator")
-    connection, created = BrokerConnection.objects.update_or_create(
-        broker_id=broker_id,
-        defaults={
-            "provider_id": EXTERNAL_MCP_PROVIDER_ID,
-            "display_name": display_name,
-            "transport": "mcp",
-            "status": "read_only",
-            "credential_ref": credential_ref,
-            "capabilities": _capabilities_for_router(router),
-            "enabled_read_scopes": _enabled_read_scopes_for_router(router),
-            "enabled_trade_scopes": [],
-            "trust_level": "unreviewed",
-            "last_health_status": "not_checked",
-            "drift_status": "review_required",
-            "metadata": {"router": router.name, "execution_enabled": False},
-        },
-    )
-    _audit(
-        "broker_connection.mcp_imported" if created else "broker_connection.mcp_updated",
-        {"broker_id": connection.broker_id, "router": router.name, "imported": imported.get("imported", 0)},
-        "local-operator",
-        root,
-    )
-    return {
-        "broker_id": connection.broker_id,
-        "provider_id": connection.provider_id,
-        "transport": connection.transport,
-        "router": router.name,
-        "imported": imported,
-        "status": connection.status,
-    }
-
-
 def list_broker_connections(workspace_root: Path | str | None = None, args: dict[str, Any] | None = None) -> dict[str, Any]:
     ensure_runtime_database(workspace_root)
     from apps.integrations.models import BrokerConnection
@@ -3032,7 +2820,7 @@ def create_reconciliation_summary(connection: Any, broker_account: Any, snapshot
     from apps.portfolio.models import ReconciliationRun
 
     diffs: list[dict[str, Any]] = []
-    if not cash and not positions and connection.transport != "mcp":
+    if not cash and not positions:
         diffs.append({"severity": "warning", "message": "sync returned no cash or positions"})
     status = "warning" if any(diff.get("severity") == "warning" for diff in diffs) else "clean"
     return ReconciliationRun.objects.create(
@@ -3060,33 +2848,6 @@ def list_reconciliation_runs(workspace_root: Path | str | None = None, args: dic
         "db_canonical": True,
         "workspace_context": workspace_context_payload(workspace_root),
     }
-
-
-def record_broker_mapping_review(workspace_root: Path | str | None, args: dict[str, Any]) -> dict[str, Any]:
-    connection = _get_connection(workspace_root, str(args.get("broker_id") or ""))
-    ensure_runtime_database(workspace_root)
-    from apps.mcp.models import McpExternalTool
-
-    router_name = (connection.metadata or {}).get("router")
-    enabled_tools = []
-    blocked_tools = []
-    if router_name:
-        for tool in McpExternalTool.objects.filter(router__name=router_name).order_by("external_name"):
-            if tool.enabled and tool.review_status in {"reviewed", "approved"} and tool.proxy_mode in {"read_only", "summary_only", "service_adapter", "service_path"}:
-                enabled_tools.append({"name": tool.external_name, "capability": tool.canonical_capability, "proxy_mode": tool.proxy_mode})
-            else:
-                blocked_tools.append({"name": tool.external_name, "category": tool.category, "proxy_mode": tool.proxy_mode, "review_status": tool.review_status})
-    connection.capabilities = sorted({item["capability"] for item in enabled_tools if item.get("capability")})
-    connection.enabled_read_scopes = sorted({item["capability"] for item in enabled_tools if str(item.get("proxy_mode")) in {"read_only", "summary_only"}})
-    connection.enabled_trade_scopes = []
-    connection.drift_status = "none" if enabled_tools else "review_required"
-    metadata = dict(connection.metadata or {})
-    metadata.update({"tool_mappings": enabled_tools, "blocked_tools": blocked_tools, "execution_enabled": False})
-    connection.metadata = metadata
-    connection.save()
-    result = {"broker_id": connection.broker_id, "enabled_tools": enabled_tools, "blocked_tools": blocked_tools}
-    _audit("broker_mapping.reviewed", result, str(args.get("principal_id") or "web"), workspace_root)
-    return {"status": "recorded", **result, "db_canonical": True, "workspace_context": workspace_context_payload(workspace_root)}
 
 
 def _paper_profile(broker_id: str, environment: str, region: str, *, credential_ref: str) -> dict[str, Any]:
@@ -3397,26 +3158,6 @@ def _serialize_reconciliation(run: Any) -> dict[str, Any]:
         "diffs": run.diffs,
         "created_at": run.created_at.isoformat(),
     }
-
-
-def _capabilities_for_router(router: Any) -> list[str]:
-    return sorted(
-        {
-            tool.canonical_capability
-            for tool in router.external_tools.all()
-            if tool.canonical_capability and tool.proxy_mode in {"read_only", "summary_only"}
-        }
-    )
-
-
-def _enabled_read_scopes_for_router(router: Any) -> list[str]:
-    return sorted(
-        {
-            tool.canonical_capability
-            for tool in router.external_tools.all()
-            if tool.enabled and tool.review_status in {"reviewed", "approved"} and tool.proxy_mode in {"read_only", "summary_only"}
-        }
-    )
 
 
 def _float(value: Any) -> float | None:

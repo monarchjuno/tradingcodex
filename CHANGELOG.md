@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 1.1.1 - 2026-07-16
+
+- Remove the legacy user-capability gate, its CLI and broker-import paths,
+  and its active database tables. User-installed MCP servers, skills, plugins,
+  apps, and hooks now remain BYOR native Codex capabilities for root and fixed
+  agents. Add a secret-free read-only capability inventory to MCP and System,
+  preserve non-reserved user Codex configuration across update, and keep all
+  TradingCodex principals, grants, protected proofs, and order effects behind
+  the existing service boundary.
+
 ## 1.1.0 - 2026-07-16
 
 - Make managed skill invocation resilient without weakening authority: Build,
@@ -168,8 +178,8 @@
   user-terminal handoffs instead of attempting a blocked model shell.
 - Replace agent-side connector `connect`/write-style scaffold MCP operations
   with read-only, content-addressed scaffold rendering plus native patching.
-  External MCP lifecycle/consent and provider-source approval remain
-  interactive operator actions protected by one-use service capabilities.
+  Provider-source approval remains an interactive operator action protected by
+  a one-use service capability.
 - Add the explicit-only `tcx-order-allow` bundle and `OrderTurnGrant`: only a
   physical first line `$tcx-order-allow --mode paper|validation|live` can admit one
   later submit or cancel in that root turn. Grants bind workspace, session,

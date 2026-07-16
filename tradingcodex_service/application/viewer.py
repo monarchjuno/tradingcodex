@@ -7,13 +7,13 @@ from typing import Any, Callable
 
 import yaml
 
-from apps.mcp.services import list_external_mcp_permission_requests
 from tradingcodex_service.application.agents import (
     SKILL_SPECS,
     build_projection_state,
     list_optional_role_skills,
     read_strategy_skill_records,
 )
+from tradingcodex_service.application.codex_capabilities import list_codex_capabilities
 from tradingcodex_service.application.brokers import list_broker_connections
 from tradingcodex_service.application.common import now_iso
 from tradingcodex_service.application.forecasting import calibration_report, list_forecasts
@@ -50,9 +50,7 @@ def viewer_snapshot(root: Path | str) -> dict[str, Any]:
                 "calibration": calibration_report(root, {"minimum_sample": 20}),
             }
         ),
-        "permissions": _section(
-            lambda: list_external_mcp_permission_requests(root, {"status": "pending", "limit": 50})
-        ),
+        "codex_capabilities": _section(lambda: list_codex_capabilities(root)),
         "strategies": _section(lambda: read_strategy_skill_records(root)),
         "optional_skills": _section(lambda: list_optional_role_skills(root, include_archived=True)),
         "portfolio": _section(lambda: list_positions(root)),

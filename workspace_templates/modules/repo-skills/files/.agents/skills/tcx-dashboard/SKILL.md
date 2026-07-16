@@ -19,8 +19,8 @@ workflow execution, or service recovery.
   tools, including `get_tradingcodex_status`, `list_research_artifacts`,
   `list_forecasts`, `get_forecast_calibration_report`, `get_portfolio_snapshot`,
   `get_positions`, `list_order_tickets`, `get_order_status`,
-  `list_broker_connections`, `get_broker_connection_status`, and
-  `list_external_mcp_permission_requests` when available and relevant.
+  `list_broker_connections`, and `get_broker_connection_status` when available
+  and relevant.
 - Treat missing, unavailable, or redacted data as unknown. Never convert it to a
   zero balance, empty portfolio, healthy status, or completed workflow.
 

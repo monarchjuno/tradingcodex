@@ -257,7 +257,7 @@ normal analysis context:
    canonical ids. If this audit is unavailable, fail closed before service
    invocation.
 4. Call the execution gateway synchronously and in-process. Do not launch a
-   shell, subprocess, external MCP proxy, or Head Manager tool call.
+   shell, subprocess, user-installed capability, or Head Manager tool call.
 5. Emit only an allowlisted result projection as `UserPromptSubmit` additional
    context with marker `tradingcodex-native-execution-result`.
 6. Instruct Head Manager to report the recorded result without spawning roles,

@@ -15,6 +15,7 @@ from ninja.utils import check_csrf
 from pydantic import Field
 
 from tradingcodex_service import __version__
+from tradingcodex_service.application.artifact_catalog import list_artifact_catalog
 from tradingcodex_service.application.components import (
     count_harness_component_tags,
     get_harness_component,
@@ -283,6 +284,19 @@ class ResearchSearchRequest(Schema):
     query: str
     universe: str | None = None
     artifact_type: str | None = None
+    limit: int = 20
+
+
+class ArtifactCatalogSearchRequest(Schema):
+    query: str
+    universe: str | None = None
+    artifact_type: str | None = None
+    symbol: str | None = None
+    workflow_run_id: str | None = None
+    readiness_label: str | None = None
+    handoff_state: str | None = None
+    compatibility: str | None = None
+    knowledge_cutoff: str | None = None
     limit: int = 20
 
 
@@ -948,6 +962,36 @@ def search_research(request, payload: ResearchSearchRequest):
     return _call_mutation_tool(request, "search_research_artifacts", _payload(payload))
 
 
+@research_router.get("/catalog")
+def list_catalog(
+    request,
+    artifact_type: str | None = None,
+    universe: str | None = None,
+    symbol: str | None = None,
+    workflow_run_id: str | None = None,
+    compatibility: str | None = None,
+    knowledge_cutoff: str | None = None,
+    limit: int = 100,
+):
+    return list_artifact_catalog(
+        workspace_root(),
+        {
+            "artifact_type": artifact_type,
+            "universe": universe,
+            "symbol": symbol,
+            "workflow_run_id": workflow_run_id,
+            "compatibility": compatibility,
+            "knowledge_cutoff": knowledge_cutoff,
+            "limit": limit,
+        },
+    )
+
+
+@research_router.post("/catalog/search")
+def search_catalog(request, payload: ArtifactCatalogSearchRequest):
+    return _call_mutation_tool(request, "search_artifact_catalog", _payload(payload))
+
+
 @research_router.post("/source-snapshots")
 def create_source_snapshot(request, payload: SourceSnapshotRequest):
     return _call_mutation_tool(request, "record_source_snapshot", _payload(payload))
@@ -996,6 +1040,11 @@ def create_judgment_review(request, payload: JudgmentReviewRequest):
 @research_router.post("/index/rebuild")
 def rebuild_index(request):
     return _call_mutation_tool(request, "rebuild_research_index")
+
+
+@research_router.post("/catalog/rebuild")
+def rebuild_catalog(request):
+    return _call_mutation_tool(request, "rebuild_artifact_catalog")
 
 
 @research_router.post("/forecasts")

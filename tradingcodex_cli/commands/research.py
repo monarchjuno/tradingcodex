@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from tradingcodex_service.application.artifact_catalog import (
+    list_artifact_catalog,
+    rebuild_artifact_catalog,
+    search_artifact_catalog,
+)
 from tradingcodex_service.application.research import (
     create_evidence_run_card,
     create_research_artifact,
@@ -30,6 +35,38 @@ def _required_principal(args: list[str], usage: str) -> str:
 def research(root: Path, argv: list[str]) -> None:
     sub = argv[0] if argv else "list"
     args = argv[1:]
+    if sub == "catalog":
+        action = args[0] if args else "list"
+        action_args = args[1:]
+        filters = {
+            "artifact_type": _option_value(action_args, "--type"),
+            "universe": _option_value(action_args, "--universe"),
+            "symbol": _option_value(action_args, "--symbol"),
+            "workflow_run_id": _option_value(action_args, "--workflow-run-id"),
+            "readiness_label": _option_value(action_args, "--readiness"),
+            "handoff_state": _option_value(action_args, "--handoff-state"),
+            "compatibility": _option_value(action_args, "--compatibility"),
+            "knowledge_cutoff": _option_value(action_args, "--knowledge-cutoff"),
+            "limit": _option_value(action_args, "--limit") or (20 if action == "search" else 100),
+        }
+        if action == "list":
+            print_json(list_artifact_catalog(root, filters))
+            return
+        if action == "search":
+            query_parts = []
+            for value in action_args:
+                if value.startswith("--"):
+                    break
+                query_parts.append(value)
+            query = " ".join(query_parts).strip()
+            if not query:
+                raise ValueError("Usage: tcx research catalog search <query> [--knowledge-cutoff <timestamp>]")
+            print_json(search_artifact_catalog(root, {**filters, "query": query}))
+            return
+        if action == "rebuild":
+            print_json(rebuild_artifact_catalog(root))
+            return
+        raise ValueError(f"Unknown research catalog command: {action}")
     if sub == "spec":
         action = args[0] if args else "list"
         action_args = args[1:]

@@ -1,6 +1,6 @@
 # Safety And Execution
 
-Use this page before changing policy, permissions, approvals, broker connectors, order tickets, execution, viewer read/auth boundaries, external MCP, secret handling, or audit. Human-facing rules live in [docs/safety-policy-and-execution.md](../docs/safety-policy-and-execution.md) and [docs/guardrails.md](../docs/guardrails.md).
+Use this page before changing policy, permissions, approvals, broker connectors, order tickets, execution, viewer read/auth boundaries, BYOR Codex capabilities, secret handling, or audit. Human-facing rules live in [docs/safety-policy-and-execution.md](../docs/safety-policy-and-execution.md) and [docs/guardrails.md](../docs/guardrails.md).
 
 ## Approved Action Boundary
 
@@ -149,9 +149,9 @@ any live gate is missing.
 The workspace viewer has no prompt or mutation input and therefore cannot carry
 reserved native execution tokens or start Codex.
 
-## Broker And External MCP Posture
+## Broker And BYOR Capability Posture
 
-Core ships paper by default. Broker connections start disabled or read-only except the built-in paper adapter. Provider adapters become execution-ready only after provider metadata, signed health, policy/config gates, approval hash, idempotency, explicit confirmation, sync, and audit gates pass. Workspace `provider.py` bundles remain inert until an exact workspace/path/source hash is approved from an interactive operator terminal; approval copies a symlink-free immutable snapshot below TradingCodex home without executing it, runtime loads only that rehashed snapshot after restart, and MCP/API/Admin expose no approval mutation. The CLI mints a process-local, single-use service capability only after its TTY and exact confirmation checks. Provider approval/revocation, Codex-config import, External MCP lifecycle/review, aggregate MCP-broker import, and consent-decision services reject plain calls and bind that capability to the action, workspace, and exact provider, named source, canonical argument hash, or request/reason resource. User-facing services consume the original capability and trusted aggregate helpers accept only its sealed service stage.
+Core ships paper by default. Broker connections start disabled or read-only except the built-in paper adapter. Provider adapters become execution-ready only after provider metadata, signed health, policy/config gates, approval hash, idempotency, explicit confirmation, sync, and audit gates pass. Workspace `provider.py` bundles remain inert until an exact workspace/path/source hash is approved from an interactive operator terminal; approval copies a symlink-free immutable snapshot below TradingCodex home without executing it, runtime loads only that rehashed snapshot after restart, and MCP/API/Admin expose no approval mutation. The CLI mints a process-local, single-use service capability only after its TTY and exact confirmation checks, bound to the workspace, provider, and reviewed bundle.
 
 Missing providers are implemented before connector rendering unless the user
 explicitly asks for scaffold-only output. Externally informed bundles include
@@ -163,12 +163,18 @@ only a secret-free provenance summary and the bundle hash. Approval never
 imports code; runtime import waits for the immutable post-restart snapshot,
 then connector render/register/validate resumes in a fresh Build turn.
 
-External MCP servers enter through TradingCodex's External MCP Gate. Import an existing Codex entry with the interactive `tcx mcp external import-codex` operator action; the old `tcx build codex-mcp import` path is rejected because Build authority is not operator authority. Unknown tools are disabled until classified. Secret and policy/admin tools are not proxyable. Execution tools cannot use direct raw proxy and must map to the approved service-layer connection path.
+User-installed MCP servers, skills, plugins, apps, and hooks remain BYOR native
+Codex capabilities. Codex exposes them to root and fixed-role agents under its
+own sandbox, approval, plugin, and organization policies. TradingCodex does not
+install, classify, approve, proxy, recommend, or audit them. Licenses, data
+terms, cost, credentials, and side effects remain the user/provider's
+responsibility. The sanitized inventory is read-only and never returns launch
+details, secrets, raw config, skill bodies, or hook code.
 
-External MCP user-consent prompts become `McpExternalPermissionRequest` rows.
-The coordinator should surface `approval_required` as
-`waiting_for_user_permission`; subagents do not continue with buried permission
-prompts.
+External capabilities cannot mint TradingCodex principals or grants, write the
+reserved namespace, inject service proof, or bypass protected workspace and
+ledger state. Order and execution guarantees apply only to effects that enter
+the canonical TradingCodex service path.
 
 ## Secret Wall
 
@@ -200,10 +206,9 @@ issue-time permission mode must still match when a tool is used. The browser
 viewer cannot request it, subagents cannot inherit it, and every mutating follow-up or
 Automation run needs a fresh marker. Never combine Build, Brain, Strategy, or
 order markers. Persistent `tcx mode` is retired, old `mode.json` state is
-ignored, and direct operator CLI mutation remains a separate authority.
-External MCP import/register/check/discover/review and permission approve/deny
-require an interactive user terminal and are blocked from Head Manager's
-Build-turn MCP and shell paths. Normal Build edits require a fresh root turn in
+ignored, and direct operator CLI mutation remains a separate authority. User
+capability lifecycle belongs to Codex and is outside the TradingCodex Build
+grant. Normal Build edits require a fresh root turn in
 `trading-build`. That profile uses `apply_patch` for edits and limits shell to
 public GET/HEAD, enumerated read-only HTTPS Git, limited workspace
 `pwd`/`cat`/`ls`, inert provider reads/hash/diff/Git inspection, exact isolated

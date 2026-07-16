@@ -3,10 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application.build_gateway import BUILD_PROTECTED_MCP_TOOLS
 from tradingcodex_service.application.components import get_harness_component
-from tradingcodex_service.application.customization import discover_codex_mcp_servers
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +46,6 @@ def test_mcp_module_declares_render_and_db_only_connector_capabilities() -> None
         "mcp.tradingcodex.render_broker_connector_scaffold",
         "mcp.tradingcodex.register_broker_connector",
         "mcp.tradingcodex.validate_broker_connector_build",
-        "mcp.tradingcodex.record_broker_mapping_review",
     }.issubset(capabilities)
 
 
@@ -62,40 +59,8 @@ def test_generated_root_mcp_exposes_render_not_service_side_scaffold_writes() ->
     assert '"scaffold_broker_connector"' not in config
 
 
-def test_public_codex_mcp_discovery_omits_launch_values(tmp_path: Path) -> None:
-    bootstrap_workspace(tmp_path)
-    config = tmp_path / ".codex/config.toml"
-    config.write_text(
-        config.read_text(encoding="utf-8")
-        + "\n"
-        """
-[mcp_servers.private]
-command = "/private/bin/server"
-args = ["--token", "launch-secret"]
-url = "https://user:password@example.invalid/mcp?token=secret"
-env = { PRIVATE_TOKEN = "ignored" }
-""".strip()
-        + "\n",
-        encoding="utf-8",
-    )
-
-    public = discover_codex_mcp_servers(tmp_path, include_global=False)
-    record = public["servers"][0]
-    serialized = json.dumps(record, sort_keys=True)
-    assert record["has_command"] is True
-    assert record["arg_count"] == 2
-    assert record["has_url"] is True
-    assert "command" not in record
-    assert "args" not in record
-    assert "url" not in record
-    assert "/private/bin/server" not in serialized
-    assert "launch-secret" not in serialized
-    assert "password" not in serialized
-
-    operator_view = discover_codex_mcp_servers(
-        tmp_path,
-        include_global=False,
-        include_launch_details=True,
-    )
-    assert operator_view["servers"][0]["command"] == "/private/bin/server"
-    assert operator_view["servers"][0]["args"] == ["--token", "launch-secret"]
+def test_codex_capability_inventory_component_is_read_only() -> None:
+    component = get_harness_component("codex-capability-inventory")
+    assert component is not None
+    assert component["surfaces"]["mcp_tools"] == ["list_codex_capabilities"]
+    assert component["owned_capabilities"] == ["codex.capabilities.inspect"]

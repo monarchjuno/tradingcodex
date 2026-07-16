@@ -18,7 +18,7 @@ from tradingcodex_cli.__main__ import main, print_help
 from tradingcodex_cli.commands.build import build, print_build_help
 from tradingcodex_cli.commands.forecast import forecast
 from tradingcodex_cli.commands.investor_context import investor_context
-from tradingcodex_cli.commands.mcp import mcp, mcp_external
+from tradingcodex_cli.commands.mcp import mcp, print_mcp_help
 from tradingcodex_service.version import TRADINGCODEX_VERSION
 
 
@@ -85,7 +85,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.1.0"
+    assert TRADINGCODEX_VERSION == "1.1.1"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]
@@ -595,141 +595,33 @@ def test_removed_cli_aliases_fail_instead_of_dispatching(tmp_path: Path) -> None
         forecast(tmp_path, ["calibration-report"])
     with pytest.raises(ValueError, match="Usage"):
         mcp(tmp_path, ["calls"])
-    with pytest.raises(ValueError, match="unknown external MCP action"):
-        mcp_external(tmp_path, ["review"])
-    with pytest.raises(ValueError, match="moved to `tcx mcp permission`"):
+    with pytest.raises(ValueError, match="Usage"):
+        mcp(tmp_path, ["external", "list"])
+    with pytest.raises(ValueError, match="Usage"):
+        mcp(tmp_path, ["permission", "list"])
+    with pytest.raises(ValueError, match="Usage: tcx build status"):
         build(tmp_path, ["permission", "list"])
-    with pytest.raises(ValueError, match="not a Build action.*mcp external import-codex"):
-        build(tmp_path, ["codex-mcp", "import", "--source", "workspace", "--name", "demo"])
-    with pytest.raises(SystemExit):
-        build(
-            tmp_path,
-            ["codex-mcp", "add", "--name", "demo", "--scope", "global", "--dry-run"],
-        )
-    with pytest.raises(SystemExit):
-        build(
-            tmp_path,
-            ["codex-mcp", "add", "--name", "demo", "--s", "global", "--dry-run"],
-        )
 
 
-def test_cli_help_hides_persistent_mode_and_moves_external_mcp_permission(
+def test_cli_help_exposes_only_tradingcodex_mcp_and_build_status(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     print_help()
     main_help = capsys.readouterr().out
     assert "tcx mode" not in main_help
-    assert "tcx build status|codex-mcp" in main_help
-    assert "tcx build status|codex-mcp|permission" not in main_help
-    assert "tcx mcp stdio|external|permission" in main_help
+    assert "tcx build status" in main_help
+    assert "tcx mcp stdio|external|permission" not in main_help
 
     print_build_help()
     build_help = capsys.readouterr().out
-    assert "build permission" not in build_help
-    assert "build codex-mcp import" not in build_help
-    assert "workspace|global" not in build_help
-    assert "mcp external import-codex" in build_help
-    assert "mcp permission" in build_help
     assert "$tcx-build" in build_help
+    assert "external" not in build_help.lower()
 
-    mcp_external(Path.cwd(), ["help"])
-    external_help = capsys.readouterr().out
-    assert "mcp external import-codex" in external_help
-    assert "operator-only" in external_help
-
-
-def test_external_mcp_permission_cli_uses_the_mcp_namespace(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    from apps.mcp import services as mcp_services
-    from tradingcodex_cli.commands import mcp as mcp_command
-
-    approve_authority = object()
-    deny_authority = object()
-    issued_authorities = iter((approve_authority, deny_authority))
-    authority_events: list[str] = []
-    calls: list[tuple[str, dict[str, object], object | None]] = []
-    monkeypatch.setattr(mcp_command, "ensure_runtime_database", lambda root: None)
-    monkeypatch.setattr(
-        mcp_command,
-        "_require_operator_confirmation",
-        lambda action, subject: authority_events.append(f"confirm:{action}:{subject}"),
-    )
-    monkeypatch.setattr(
-        mcp_command,
-        "_issue_operator_authority",
-        lambda root, *, action, resource: authority_events.append(f"issue:{action}")
-        or next(issued_authorities),
-    )
-    monkeypatch.setattr(
-        mcp_services,
-        "list_external_mcp_permission_requests",
-        lambda root, payload: calls.append(("list", payload, None)) or {"status": "ok", "count": 0},
-    )
-    monkeypatch.setattr(
-        mcp_services,
-        "approve_external_mcp_permission_request",
-        lambda root, payload, *, operator_authority: calls.append(
-            ("approve", payload, operator_authority)
-        )
-        or {"status": "approved"},
-    )
-    monkeypatch.setattr(
-        mcp_services,
-        "deny_external_mcp_permission_request",
-        lambda root, payload, *, operator_authority: calls.append(
-            ("deny", payload, operator_authority)
-        )
-        or {"status": "denied"},
-    )
-
-    mcp(tmp_path, ["permission", "list", "--status", "all", "--limit", "7"])
-    assert json.loads(capsys.readouterr().out)["status"] == "ok"
-    mcp(tmp_path, ["permission", "approve", "--request-id", "41", "--reason", "reviewed"])
-    assert json.loads(capsys.readouterr().out)["status"] == "approved"
-    mcp(tmp_path, ["permission", "deny", "--request-id", "42"])
-    assert json.loads(capsys.readouterr().out)["status"] == "denied"
-
-    assert calls == [
-        ("list", {"status": "all", "limit": 7}, None),
-        ("approve", {"request_id": "41", "reason": "reviewed"}, approve_authority),
-        ("deny", {"request_id": "42", "reason": ""}, deny_authority),
-    ]
-    assert authority_events == [
-        "confirm:approve:41",
-        "issue:external-mcp-permission-approve",
-        "confirm:deny:42",
-        "issue:external-mcp-permission-deny",
-    ]
-
-
-def test_external_mcp_operator_actions_reject_noninteractive_callers(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from tradingcodex_cli.commands import mcp as mcp_command
-
-    class NonInteractiveInput:
-        @staticmethod
-        def isatty() -> bool:
-            return False
-
-    monkeypatch.setattr(mcp_command.sys, "stdin", NonInteractiveInput())
-    with pytest.raises(PermissionError, match="interactive user terminal"):
-        mcp_command._require_operator_confirmation("register", "demo")
-    issued: list[object] = []
-    monkeypatch.setattr(
-        mcp_command,
-        "_issue_operator_authority",
-        lambda *_args, **_kwargs: issued.append(object()),
-    )
-    with pytest.raises(PermissionError, match="interactive user terminal"):
-        mcp_command.mcp_external(
-            Path.cwd(),
-            ["import-codex", "--source", "workspace", "--name", "demo"],
-        )
-    assert issued == []
+    print_mcp_help()
+    mcp_help = capsys.readouterr().out
+    assert "stdio" in mcp_help
+    assert "external" not in mcp_help.lower()
+    assert "permission" not in mcp_help.lower()
 
 
 def test_release_publish_is_tag_bound_and_reuses_one_verified_build() -> None:

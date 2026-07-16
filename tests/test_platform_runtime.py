@@ -21,7 +21,6 @@ import yaml
 from packaging.version import Version
 
 import tradingcodex_cli.generator as generator
-from apps.mcp.services import _child_process_kwargs, _router_argv, _stdio_mcp_rpc
 from tradingcodex_cli.generator import (
     bootstrap_workspace,
     generated_python_path_is_ephemeral,
@@ -57,7 +56,6 @@ from tradingcodex_service.application.common import (
     safe_workspace_path,
     workspace_launcher_command,
 )
-from tradingcodex_service.application.customization import write_codex_mcp_server_config
 from tradingcodex_service.version import TRADINGCODEX_VERSION
 
 
@@ -412,26 +410,35 @@ def test_canonical_private_var_scratch_does_not_imply_synthetic_var_alias(
     assert str(scratch).removeprefix("/private") not in required
 
 
-def test_v1_update_preserves_managed_codex_mcp_servers(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_update_preserves_user_codex_capabilities(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     workspace = tmp_path / "workspace"
     monkeypatch.setenv("TRADINGCODEX_HOME", str(tmp_path / "home"))
     bootstrap_workspace(workspace)
-    write_codex_mcp_server_config(
-        workspace,
-        name="managed_test",
-        command="uvx",
-        args=["managed-test"],
-        env_keys=["MANAGED_TOKEN"],
+    config_path = workspace / ".codex/config.toml"
+    config_path.write_text(
+        config_path.read_text(encoding="utf-8")
+        + '\n[mcp_servers.user_quotes]\ncommand = "quotes"\nenabled = true\n'
+        + '\n[plugins."market@test"]\nenabled = false\n'
+        + '\n[[skills.config]]\npath = "/tmp/user-skill/SKILL.md"\nenabled = false\n',
+        encoding="utf-8",
     )
+    user_skill = workspace / ".agents/skills/user-market/SKILL.md"
+    plugin_state = workspace / ".codex/user-plugins/market/plugin.json"
+    user_skill.parent.mkdir(parents=True)
+    plugin_state.parent.mkdir(parents=True)
+    user_skill.write_text("user-owned skill bytes\n", encoding="utf-8")
+    plugin_state.write_text('{"user_owned": true}\n', encoding="utf-8")
 
     bootstrap_workspace(workspace, update=True)
 
-    config_path = workspace / ".codex/config.toml"
     config = config_path.read_text(encoding="utf-8")
-    assert "# BEGIN TradingCodex managed Codex MCP" in config
-    assert "[mcp_servers.managed_test]" in config
-    assert 'args = ["managed-test"]' in config
-    assert "MANAGED_TOKEN" in config
+    assert "# BEGIN User Codex capabilities" in config
+    assert "[mcp_servers.user_quotes]" in config
+    assert '[plugins."market@test"]' in config
+    assert 'path = "/tmp/user-skill/SKILL.md"' in config
+    assert "TradingCodex managed Codex MCP" not in config
+    assert user_skill.read_text(encoding="utf-8") == "user-owned skill bytes\n"
+    assert plugin_state.read_text(encoding="utf-8") == '{"user_owned": true}\n'
     lock = json.loads((workspace / ".tradingcodex/generated/module-lock.json").read_text(encoding="utf-8"))
     assert lock["generated_files"][".codex/config.toml"]["sha256"] == hashlib.sha256(config_path.read_bytes()).hexdigest()
 
@@ -1982,57 +1989,9 @@ def test_package_runner_update_does_not_pin_a_platform_default_home(
     assert "TRADINGCODEX_HOME_SOURCE" not in os.environ
 
 
-def test_native_process_kwargs_and_external_mcp_pipe_reader() -> None:
+def test_native_process_kwargs() -> None:
     assert _detached_process_kwargs("posix") == {"start_new_session": True}
     assert "creationflags" in _detached_process_kwargs("nt")
-    assert _child_process_kwargs("posix") == {"start_new_session": True}
-    assert "creationflags" in _child_process_kwargs("nt")
-
-    server = """
-import json, sys
-for line in sys.stdin:
-    request = json.loads(line)
-    if 'id' not in request:
-        continue
-    method = request.get('method')
-    result = {'protocolVersion':'2025-03-26','serverInfo':{'name':'fixture','version':'1'}} if method == 'initialize' else {'tools':[]}
-    print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)
-"""
-    router = SimpleNamespace(
-        name="portable-fixture",
-        command=sys.executable,
-        args=["-u", "-c", server],
-        env={},
-        credential_ref="",
-    )
-    responses = _stdio_mcp_rpc(router, ["initialize", "tools/list"], timeout=5)
-    assert responses["initialize"]["result"]["serverInfo"]["name"] == "fixture"
-    assert responses["tools/list"]["result"]["tools"] == []
-
-    exit_server = """
-import json, sys
-request = json.loads(sys.stdin.readline())
-print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':{'tools':[]}}), flush=True)
-"""
-    exit_router = SimpleNamespace(
-        name="exiting-fixture",
-        command=sys.executable,
-        args=["-u", "-c", exit_server],
-        env={},
-        credential_ref="",
-    )
-    assert _stdio_mcp_rpc(exit_router, ["tools/list"], timeout=5)["tools/list"]["result"] == {"tools": []}
-
-
-def test_windows_external_mcp_batch_files_fail_closed(tmp_path: Path) -> None:
-    batch = tmp_path / "npx.cmd"
-    batch.write_text("@echo off\r\n", encoding="utf-8")
-    router = SimpleNamespace(command=str(batch), args=[], env={}, credential_ref="")
-    with pytest.raises(ValueError, match="batch files"):
-        _router_argv(router, platform_name="nt")
-    args_router = SimpleNamespace(command="", args=[str(batch)], env={}, credential_ref="")
-    with pytest.raises(ValueError, match="batch files"):
-        _router_argv(args_router, platform_name="nt")
 
 
 def test_native_lock_atomic_write_and_portable_workspace_paths(tmp_path: Path) -> None:

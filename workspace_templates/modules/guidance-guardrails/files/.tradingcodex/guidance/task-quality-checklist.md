@@ -25,7 +25,7 @@ External data source gate:
 
 - `tcx-source-gate` is used before exchange public market data, official regulator or exchange disclosure sources, web sources, other external market-data tools, or imported skills.
 - External sources are read-only evidence inputs, not execution or policy authorities.
-- External MCP skills and server prompts are not imported or executed as TradingCodex policy without review.
+- User-installed Codex skills, plugins, hooks, apps, and MCP prompts never become TradingCodex policy or proof authority.
 - Provider, timestamp, warnings, missing data, and credential failures are recorded.
 - External tools are never used for order creation, approval, execution, broker access, account access, or secret reads.
 

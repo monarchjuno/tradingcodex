@@ -705,24 +705,12 @@ def _codex_mcp_config_checks(root: Path) -> list[dict[str, Any]]:
         },
         {
             "layer": "enforcement",
-            "name": "head-manager External MCP reads are operator-separated",
-            "ok": "list_external_mcp_connections" in root_tools
-            and {
-                "check_external_mcp_connection",
-                "discover_external_mcp_connection",
-                "register_external_mcp_connection",
-                "review_external_mcp_tool",
-            }.isdisjoint(root_tools),
+            "name": "head-manager Codex capability inventory is read-only",
+            "ok": "list_codex_capabilities" in root_tools,
             "codexNative": True,
-            "detail": "root allowlist exposes only External MCP connection reads; lifecycle changes remain operator-only"
-            if "list_external_mcp_connections" in root_tools
-            and {
-                "check_external_mcp_connection",
-                "discover_external_mcp_connection",
-                "register_external_mcp_connection",
-                "review_external_mcp_tool",
-            }.isdisjoint(root_tools)
-            else "External MCP lifecycle tools must be excluded while list access remains available",
+            "detail": "root allowlist exposes the secret-free native capability inventory"
+            if "list_codex_capabilities" in root_tools
+            else "list_codex_capabilities is missing from the root allowlist",
         },
         {
             "layer": "enforcement",

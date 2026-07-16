@@ -43,6 +43,9 @@ Non-artifact research freshness records are also file-native:
   independent review
 - `trading/research/.index/research-index.json` for a rebuildable incremental
   search index; files remain canonical
+- `trading/research/.index/artifact-catalog-v2.json` for a rebuildable
+  cross-artifact catalog over research, reports, decisions, forecasts, and
+  evaluation records; source files and ledgers remain canonical
 - `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json`
   for the frozen model-upgrade evaluation lab
 - `*.run-card.json` beside research artifacts, reports, decision packages, or
@@ -232,6 +235,8 @@ Codex and subagents should use service-layer tools when available:
 - `export_research_artifact_md`
 - `record_source_snapshot`
 - `rebuild_research_index`
+- `list_artifact_catalog`, `search_artifact_catalog`, and
+  `rebuild_artifact_catalog`
 - `create_research_spec`, `get_research_spec`, and `list_research_specs`
 - `create_replay_manifest`
 - `record_experiment_run`
@@ -442,6 +447,28 @@ refresh safely under a lock. `rebuild_research_index` discards and recreates the
 index. The index is never authoritative and can always be reconstructed from
 research markdown.
 
+The v2 artifact catalog is a parallel, rebuildable projection at
+`trading/research/.index/artifact-catalog-v2.json`. It incrementally catalogs
+Markdown, JSON, and the verified current forecast-ledger records under the
+research, report, decision, forecast, and evaluation roots. It does not replace
+`research-index.json`, rewrite an existing artifact, or turn a file projection
+into execution or policy authority. Catalog search supports lexical relevance
+plus artifact type, universe, symbol, workflow, readiness, handoff,
+compatibility, and point-in-time cutoff filters. A cutoff search uses the
+artifact type's explicit temporal field (`knowledge_cutoff` for research,
+decisions, and forecasts; `known_at` for source and outcome records) and
+excludes records whose qualifying field is missing, malformed, or later than
+the requested cutoff instead of silently treating them as historical evidence.
+
+New service-created artifacts keep their existing strict type-specific writer
+contracts and normally project as `full`. Pre-existing files are indexed lazily:
+records missing canonical identity metadata project as `legacy_partial` with a
+stable path-derived catalog id, while malformed records project as `invalid`
+and remain excluded from normal search. Neither status mutates the source file.
+`rebuild_artifact_catalog` discards only the derived catalog and recreates it
+under a lock. This forward-strict/backward-lazy posture lets updated workspaces
+search old evidence without falsely upgrading missing provenance.
+
 Evidence Run Cards are small evidence-only JSON artifacts written beside an
 existing artifact path with a `.run-card.json` suffix. They capture config hash,
 input refs, data-source refs, artifact hashes, metrics or validation summary,
@@ -609,6 +636,7 @@ files. That is expected because research handoff state is workspace-native.
 | Causal analyses and judgment reviews | `trading/research/analyses/*.json`, `trading/research/judgment-priors/*.json`, `trading/research/judgment-reviews/*.json` |
 | Model-upgrade evaluation artifacts | `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json` |
 | Rebuildable research index | `trading/research/.index/research-index.json` |
+| Rebuildable cross-artifact catalog | `trading/research/.index/artifact-catalog-v2.json` |
 | Order tickets | central DB `OrderTicket` records |
 | Postmortems | `trading/reports/postmortem/*.postmortem_report.json` |
 | Lesson event ledger and chain heads | `.tradingcodex/mainagent/improve.jsonl`, `.tradingcodex/mainagent/lesson-chain-heads.json` |

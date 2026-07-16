@@ -134,11 +134,11 @@ paths, reserved namespaces, and managed block markers define the boundary:
 
 In particular, `.tradingcodex/config.yaml` is a generated control input despite
 its name; use the documented customization and lifecycle surfaces instead of
-editing it directly. `.codex/config.toml` is also release-managed: update
-preserves the delimited managed External MCP block, then reconstructs Strategy,
-Investment Brain, role-skill, and additional-instruction projections from their
-canonical overlay state. Arbitrary edits elsewhere in that file are not a
-customization mechanism.
+editing it directly. `.codex/config.toml` is release-managed, but update
+preserves non-reserved user MCP, plugin, and skill configuration while
+reconstructing the reserved `tradingcodex` MCP entry and Strategy, Investment
+Brain, role-skill, and additional-instruction projections. TradingCodex never
+rewrites user capability directories or non-`tcx-*` skill sources.
 
 Attach also creates or updates a user-visible `.gitignore`. It is not a
 template-owned generated file: TradingCodex manages only the clearly delimited
@@ -159,7 +159,8 @@ The managed `.gitignore` block excludes local/private state by default:
 - process, session, and service-status state, including
   `.tradingcodex/mainagent/session-start.json`;
 - transient audit streams;
-- Python/tool caches, rebuildable research indexes, and native lock files;
+- Python/tool caches, rebuildable research and artifact-catalog indexes, and
+  native lock files;
 - raw secrets, credentials, local environment files, keys, and certificates;
   and
 - the private workspace Investor Context plus its per-run sealed snapshot.
@@ -474,7 +475,8 @@ Generated workspaces contain:
 - append-only forecast ledger directory at `trading/forecasts/`
 - immutable point-in-time research directories for specs, replay manifests,
   experiments, causal analyses, blind judgment priors/reviews, and a
-  rebuildable research index under `trading/research/`
+  rebuildable research and cross-artifact catalog indexes under
+  `trading/research/`
 - research-only model-evaluation directories under `trading/evaluations/` for
   frozen corpora, control/candidate runs, blind reviews, and comparisons
 
@@ -543,13 +545,11 @@ ownership comes from the Python component registry and is exported into
 Agent and skill ownership comes from the Python agent registry and is projected
 into Codex-readable agent TOML plus generated agent/skill indexes.
 
-User-configured Codex MCP servers are discovered from project and root Codex
-config. A Build turn may prepare the workspace-local managed config, but only
-the user-terminal operator may register, probe, discover, and review a server
-inside TradingCodex External MCP Gate. Generated project config should not
-expose external broker/data MCP tools directly to subagents. TradingCodex writes
-Codex MCP config only inside explicit managed blocks and leaves user-owned
-config outside those blocks untouched.
+User-configured Codex MCP servers, skills, and plugins remain native Codex
+configuration. TradingCodex preserves their non-reserved project entries and
+directories during update, and Codex exposes them to root and fixed-role agents
+through normal configuration inheritance. TradingCodex owns only its reserved
+entries and does not install, review, classify, or recommend user capabilities.
 
 ## Attach-First UX
 
@@ -900,18 +900,15 @@ fall through to the source checkout or another caller directory. After moving
 an attached workspace, run `tcx update .` before reopening it in Codex so these
 generated bindings are refreshed.
 
-Codex project config should register only the `tradingcodex` MCP server. Root
-web search stays disabled. The six evidence-producing custom agents may use
-their role-local live web override and approved data/MCP tools to gather public
+TradingCodex owns only the `tradingcodex` MCP entry in project config. Other
+MCP, plugin, and skill entries are user-owned Codex configuration and survive
+update. Root web search stays disabled. The six evidence-producing custom agents may use
+their role-local live web override and available native Codex capabilities to gather public
 filings, disclosures, news, web sources, and market-data references while the
-filesystem remains read-only. Prompt and PreToolUse secret/source-path blocks, role MCP
-allowlists, and service policy still prohibit raw secrets, direct broker APIs,
-broker-specific Codex MCP servers, approval bypass, and execution.
-Managed external Codex MCP entries written through `tcx build codex-mcp add`
-default to `prompt`; the user then imports them with `tcx mcp external
-import-codex` and reviews them through the interactive External MCP operator
-workflow before use. `tcx build codex-mcp import` is retained only as a clear
-migration error and never changes External MCP lifecycle state.
+filesystem remains read-only. TradingCodex does not classify or block those
+user-installed capabilities. Codex sandbox, approval, and organization
+requirements still apply, while TradingCodex service policy continues to protect
+its own principals, grants, order proofs, protected state, and execution path.
 Broker APIs are attached through provider-driven TradingCodex connector profiles
 using canonical MCP tools such as `list_broker_adapter_providers`,
 `render_broker_connector_scaffold`, `register_broker_connector`,
@@ -925,14 +922,12 @@ workspace artifacts. Run service recovery, workspace update, or product changes
 from the user terminal or an explicit `$tcx-build` root native turn whose actual
 Codex sandbox permits the required writes. Do not add writable roots to analysis.
 
-Broker/data MCP servers, when explicitly needed for reviewed read-only
-discovery, are registered inside TradingCodex External MCP Gate with
-`./tcx mcp external ...`, not directly in `.codex/config.toml` or
-`.codex/agents/*.toml`. The v1 CLI identifies connections only with `--name` and
-reviews tools by `--tool-id` or `--name` plus `--external-name`. An existing
-workspace/global Codex entry enters the disabled gate with `./tcx mcp external
-import-codex --source workspace|global|any --name <server>` from an interactive
-operator terminal.
+Codex-native capability management is deliberately absent from `tcx`. Users
+install, enable, disable, and remove MCP servers, skills, and plugins with Codex
+itself. Codex makes those capabilities available to root and fixed-role agents
+according to its normal inheritance and policy. TradingCodex does not classify
+or recommend them; its read-only inventory reports only sanitized component
+metadata.
 
 ## MCP Autostart
 
@@ -1068,11 +1063,11 @@ Codex Plan mode cannot issue or use a Build grant, and the grant is bound
 to its issue-time permission mode; changing modes requires a new root turn and
 fresh marker. Full access is not implied by the skill. Build work defaults to
 workspace-local targets and cannot use the grant for global Codex config, raw
-credentials, External MCP lifecycle or consent actions, provider-source
+credentials, provider-source
 approval, Git publication, direct edits to hooks, managed `.gitignore`,
 credential files, policy or approval state, or order execution.
-External MCP mutation/consent and provider-source approval use separate,
-interactive user-terminal commands; they are not synthetic Build turns.
+User capability management belongs to Codex; provider-source approval uses a
+separate interactive user-terminal command and is not a synthetic Build turn.
 
 Within `trading-build`, native `apply_patch` is the reviewable edit tool. Shell
 access is intentionally non-general: Codex may use public HTTP(S) GET/HEAD,
@@ -1093,8 +1088,8 @@ composition, and model-authored POST are blocked throughout the active Build
 turn/profile. Broader unit, smoke, or build validation belongs to an explicit
 user-terminal or maintainer flow. The hook routes every direct edit and trusted
 workspace-launcher lifecycle command through the current-turn grant and retains
-hard stops for protected paths, credentials, External MCP lifecycle or consent,
-global config, Git publication, and order effects. The native profile supplies
+hard stops for protected paths, credentials, global config, Git publication,
+and order effects. The native profile supplies
 the lower-level filesystem and network boundary.
 
 Persistent `tcx mode` is retired. `./tcx mode status` remains only as an inert
@@ -1165,9 +1160,8 @@ contains each workspace target, rendered content/hash, and exact preimage
 existence/hash/size metadata but never existing file content. It performs no
 workspace write. Head Manager verifies the preimages and applies the files with
 `apply_patch`, so Codex's native workspace permission remains the filesystem
-authority. Only the DB-backed `register_broker_connector`,
-`validate_broker_connector_build`, and `record_broker_mapping_review` calls
-consume protected Build proof. Direct connector `connect` and write-style
+authority. Only the DB-backed `register_broker_connector` and
+`validate_broker_connector_build` calls consume protected Build proof. Direct connector `connect` and write-style
 `scaffold` remain explicit user-terminal operator flows and are absent from the
 agent MCP surface.
 
@@ -1425,7 +1419,8 @@ Codex-native bootstrap verification:
   mutation. It contains the proof-protected `use_order_turn_grant` only for
   Head Manager, and generated fixed-role configs contain neither that tool nor
   a retired `execution-operator` role.
-- `./tcx mcp external list` verifies the External MCP Gate CLI path.
+- `list_codex_capabilities` verifies the sanitized read-only native Codex
+  capability inventory and partial-warning behavior.
 - Generated Codex MCP config starts the stdio bridge through the attached
   Python interpreter and starts the local viewer/service process when autostart is
   enabled.

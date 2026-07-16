@@ -90,6 +90,11 @@ workspace, run `./tcx doctor`, and perform the documented Codex CLI smoke.
   mandate and dynamically dispatch exact fixed roles from accepted evidence;
   Django does not replace that with a semantic router, preset team, stored DAG,
   or generic-agent fallback.
+- Treat user-installed MCP servers, skills, plugins, apps, and hooks as BYOR
+  native Codex capabilities. TradingCodex may inventory sanitized metadata but
+  must not install, recommend, classify, proxy, approve, disable, or delete
+  them, and must not claim license, trust, audit, cost, or execution guarantees
+  for their behavior.
 - Generated workspaces remain Node-free. Node is only a maintainer dependency
   under `frontend/`; do not add a production Node server or run npm from
   `tcx attach` or `tcx update`.

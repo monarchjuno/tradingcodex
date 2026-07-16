@@ -9,7 +9,7 @@ Every interface is a caller of the service layer. No interface should create a p
 | Surface | Main files | Boundary |
 | --- | --- | --- |
 | Product web | `frontend/*`, `tradingcodex_service/static/tradingcodex_web/*`, `tradingcodex_service/web.py`, `tradingcodex_service/viewer_api.py`, `tradingcodex_service/application/viewer.py` | Read-only Library/Skills/System viewer with a left-rail selector limited to registered, validated attached workspaces. It never starts Codex or mutates workspace state. |
-| Django Admin | `apps/*/admin.py` | Local/staff DB inspection. Order/execution ledgers and external MCP router launch configuration are read-only; no custom bypass path. |
+| Django Admin | `apps/*/admin.py` | Local/staff DB inspection. Order/execution ledgers and TradingCodex MCP definitions/calls are read-only; no custom bypass path. |
 | Ninja API | `tradingcodex_service/api.py` | Typed local/staff control endpoints that call services; no final execution mutation route. |
 | MCP | `tradingcodex_service/mcp_runtime.py` | Role-scoped research, preparation, approval, status, proof-protected Build services, and scoped `manage_investment_brain`/`manage_strategy` lifecycle. Root Head Manager alone also sees `use_order_turn_grant`, which is inert without current hook proof; no raw submit/cancel/refresh mutation, REST mirror, broker proxy, or model-visible runtime credentials. |
 | Root native action hook | `workspace_templates/modules/codex-base/files/.codex/hooks/tradingcodex_hook.py`, `application/skill_invocations.py`, `application/execution_gateway.py`, `application/build_gateway.py` | Exact immediate user submit/cancel plus normalized first-meaningful-line `$tcx-order-allow`, `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` admission, matching projected-link checks, scope checks, revocation, and proof injection. |
@@ -20,17 +20,17 @@ status/ensure/stop/runserver operations must honor it; do not reintroduce a
 hard-coded `127.0.0.1:48267` path that bypasses development isolation.
 
 Build customization surfaces live in the same service-layer rule:
-`/build/` and `tcx build ...` summarize Codex config discovery, managed MCP
-config writes, optional skills, additional instructions, and pending external
-MCP permissions without creating a parallel MCP registry.
+`/build/` and `tcx build ...` cover TradingCodex-owned optional skills,
+additional instructions, and provider development without creating a parallel
+Codex capability registry.
 Generic Codex-originated Build mutations require an exact `$tcx-build`
 current-turn grant. Brain and Strategy management instead use exact
 `$tcx-brain` or `$tcx-strategy` root turns in `trading-research`, with grants
 limited to the matching native source/staging path and proof-protected
 management tool. Research keeps the generated CLI and attached runtime denied;
-the actual sandbox still decides whether writes are possible. External MCP
-consent moved to the explicit operator command `tcx mcp permission`; direct
-terminal mutation remains separate operator authority.
+the actual sandbox still decides whether writes are possible. User MCP, skill,
+and plugin lifecycle remains native Codex functionality; TradingCodex exposes
+only a sanitized read-only inventory.
 
 Unsafe Ninja requests authenticated by a staff cookie require CSRF. API-key
 requests do not, but role-authored mutations use the canonical MCP tool
@@ -117,9 +117,17 @@ Research is workspace-file-native. Canonical files:
 - `trading/decisions/*.md` and `trading/decisions/*.decision-snapshot.json`
 - `trading/reports/postmortem/*.postmortem_report.json`
 - `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json`
+- `trading/research/.index/artifact-catalog-v2.json` as a rebuildable
+  cross-artifact projection; source artifacts and ledgers remain canonical
 
 Research service calls may index, validate, search, preview, version, and write
 these files, but the markdown, JSON, or JSONL file is the source of truth.
+The parallel v2 catalog lazily projects current and pre-existing files without
+rewriting them. Current type-specific service output is `full`; old records
+missing canonical identity metadata remain `legacy_partial`; malformed records
+are `invalid` and excluded from normal search. Point-in-time catalog search
+uses the type's explicit `knowledge_cutoff` or `known_at` field and fails
+closed for missing, malformed, or later values.
 Input markdown staged under `trading/research/.drafts/` is excluded from the
 index until `research create` writes a canonical artifact. Indexed markdown
 requires explicit `artifact_id`, `artifact_type`, and `universe`; path-based
@@ -172,13 +180,12 @@ Central DB model families:
   `BrokerOrder`, `Fill`
 - portfolio: `PortfolioSnapshot`, `Position`, `CashBalance`, `PortfolioLedgerEvent`, `BrokerSyncRun`, `ReconciliationRun`
 - integrations: `AdapterDefinition`, `BrokerConnection`, `BrokerAccount`, `InstrumentMap`
-- MCP: tool definitions/calls and external MCP registry/review/call models
+- MCP: TradingCodex tool definitions and non-research tool calls
 - harness: `WorkspaceContext`
 - audit: `AuditEvent`
 
 `BrokerConnection` owns the required canonical `provider_id` and transport.
-Paper is `paper` / `paper`, External MCP is `external-mcp` / `mcp`, and
-registered native providers use their exact lowercase connector-safe provider
+Paper is `paper` / `paper`, and registered native providers use their exact lowercase connector-safe provider
 id with `api`; mismatched
 identity/transport pairs fail closed and no `adapter_type` alias exists.
 

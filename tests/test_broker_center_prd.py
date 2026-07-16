@@ -25,9 +25,7 @@ from tradingcodex_service.application.brokers import (
     _WORKSPACE_PROVIDER_SOURCES,
     approve_workspace_broker_provider_source,
     connect_broker_connector,
-    create_external_mcp_broker_connection,
     get_broker_connection_status,
-    record_broker_mapping_review,
     register_broker_adapter_provider,
     register_broker_connector,
     sync_broker_account,
@@ -42,10 +40,8 @@ from tradingcodex_service.application.orders import (
     validate_approval_receipt,
 )
 from tradingcodex_service.application.operator_authority import (
-    EXTERNAL_MCP_BROKER_CONNECT,
     PROVIDER_SOURCE_APPROVE,
     _issue_operator_authority,
-    external_mcp_broker_connection_resource,
     provider_source_approval_resource,
 )
 from tradingcodex_service.application.runtime import active_profile_for_workspace, ensure_runtime_database
@@ -82,29 +78,6 @@ def issue_test_provider_approval_authority(workspace: Path, provider_id: str, bu
         workspace,
         action=PROVIDER_SOURCE_APPROVE,
         resource=provider_source_approval_resource(provider_id, bundle_sha256),
-    )
-
-
-def issue_test_external_mcp_broker_authority(
-    workspace: Path,
-    *,
-    broker_id: str,
-    display_name: str,
-    router_name: str,
-    discovery_payload: dict,
-):
-    """Test-only stand-in for a completed interactive CLI confirmation."""
-
-    return _issue_operator_authority(
-        workspace,
-        action=EXTERNAL_MCP_BROKER_CONNECT,
-        resource=external_mcp_broker_connection_resource(
-            broker_id=broker_id,
-            display_name=display_name,
-            router_name=router_name,
-            discovery_payload=discovery_payload,
-            credential_ref="",
-        ),
     )
 
 
@@ -519,58 +492,6 @@ def test_safe_home_mcp_exposes_only_broker_order_read_status_tools(tmp_path: Pat
     assert "create_order_ticket" not in tool_names
     assert "request_order_approval" not in tool_names
     assert "submit_approved_order" not in tool_names
-
-
-def test_external_mcp_broker_discovery_stays_read_only_until_review(tmp_path: Path) -> None:
-    workspace = make_workspace(tmp_path)
-    ensure_runtime_database(workspace)
-    from apps.integrations.models import BrokerConnection
-    from apps.mcp.models import McpExternalTool, McpRouter
-    from apps.mcp.services import set_external_tool_policy
-
-    BrokerConnection.objects.filter(broker_id="prd-mcp-broker").delete()
-    McpRouter.objects.filter(name="prd-mcp-router").delete()
-
-    discovery_payload = {
-        "tools": [
-            {"name": "get_positions", "description": "Read account positions", "inputSchema": {"type": "object"}},
-            {"name": "get_market_quote", "description": "Read market quote", "inputSchema": {"type": "object"}},
-            {"name": "place_order", "description": "Submit broker order", "inputSchema": {"type": "object"}},
-        ]
-    }
-    imported = create_external_mcp_broker_connection(
-        workspace,
-        broker_id="prd-mcp-broker",
-        display_name="PRD MCP Broker",
-        router_name="prd-mcp-router",
-        discovery_payload=discovery_payload,
-        operator_authority=issue_test_external_mcp_broker_authority(
-            workspace,
-            broker_id="prd-mcp-broker",
-            display_name="PRD MCP Broker",
-            router_name="prd-mcp-router",
-            discovery_payload=discovery_payload,
-        ),
-    )
-    assert imported["imported"]["imported"] == 3
-    connection = BrokerConnection.objects.get(broker_id="prd-mcp-broker")
-    assert imported["provider_id"] == connection.provider_id == "external-mcp"
-    assert imported["transport"] == connection.transport == "mcp"
-    assert connection.status == "read_only"
-    assert connection.enabled_trade_scopes == []
-    assert connection.metadata["execution_enabled"] is False
-
-    router = McpRouter.objects.get(name="prd-mcp-router")
-    positions = McpExternalTool.objects.get(router=router, external_name="get_positions")
-    order = McpExternalTool.objects.get(router=router, external_name="place_order")
-    set_external_tool_policy(positions, enabled=True, review_status="reviewed", actor="test")
-    reviewed = record_broker_mapping_review(workspace, {"broker_id": "prd-mcp-broker", "principal_id": "risk-manager"})
-
-    assert "account.positions.read" in connection.__class__.objects.get(pk=connection.pk).enabled_read_scopes
-    assert reviewed["blocked_tools"]
-    assert order.category == "execution"
-    assert order.proxy_mode == "service_adapter"
-    assert order.enabled is False
 
 
 def test_provider_registry_is_request_driven_and_unknown_broker_scaffolds_development(tmp_path: Path) -> None:

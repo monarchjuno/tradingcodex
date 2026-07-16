@@ -1,14 +1,6 @@
 from django.contrib import admin
 
-from apps.mcp.models import (
-    McpExternalPermissionRequest,
-    McpExternalTool,
-    McpExternalToolCall,
-    McpExternalToolPermission,
-    McpRouter,
-    McpToolCall,
-    McpToolDefinition,
-)
+from apps.mcp.models import McpToolCall, McpToolDefinition
 
 
 class ReadOnlyAdmin(admin.ModelAdmin):
@@ -25,16 +17,4 @@ class ReadOnlyAdmin(admin.ModelAdmin):
         return False
 
 
-@admin.register(McpRouter)
-class McpRouterAdmin(ReadOnlyAdmin):
-    pass
-
-
-admin.site.register([
-    McpToolDefinition,
-    McpToolCall,
-    McpExternalTool,
-    McpExternalToolPermission,
-    McpExternalPermissionRequest,
-    McpExternalToolCall,
-], ReadOnlyAdmin)
+admin.site.register([McpToolDefinition, McpToolCall], ReadOnlyAdmin)

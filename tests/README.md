@@ -28,7 +28,7 @@ The Python platform smoke suite covers:
 - DB-backed Principal/Capability enforcement before MCP handler dispatch and policy decisions
 - restricted symbol and disabled live adapter blocking
 - MCP initialize/tools/list/tools/call surfaces
-- MCP registry metadata, External MCP Gate lifecycle, role-gated tool calls, JSON-RPC batch handling, and non-research DB tool-call ledger
+- TradingCodex MCP registry metadata, role-gated tool calls, read-only Codex capability inventory, JSON-RPC batch handling, and non-research DB tool-call ledger
 - service-layer MCP registry helpers creating audit events outside custom Admin actions
 - generated `mcp ledger` inspection of central DB tool-call history for non-research tools
 - two generated workspaces keeping separate research markdown/source-snapshot

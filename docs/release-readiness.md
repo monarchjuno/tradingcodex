@@ -1,20 +1,21 @@
-# TradingCodex 1.1.0 Release Status
+# TradingCodex 1.1.1 Release Status
 
 Status: local source, generated-workspace, native Codex, and exact-artifact
 gates complete; candidate CI, tag, publication, and post-publish verification
 remain pending
 Updated: 2026-07-16
 
-This page records the current `1.1.0` candidate state. It does not treat a
+This page records the current `1.1.1` candidate state. It does not treat a
 version bump or source changes as proof that the exact distribution artifacts
-or public release have passed their gates. TradingCodex `1.0.2` remains the
-published upgrade baseline until `1.1.0` completes every gate below.
+or public release have passed their gates. TradingCodex `1.1.0` remains the
+published release until `1.1.1` completes every gate below. Public `1.0.2`
+remains the oldest supported upgrade-smoke baseline.
 
-## v1.1.0 Contract
+## v1.1.1 Contract
 
 - `tradingcodex_service/version.py` remains the single version source for
   package metadata, `tcx --version`, generated workspaces, release input, and
-  the `v1.1.0` tag.
+  the `v1.1.1` tag.
 - Managed Build, Brain, Strategy, and order invocations share one lexical
   parser. The parser accepts the documented plain-token and exact workspace
   skill-link forms from the first meaningful line while preserving the
@@ -38,8 +39,16 @@ published upgrade baseline until `1.1.0` completes every gate below.
   operator hash approval, service restart, and only then connector registration
   and validation. A missing provider no longer produces a connector scaffold
   unless the user explicitly requests scaffold-only work.
-- This release adds no Django migration and no module-lock schema migration.
-  Django application services remain canonical, the viewer remains read-only,
+- The retired External MCP Gate models, CLI, broker-import path, and blanket
+  hook block are removed. A forward migration deletes only Gate-derived broker
+  connections and drops the Gate tables; ordinary broker, order, and append-only
+  audit state remains intact.
+- User-installed MCP servers, skills, plugins, apps, and hooks remain native
+  Codex-owned BYOR capabilities for root and fixed agents. TradingCodex does not
+  recommend, classify, or manage them and exposes only a secret-free read-only
+  inventory. Its own principals, grants, order proofs, protected state, and
+  execution path remain service-gated.
+- Django application services remain canonical, the viewer remains read-only,
   and live broker actions remain disabled unless every existing execution gate
   succeeds.
 - PyPI publication remains manual, tag-bound, and protected by the `pypi`
@@ -52,8 +61,8 @@ Operators should pin both the package runner and workspace update to the exact
 candidate version:
 
 ```bash
-uvx --refresh --from "tradingcodex==1.1.0" \
-  tcx update . --from "tradingcodex==1.1.0"
+uvx --refresh --from "tradingcodex==1.1.1" \
+  tcx update . --from "tradingcodex==1.1.1"
 ./tcx doctor
 ```
 
@@ -65,7 +74,7 @@ After updating, the operator must fully quit and restart Codex, open a new task,
 and review and trust the changed projected hooks again.
 
 The transient `$TRADINGCODEX_SCRATCH` path is regenerated under the platform
-cache tree in `1.1.0`. The updater does not migrate the prior OS-temporary
+cache tree in `1.1.1`. The updater does not migrate the prior OS-temporary
 scratch contents because they are disposable intermediates rather than
 workspace-owned state.
 
@@ -79,7 +88,7 @@ checks is intentionally not grandfathered or silently re-approved; it remains
 unavailable until corrected, inspected, approved, and restarted.
 
 The exact cross-version gate starts from the public `1.0.2` package, attaches a
-workspace, installs the built `1.1.0` wheel, runs `tcx update`, and proves that
+workspace, installs the built `1.1.1` wheel, runs `tcx update`, and proves that
 the preserved identity and user-owned state coexist with the new generated
 contract:
 
@@ -93,25 +102,25 @@ python3.11 tests/release_upgrade_smoke.py \
 
 | Area | Current state | Required evidence or remaining gate |
 | --- | --- | --- |
-| Version identity | Verified locally | Runtime, dynamic metadata, release input, and artifact filenames agree on `1.1.0`; the tag identity remains a post-CI gate. |
-| Schema compatibility | Verified locally | Django check, migration dry-run, compileall, the full suite, and the cross-version smoke require no migration. |
-| Workspace update | Exact cross-version smoke passed | Public `1.0.2` attach through built-wheel `1.1.0` update preserved workspace/runtime identity, explicit paths, user-owned state, and provider approval/snapshot state. |
+| Version identity | Verified locally | Runtime, dynamic metadata, release input, and artifact filenames agree on `1.1.1`; the tag identity remains a post-CI gate. |
+| Schema compatibility | Verified locally | Django check, migration dry-run, compileall, the full suite, and the cross-version smoke cover the forward removal of retired Gate tables. |
+| Workspace update | Exact cross-version smoke passed | Public `1.0.2` attach through built-wheel `1.1.1` update preserved workspace/runtime identity, explicit paths, user-owned state, and provider approval/snapshot state while removing Gate state. |
 | Invocation and order safety | Focused and full suites passed | Parser matrices and gateway, proof, order grammar, approval, idempotency, Plan, subagent, profile, and cross-scope checks passed together. |
 | Build shell boundary | Generated and native smokes passed | The narrow review lane succeeded and general interpreters, helpers, tests, build systems, composition, direct runtime commands, and unified exec remained closed. |
 | Build public fetch | Generated and native smokes passed | Public HTTP(S) and read-only HTTPS Git succeeded; private, credentialed, mutating, executable, direct-managed-path, missing-parent, nested, and pathname-expanding requests failed closed. |
 | Provider supply chain | Verified locally | Provenance hashing, stale-approval invalidation, legacy compatibility, AST and bundle checks, pre-approval import denial, and bundle-only inspection fallback passed. |
 | Frontend and guidebook | Verified locally | Ten viewer tests, typecheck/build, deterministic asset comparison, guide link/fragment checks, local route preview, and diff checks passed. |
-| Distribution artifacts | Exact local candidate passed | Fresh sdist/wheel, `twine check`, packaged-wheel smoke, and public `1.0.2` to candidate `1.1.0` upgrade smoke passed on macOS. |
+| Distribution artifacts | Exact local candidate passed | Fresh sdist/wheel, `twine check`, packaged-wheel smoke, and public `1.0.2` to candidate `1.1.1` upgrade smoke passed on macOS. |
 | Native Codex acceptance | Verified on the reference CLI | The disposable workspace passed doctor, strict config, all eight trusted hooks, managed invocation variants, public fetch probes, provider inspection, and positive/negative Build boundary probes. |
 | Candidate CI | Pending | The final commit on `main` must pass all required GitHub Actions checks before tagging. |
-| Git tag and PyPI | Not performed | The annotated `v1.1.0` tag and protected tag-bound publication follow green candidate CI. |
-| Post-publish verification | Blocked on publication | Exact-version POSIX and native Windows attach, update, doctor, artifact metadata, and public `1.0.2` to public `1.1.0` checks run only after PyPI contains the immutable artifacts. |
+| Git tag and PyPI | Not performed | The annotated `v1.1.1` tag and protected tag-bound publication follow green candidate CI. |
+| Post-publish verification | Blocked on publication | Exact-version POSIX and native Windows attach, update, doctor, artifact metadata, and public `1.0.2` to public `1.1.1` checks run only after PyPI contains the immutable artifacts. |
 
 The public `1.0.2` release and its PyPI artifacts are the immutable comparison
 baseline for this upgrade. Historical validation remains available in Git
-history and the `v1.0.2` release; it does not substitute for `1.1.0` validation.
+history and the `v1.0.2` release; it does not substitute for `1.1.1` validation.
 
-The final local candidate evidence recorded on 2026-07-16 includes 824 collected
+The final local candidate evidence recorded on 2026-07-16 includes 800 collected
 Python tests with one expected platform skip and no failures; Django, migration,
 compile, Ruff, frontend, guide, and diff checks; a disposable updated workspace
 on the exact reference Codex CLI; and fresh macOS distribution and cross-version
@@ -150,15 +159,15 @@ waive the generated-workspace, hook, configuration, or provider-safety gates.
 ## Tag And Publication State
 
 This document does not assert that the final commit is on `main`, CI is green,
-the tag exists, or PyPI contains `1.1.0`. After all final-commit and artifact
+the tag exists, or PyPI contains `1.1.1`. After all final-commit and artifact
 gates pass:
 
 1. Push the release commit to `main` and wait for required CI to pass.
-2. Create and push the annotated tag `v1.1.0` at that exact commit.
+2. Create and push the annotated tag `v1.1.1` at that exact commit.
 3. When release risk warrants an extra hosted rehearsal, run Manual Release
-   from the tag with `publish_pypi=false` and `release_version=1.1.0`.
+   from the tag with `publish_pypi=false` and `release_version=1.1.1`.
 4. With protected-environment approval, run the tag with
-   `publish_pypi=true` and `release_version=1.1.0`.
+   `publish_pypi=true` and `release_version=1.1.1`.
 5. Verify the immutable PyPI files and metadata, create or verify the GitHub
    release notes, then run exact-version fresh-install and cross-version update
    smokes on the published package.

@@ -155,7 +155,7 @@ multiple workspace-local edits and validations during that root native turn,
 while each protected MCP call receives a one-time proof. Every mutating
 follow-up or scheduled run must earn a fresh grant. The browser viewer cannot
 request one, and subagents cannot mint or inherit one. The grant never elevates the actual Codex sandbox,
-authorizes External MCP consent, touches raw credentials or protected
+manages user-installed Codex capabilities, touches raw credentials or protected
 policy/approval/order state, publishes Git changes, or permits execution.
 Codex Plan mode cannot issue or use the grant, and a grant cannot cross a
 permission-mode change. Ordinary user-owned paths outside `trading/` may be
@@ -180,13 +180,9 @@ terminal only after that call finishes. If a completed operation's normal
 finalizer fails, an idempotent recovery finalizer never repeats the operation;
 it clears the reservation and terminally revokes the grant as
 `finished_unfinalized`. Persistent `tcx mode` and old
-`mode.json` state are inert compatibility only. External MCP lifecycle and
-consent actions require an interactive user-terminal confirmation; this
-includes importing a discovered Codex entry with `tcx mcp external
-import-codex`. `tcx build codex-mcp import` is a rejected migration path, not a
-Build-authorized mutation. Direct terminal mutation remains a separate explicit
-authority, and trusted aggregate helpers receive only its sealed service-stage
-capability.
+`mode.json` state are inert compatibility only. MCP, skill, and plugin
+installation or lifecycle remains native Codex functionality and is never a
+Build-authorized TradingCodex mutation.
 
 Recurring Build Automation follows the same rule on every submitted prompt:
 each run needs a fresh exact marker and controlled `trading/` or managed

@@ -655,6 +655,15 @@ def runtime_migration_status(workspace_root: Path | str | None = None) -> dict[s
         if model._meta.app_label in PROJECT_MIGRATION_APPS
     ]
     v1_project_tables = {model._meta.db_table for model in project_models}
+    for app_label, migration_name in applied:
+        if app_label not in PROJECT_MIGRATION_APPS or (app_label, migration_name) not in graph_nodes:
+            continue
+        migration = executor.loader.get_migration(app_label, migration_name)
+        for operation in migration.operations:
+            if not hasattr(operation, "name") or operation.__class__.__name__ != "CreateModel":
+                continue
+            options = getattr(operation, "options", {}) or {}
+            v1_project_tables.add(str(options.get("db_table") or f"{app_label}_{operation.name.lower()}"))
     owned_prefixes = tuple(f"{app}_" for app in sorted(PROJECT_MIGRATION_APPS))
     retired_or_unknown_tables = {
         table

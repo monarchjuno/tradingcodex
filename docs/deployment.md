@@ -79,7 +79,6 @@ the backend listener private. Invalid remote settings fail before binding.
 - service autostart, `tcx service status`, compatibility checks, and `doctor`
   consume readiness rather than treating a reachable process as ready.
 - service logs rotate at 5 MiB with three backups by default.
-- external MCP stderr rotates separately at 1 MiB with two backups.
 - persisted logs redact known secrets, authorization values,
   credential-shaped fields, and URL user-info.
 
@@ -271,7 +270,7 @@ sh "$SOURCE_ROOT/install.sh" \
 On native Windows PowerShell:
 
 ```powershell
-$ReleaseVersion = "1.1.0"
+$ReleaseVersion = "1.1.1"
 $Workspace = Join-Path $env:TEMP "tcx-pypi-$ReleaseVersion"
 New-Item -ItemType Directory -Force $Workspace | Out-Null
 Set-Location $Workspace

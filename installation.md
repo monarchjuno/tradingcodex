@@ -222,15 +222,15 @@ package release should refresh generated files and service schema:
 uvx --refresh --from tradingcodex tcx update . --from tradingcodex
 ```
 
-### Updating from 1.0.2 to 1.1.0
+### Updating from 1.0.2 or 1.1.0 to 1.1.1
 
 Run the new package as the updater; do not run the old generated launcher and
 expect it to discover the new release automatically:
 
 ```bash
 cd /path/to/existing-workspace
-uvx --refresh --from "tradingcodex==1.1.0" \
-  tcx update . --from "tradingcodex==1.1.0"
+uvx --refresh --from "tradingcodex==1.1.1" \
+  tcx update . --from "tradingcodex==1.1.1"
 ./tcx doctor
 ```
 
@@ -239,17 +239,19 @@ regenerated Windows launcher:
 
 ```powershell
 cd C:\path\to\existing-workspace
-uvx --refresh --from "tradingcodex==1.1.0" tcx update . --from "tradingcodex==1.1.0"
+uvx --refresh --from "tradingcodex==1.1.1" tcx update . --from "tradingcodex==1.1.1"
 .\tcx.cmd doctor
 ```
 
 The update keeps the workspace id, paper-account scope, user-owned research,
 Brain and Strategy sources, connector sources, explicit runtime home, explicit
-database override, and projected loopback service address. There is no Django
-schema or module-lock schema migration in 1.1.0; the existing v1 records remain
-in place while the generated module lock advances to 1.1.0.
+database override, and projected loopback service address. Version 1.1.1
+applies the forward migration that removes the retired External MCP Gate
+tables and Gate-derived broker connections while preserving ordinary broker,
+order, and append-only audit history. The generated module lock advances to
+1.1.1.
 
-Version 1.1.0 replaces generated permission, hook, prompt, and skill files so
+Version 1.1.1 replaces generated permission, hook, prompt, and skill files so
 the first-meaningful-line invocation, limited-public Build fetch, and narrow
 Build shell contracts load together. Build edits now use `apply_patch`; the
 model-side shell is limited to public reads, read-only HTTPS Git, inert provider
@@ -258,9 +260,15 @@ workspace-launcher commands. General interpreters, helper scripts, test runners,
 and build systems that an older generated workspace may have admitted are now
 blocked; run broader validation explicitly from a user or maintainer terminal.
 Fully quit Codex after update, reopen the workspace, review and trust the
-changed eight project hooks when prompted, and start a new task.
+changed project hooks when prompted, and start a new task.
 Persisted trust is content-bound, so a renewed prompt after this update is
 expected and must not be bypassed.
+
+User-installed MCP servers, skills, plugins, apps, and hooks remain native
+Codex-owned BYOR capabilities and survive update. TradingCodex refreshes only
+its reserved MCP and `tcx-*` projections, does not recommend or classify user
+capabilities, and reports only a sanitized read-only inventory in System and
+through `$tcx-server`.
 
 The generated `$TRADINGCODEX_SCRATCH` path also moves from the 1.0.2 OS
 temporary location into a workspace-id-scoped platform cache tree. Scratch
@@ -273,7 +281,7 @@ Existing manually authored providers do not need provenance added solely for
 the update. An unchanged, previously approved safe bundle keeps the same
 content hash and immutable snapshot. New VCS metadata, symlinks, or
 secret/credential-like files make a provider fail closed under the strengthened
-1.1.0 supply-chain checks; TradingCodex neither deletes those files nor silently
+1.1.1 supply-chain checks; TradingCodex neither deletes those files nor silently
 re-approves the bundle. Inspect the reported bundle, remove unsafe material,
 and perform a fresh interactive hash approval only when the resulting source is
 the provider you intend to run.

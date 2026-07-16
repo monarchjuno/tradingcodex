@@ -32,7 +32,6 @@ from tradingcodex_service.application.analysis_runs import (  # noqa: E402
 )
 from tradingcodex_service.application.build_gateway import (  # noqa: E402
     MANAGED_SKILL_SCOPES,
-    BUILD_OPERATOR_ONLY_MCP_TOOLS,
     WORKSPACE_PROTECTED_MCP_TOOLS,
     BuildInvocationError,
     authorize_local_build_tool,
@@ -1053,20 +1052,6 @@ def policy_gate(event: str, payload: dict) -> None:
     if is_order_turn_grant_tool(tool_name):
         handle_order_turn_grant_tool(event, payload)
         return
-    operator_tool = build_operator_only_mcp_tool_name(tool_name)
-    if operator_tool:
-        append_hook_audit({
-            "event": event,
-            "tool_name": operator_tool,
-            "decision": "block",
-            "reason_code": "operator_only_external_mcp",
-            "redacted": True,
-        })
-        print(json.dumps({
-            "decision": "block",
-            "reason": "External MCP registration, connection checks, discovery, and review require the explicit user-terminal operator workflow",
-        }))
-        return
     if build_protected_mcp_tool_name(tool_name):
         handle_build_mcp_tool(event, payload)
         return
@@ -1156,13 +1141,6 @@ def build_protected_mcp_tool_name(tool_name: str) -> str:
     prefix = "mcp__tradingcodex__"
     identifier = lowered[len(prefix):] if lowered.startswith(prefix) else lowered
     return identifier if identifier in WORKSPACE_PROTECTED_MCP_TOOLS else ""
-
-
-def build_operator_only_mcp_tool_name(tool_name: str) -> str:
-    lowered = str(tool_name or "").lower()
-    prefix = "mcp__tradingcodex__"
-    identifier = lowered[len(prefix):] if lowered.startswith(prefix) else lowered
-    return identifier if identifier in BUILD_OPERATOR_ONLY_MCP_TOOLS else ""
 
 
 def handle_build_mcp_tool(event: str, payload: dict) -> None:
@@ -1525,21 +1503,7 @@ def local_build_hard_block_reason(payload: dict) -> str:
     if shell_command and AGENT_RUNTIME_TCX_IDENTITY_OVERRIDE.search(shell_command):
         return "TradingCodex build turns cannot override a service principal or role identity"
     if re.search(
-        r"(?<![\w.-])(?:\./)?tcx(?:\.cmd)?\s+(?:build|mcp)\s+permission\s+(?:approve|deny)\b",
-        shell_command,
-        re.I,
-    ):
-        return "External MCP permission decisions remain explicit user authority"
-    if re.search(
-        r"(?<![\w.-])(?:\./)?tcx(?:\.cmd)?\s+mcp\s+external\s+"
-        r"(?:register|check|discover|review-tool)\b",
-        shell_command,
-        re.I,
-    ):
-        return "External MCP registration, probing, discovery, and review remain explicit user-terminal authority"
-    if re.search(
-        r"(?<![\w.-])(?:\./)?tcx(?:\.cmd)?\s+(?:mcp\s+install-global\b|"
-        r"build\s+codex-mcp\s+add\b[^\n]*--scope(?:\s+|=)global\b)",
+        r"(?<![\w.-])(?:\./)?tcx(?:\.cmd)?\s+mcp\s+install-global\b",
         shell_command,
         re.I,
     ):
@@ -3636,14 +3600,7 @@ def build_tcx_argv_allowed(argv: tuple[str, ...]) -> bool:
             and set(rest).issubset({"--skip-refresh", "--no-doctor"})
         )
     if command == "build":
-        if rest in {("status",), ("status", "--json")}:
-            return True
-        if len(rest) >= 2 and rest[:2] == ("codex-mcp", "discover"):
-            flags = rest[2:]
-            return len(flags) == len(set(flags)) and set(flags).issubset({"--workspace-only", "--json"})
-        if len(rest) >= 2 and rest[:2] == ("codex-mcp", "add"):
-            return build_codex_mcp_add_argv_allowed(rest[2:])
-        return False
+        return rest in {("status",), ("status", "--json")}
     if command == "skills":
         if not rest:
             return False
@@ -3671,45 +3628,6 @@ def build_optional_skill_argv_allowed(argv: tuple[str, ...]) -> bool:
             if index + 1 >= len(argv) or build_shell_workspace_path_reason(argv[index + 1]):
                 return False
     return True
-
-
-def build_codex_mcp_add_argv_allowed(argv: tuple[str, ...]) -> bool:
-    """Validate the exact workspace-only managed-config CLI grammar."""
-
-    value_options = {
-        "--name",
-        "--scope",
-        "--transport",
-        "--command",
-        "--url",
-        "--args-json",
-        "--arg",
-        "--env-key",
-        "--credential-ref",
-    }
-    repeatable = {"--arg", "--env-key"}
-    seen: set[str] = set()
-    values: dict[str, list[str]] = {}
-    index = 0
-    while index < len(argv):
-        option = argv[index]
-        if option == "--dry-run":
-            if option in seen:
-                return False
-            seen.add(option)
-            index += 1
-            continue
-        if option not in value_options or index + 1 >= len(argv):
-            return False
-        value = argv[index + 1]
-        if not value or value.startswith("--"):
-            return False
-        if option in seen and option not in repeatable:
-            return False
-        seen.add(option)
-        values.setdefault(option, []).append(value)
-        index += 2
-    return bool(values.get("--name")) and values.get("--scope", ["workspace"]) == ["workspace"]
 
 
 def simple_cat_paths(command: str) -> tuple[str, ...]:
@@ -3939,8 +3857,6 @@ def native_tool_block_reason(payload: dict) -> str:
     tool_name = payload_tool_name(payload).lower()
     tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
     serialized = json.dumps(tool_input, ensure_ascii=False).lower()
-    if tool_name.startswith("mcp__"):
-        return "TradingCodex policy gate blocks direct external MCP tools"
     protected_artifact_roots = (
         "trading/reports/",
         "trading/research/",

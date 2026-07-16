@@ -95,7 +95,7 @@ Observed model families:
 - orders: order tickets, checks, approval receipts, execution results, broker order timeline, fills, order events
 - portfolio: snapshots, positions, cash, versioned paper state, ledger events, sync runs, reconciliation runs
 - integrations: adapter definitions, broker connections, accounts, instrument maps
-- MCP: tool definitions, tool calls, external MCP registry/review/call rows
+- MCP: TradingCodex tool definitions and non-research tool-call ledger
 - harness: workspace provenance
 - audit: append-only audit events
 

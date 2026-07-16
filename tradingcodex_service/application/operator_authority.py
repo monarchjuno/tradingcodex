@@ -2,34 +2,22 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import json
 import os
 import secrets
 import threading
 import time
 from pathlib import Path
-from typing import Any, Final, Mapping
+from typing import Final
 
-from tradingcodex_service.application.build_gateway import BUILD_OPERATOR_ONLY_MCP_TOOLS
 from tradingcodex_service.application.runtime import workspace_context_payload
 
 
 PROVIDER_SOURCE_APPROVE: Final = "provider-source-approve"
 PROVIDER_SOURCE_REVOKE: Final = "provider-source-revoke"
-EXTERNAL_MCP_PERMISSION_APPROVE: Final = "external-mcp-permission-approve"
-EXTERNAL_MCP_PERMISSION_DENY: Final = "external-mcp-permission-deny"
-EXTERNAL_MCP_IMPORT_CODEX: Final = "external-mcp-import-codex"
-EXTERNAL_MCP_BROKER_CONNECT: Final = "external-mcp-broker-connect"
-
 _ALLOWED_ACTIONS = frozenset(
     {
         PROVIDER_SOURCE_APPROVE,
         PROVIDER_SOURCE_REVOKE,
-        EXTERNAL_MCP_PERMISSION_APPROVE,
-        EXTERNAL_MCP_PERMISSION_DENY,
-        EXTERNAL_MCP_IMPORT_CODEX,
-        EXTERNAL_MCP_BROKER_CONNECT,
-        *BUILD_OPERATOR_ONLY_MCP_TOOLS,
     }
 )
 _AUTHORITY_LIFETIME_SECONDS: Final = 60.0
@@ -77,82 +65,6 @@ def provider_source_approval_resource(provider_id: str, bundle_sha256: str) -> s
 
 def provider_source_revocation_resource(provider_id: str) -> str:
     return f"broker-provider:{provider_id}"
-
-
-def canonical_operator_arguments_hash(arguments: Mapping[str, Any]) -> str:
-    """Hash one exact JSON operator argument object without lossy coercion."""
-
-    if not isinstance(arguments, Mapping):
-        raise ValueError("operator arguments must be an object")
-    canonical = dict(arguments)
-    if any(not isinstance(key, str) for key in canonical):
-        raise ValueError("operator argument names must be strings")
-    try:
-        encoded = json.dumps(
-            canonical,
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-            allow_nan=False,
-        ).encode("utf-8")
-    except (TypeError, ValueError) as exc:
-        raise ValueError("operator arguments must be canonical JSON") from exc
-    return hashlib.sha256(encoded).hexdigest()
-
-
-def external_mcp_operator_resource(action: str, arguments: Mapping[str, Any]) -> str:
-    if action not in BUILD_OPERATOR_ONLY_MCP_TOOLS:
-        raise ValueError("unsupported External MCP operator action")
-    return f"external-mcp:{action}:args-sha256:{canonical_operator_arguments_hash(arguments)}"
-
-
-def external_mcp_permission_resource(action: str, request_id: Any, reason: Any = "") -> str:
-    if action not in {EXTERNAL_MCP_PERMISSION_APPROVE, EXTERNAL_MCP_PERMISSION_DENY}:
-        raise ValueError("unsupported External MCP permission action")
-    canonical_request_id = str(request_id or "").strip()
-    if not canonical_request_id:
-        raise ValueError("external MCP permission request id is required")
-    arguments_hash = canonical_operator_arguments_hash(
-        {
-            "request_id": canonical_request_id,
-            "reason": str(reason or ""),
-        }
-    )
-    return f"external-mcp-permission:{action}:args-sha256:{arguments_hash}"
-
-
-def external_mcp_codex_import_resource(name: Any, source: Any) -> str:
-    """Bind a Codex-config import to one named server and source scope."""
-
-    arguments_hash = canonical_operator_arguments_hash(
-        {
-            "name": str(name or "").strip(),
-            "source": str(source or "workspace").strip().lower(),
-        }
-    )
-    return f"external-mcp:import-codex:args-sha256:{arguments_hash}"
-
-
-def external_mcp_broker_connection_resource(
-    *,
-    broker_id: Any,
-    display_name: Any,
-    router_name: Any,
-    discovery_payload: Any = None,
-    credential_ref: Any = "",
-) -> str:
-    """Bind the complete aggregate broker/router import request."""
-
-    arguments_hash = canonical_operator_arguments_hash(
-        {
-            "broker_id": str(broker_id or "").strip(),
-            "credential_ref": str(credential_ref or ""),
-            "discovery_payload": discovery_payload,
-            "display_name": str(display_name or ""),
-            "router_name": str(router_name or "").strip(),
-        }
-    )
-    return f"external-mcp:broker-connect:args-sha256:{arguments_hash}"
 
 
 def _issue_operator_authority(

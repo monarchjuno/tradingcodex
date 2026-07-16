@@ -284,6 +284,7 @@ env = { TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE
 enabled_tools = [
   "get_tradingcodex_status",
   "get_update_status",
+  "list_codex_capabilities",
   "manage_strategy",
   "manage_investment_brain",
   "begin_analysis_run",
@@ -303,7 +304,6 @@ enabled_tools = [
   "get_order_ticket",
   "list_order_tickets",
   "use_order_turn_grant",
-  "record_broker_mapping_review",
   "get_positions",
   "get_portfolio_snapshot",
   "list_workflow_artifacts",
@@ -314,7 +314,6 @@ enabled_tools = [
   "append_research_artifact_version",
   "export_research_artifact_md",
   "record_source_snapshot",
-  "list_external_mcp_connections",
   "record_audit_event"
 ]
 default_tools_approval_mode = "approve"

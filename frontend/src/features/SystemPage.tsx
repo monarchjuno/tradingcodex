@@ -10,7 +10,9 @@ export function SystemPage({ state }: { state: Record<string, unknown> }) {
   const profile = asRecord(workspaceSection.profile);
   const investorContext = asRecord(sectionData(state, "investor_context"));
   const brokers = recordsFrom(sectionData(state, "brokers"), "connections");
-  const permissions = recordsFrom(sectionData(state, "permissions"), "requests");
+  const capabilityInventory = asRecord(sectionData(state, "codex_capabilities"));
+  const capabilities = recordsFrom(capabilityInventory, "capabilities");
+  const capabilityWarnings = asStringList(capabilityInventory.warnings);
   const orders = recordsFrom(sectionData(state, "orders"), "tickets");
   return <section className="page system-page" aria-labelledby="system-title">
     <PageHeader eyebrow="Workspace system" title="Local state and safeguards." titleId="system-title" description="Inspect workspace identity, account scope, and execution-sensitive service posture. Changes belong in native Codex, tcx, or Admin." action={<a className="secondary-button button-link" href="/admin/">Open Admin <span aria-hidden="true">↗</span></a>} />
@@ -21,11 +23,12 @@ export function SystemPage({ state }: { state: Record<string, unknown> }) {
 
     <div className="service-settings-grid">
       <ServiceSection title="Broker posture" eyebrow="Connections" count={brokers.length} error={sectionError(state, "brokers")} empty="No broker connections are registered.">{brokers.map((item, index) => <div className="service-row" key={asText(item.broker_id, String(index))}><div><strong>{asText(item.display_name, asText(item.broker_id, "Broker"))}</strong><span>{titleCase(asText(item.provider_id, "unknown provider"))} · {titleCase(asText(item.transport, "unknown transport"))}</span></div><StatusPill value={asText(item.status, "unknown")} /></div>)}</ServiceSection>
-      <ServiceSection title="Permission requests" eyebrow="External access" count={permissions.length} error={sectionError(state, "permissions")} empty="No pending permission requests.">{permissions.map((item, index) => <div className="service-row" key={asText(item.id, String(index))}><div><strong>{[asText(item.router_name), asText(item.external_name)].filter(Boolean).join(":") || "Permission request"}</strong><span>{asStringList(item.reasons).join(" · ") || "No reason reported"}</span></div><StatusPill value={asText(item.status, "pending")} /></div>)}</ServiceSection>
+      <ServiceSection title="Codex capabilities" eyebrow="User-installed · BYOR" count={capabilities.length} error={sectionError(state, "codex_capabilities")} empty="No external Codex capabilities were discovered.">{capabilities.slice(0, 16).map((item, index) => <div className="service-row" key={`${asText(item.kind)}:${asText(item.id, String(index))}`}><div><strong>{asText(item.label, asText(item.id, "Capability"))}</strong><span>{[titleCase(asText(item.kind, "capability")), titleCase(asText(item.scope, "codex")), asText(item.parent_plugin) ? `Plugin ${asText(item.parent_plugin)}` : ""].filter(Boolean).join(" · ")}</span></div><StatusPill value={asText(item.availability, "unknown")} /></div>)}</ServiceSection>
       <ServiceSection title="Order state" eyebrow="Account scope" count={orders.length} error={sectionError(state, "orders")} empty="No order tickets in this workspace account.">{orders.slice(0, 8).map((item, index) => <div className="service-row" key={asText(item.ticket_id, String(index))}><div><strong>{asText(item.symbol, asText(item.ticket_id, "Order ticket"))}</strong><span>{[asText(item.side), asText(item.quantity)].filter(Boolean).join(" ") || "No order details"}</span></div><StatusPill value={asText(item.current_state, "draft")} /></div>)}</ServiceSection>
     </div>
+    {capabilityWarnings.length > 0 && <ErrorNotice>Codex capability inventory is {asText(capabilityInventory.status, "partial")}: {capabilityWarnings.join(" · ")}</ErrorNotice>}
 
-    <section className="safety-panel" aria-labelledby="safety-title"><div className="safety-symbol" aria-hidden="true">⟂</div><div><span className="eyebrow">Non-negotiable boundary</span><h2 id="safety-title">The viewer cannot act.</h2><p>This surface only reads registered workspace state. It cannot start analysis, modify skills, approve orders, submit trades, reveal credentials, or bypass policy and audit checks.</p></div><StatusPill value="read only" /></section>
+    <section className="safety-panel" aria-labelledby="safety-title"><div className="safety-symbol" aria-hidden="true">⟂</div><div><span className="eyebrow">Non-negotiable boundary</span><h2 id="safety-title">The viewer cannot act.</h2><p>This surface only reads registered workspace and Codex capability state. User-installed capabilities operate under their own licenses and permissions and are outside TradingCodex safety and audit guarantees.</p></div><StatusPill value="read only" /></section>
   </section>;
 }
 

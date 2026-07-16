@@ -41,17 +41,8 @@ AUTHORITY_SCOPE_MARKERS = {
 BUILD_TURN_PROOF_FIELD = "_build_turn_proof"
 BUILD_TURN_GRANT_TTL = timedelta(hours=1)
 BUILD_RESERVATION_TTL = timedelta(minutes=2)
-BUILD_OPERATOR_ONLY_MCP_TOOLS = frozenset(
-    {
-        "check_external_mcp_connection",
-        "discover_external_mcp_connection",
-        "register_external_mcp_connection",
-        "review_external_mcp_tool",
-    }
-)
 BUILD_PROTECTED_MCP_TOOLS = frozenset(
     {
-        "record_broker_mapping_review",
         "register_broker_connector",
         "validate_broker_connector_build",
     }

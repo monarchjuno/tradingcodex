@@ -13,7 +13,7 @@ Native root Codex action prompt
 Native root Codex Build prompt
   -> normalized first-meaningful-line parser -> current-turn build gateway + PreToolUse gate
 Both service-facing paths
-  -> Django service layer, including managed External MCP Gate checks
+  -> Django service layer for TradingCodex-owned capabilities and state
   -> workspace-file agent/skill/research state plus central Django DB-backed policy, orders, portfolio, audit, harness, integrations
   -> approved action boundary; paper is built in and live providers require separate installation, policy approval, explicit confirmation, sync, and audit gates
 ```
@@ -107,7 +107,7 @@ directly.
 | Plane | Responsibility | Durable state |
 | --- | --- | --- |
 | Codex control plane | Role prompts, hooks, skills, dynamic Head Manager coordination, lightweight run bindings, generated project config, exact immediate-action interception, and `$tcx-order-allow` turn-grant admission/proof injection | Generated workspace files and Codex session state |
-| Django service plane | Policy, brokers, orders, approvals, portfolio, audit, harness, MCP registry, External MCP Gate, Admin, REST, read-only React viewing, and file-native research indexing | Central Django DB for non-research runtime records plus operational service state |
+| Django service plane | Policy, brokers, orders, approvals, portfolio, audit, harness, TradingCodex MCP registry, Admin, REST, read-only React viewing, native Codex capability inventory, and file-native research/artifact catalog indexing | Central Django DB for non-research runtime records plus operational service state |
 | Workspace system plane | Agent TOML, skill files, research markdown, schemas, local wrapper, MCP config, artifact directories | Codex-native workspace files and provenance |
 
 The control plane can request actions. The service plane decides and records
@@ -246,8 +246,8 @@ workspace-provenance comparisons. This normalizes macOS temporary-directory
 symlinks and Windows case/separator aliases. Generated files use same-directory
 atomic replacement and native advisory locks (`flock` on POSIX and `msvcrt`
 byte-range locking on Windows); network-filesystem lock semantics are not
-claimed. Service and external-MCP child creation use OS-specific process flags,
-and service stop refuses remote hosts or an unverified listener PID.
+claimed. Service child creation uses OS-specific process flags, and service stop
+refuses remote hosts or an unverified listener PID.
 
 ## Django App Boundaries
 
@@ -330,7 +330,6 @@ Broker and portfolio use cases:
 - `list_broker_connections`
 - `get_broker_connection_status`
 - `sync_broker_account`
-- `record_broker_mapping_review`
 - `list_reconciliation_runs`
 
 Read/write research and audit use cases:
@@ -472,15 +471,14 @@ still pass the same service-layer policy, approval, duplicate-request,
 connection, and audit boundary.
 
 Each connection stores one required `provider_id` and one transport. The valid
-built-in pairs are `paper` / `paper` and `external-mcp` / `mcp`; registered
-provider adapters use their exact lowercase connector-safe provider id with
-`api`. Unknown providers,
+built-in pair is `paper` / `paper`; registered provider adapters use their
+exact lowercase connector-safe provider id with `api`. Unknown providers,
 unsupported transports, mismatched pairs, and profile/provider identity drift
 fail closed. There is no persisted or public `adapter_type` alias.
 
 Broker adapters sit behind a registry-like service interface. The built-in
 paper adapter supports account discovery, cash/position reads, validation, and
-paper submission. External MCP broker support starts from discovery metadata
-and reviewed read-only or summary-only mappings; execution-like external tools
-must map to a TradingCodex service connection path and remain disabled until
-separate review enables the full live execution checklist.
+paper submission. User-installed Codex capabilities are not broker adapters and
+cannot be imported into this connection registry. A broker provider must use
+the canonical provider adapter and service path before it can participate in
+TradingCodex order, approval, execution, reconciliation, or audit guarantees.

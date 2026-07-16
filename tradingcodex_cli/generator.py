@@ -10,6 +10,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import tomllib
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28,7 +29,6 @@ from tradingcodex_service.application.agents import (
 )
 from tradingcodex_service.application.components import list_harness_components
 from tradingcodex_service.application.common import atomic_write_text, exclusive_file_lock, workspace_launcher_command
-from tradingcodex_service.application.customization import CODEX_MCP_BLOCK_NAME, replace_managed_block
 from tradingcodex_service.application.runtime import (
     assert_runtime_home_outside_workspace,
     assert_runtime_database_compatible,
@@ -187,7 +187,7 @@ def bootstrap_workspace(
     )
     assert_runtime_home_outside_workspace(target, context["TRADINGCODEX_HOME"])
     rendered_preview = render_template_modules(modules, context)
-    _preserve_managed_codex_mcp_block(target, rendered_preview)
+    _preserve_user_codex_capabilities(target, rendered_preview)
     previous_lock = validated_workspace.get("module_lock") or {}
     current_generated_paths = set(rendered_preview) | set(GENERATED_INDEX_PATHS)
     _validate_generated_destinations(
@@ -225,7 +225,7 @@ def bootstrap_workspace(
         "db_source": context["TRADINGCODEX_DB_SOURCE"],
     })
     rendered = render_template_modules(modules, context)
-    _preserve_managed_codex_mcp_block(target, rendered)
+    _preserve_user_codex_capabilities(target, rendered)
     current_generated_paths = set(rendered) | set(GENERATED_INDEX_PATHS)
     _validate_generated_destinations(
         target,
@@ -244,7 +244,7 @@ def bootstrap_workspace(
         workspace_id = str(existing_manifest.get("workspace_id") or workspace_id)
         if workspace_id != context["WORKSPACE_ID"]:
             raise ValueError("TradingCodex workspace identity changed during generation")
-        _preserve_managed_codex_mcp_block(target, rendered)
+        _preserve_user_codex_capabilities(target, rendered)
         current_generated_paths = set(rendered) | set(GENERATED_INDEX_PATHS)
         _validate_generated_destinations(
             target,
@@ -1283,21 +1283,60 @@ def write_rendered_templates(target: Path, rendered: dict[str, str]) -> None:
             destination.chmod(0o755 if text.startswith("#!") else 0o644)
 
 
-def _preserve_managed_codex_mcp_block(target: Path, rendered: dict[str, str]) -> None:
+def _preserve_user_codex_capabilities(target: Path, rendered: dict[str, str]) -> None:
     rel = ".codex/config.toml"
     existing_path = target / rel
     if rel not in rendered or not existing_path.is_file():
         return
-    existing = existing_path.read_text(encoding="utf-8")
-    start = f"# BEGIN {CODEX_MCP_BLOCK_NAME}"
-    end = f"# END {CODEX_MCP_BLOCK_NAME}"
-    if start not in existing and end not in existing:
+    if "# BEGIN User Codex capabilities" in rendered[rel]:
         return
-    if existing.count(start) != 1 or existing.count(end) != 1 or existing.index(start) > existing.index(end):
-        raise ValueError("TradingCodex managed Codex MCP block is malformed")
-    body = existing.split(start, 1)[1].split(end, 1)[0]
-    block = f"{start}{body}{end}\n"
-    rendered[rel] = replace_managed_block(rendered[rel], block, CODEX_MCP_BLOCK_NAME)
+    existing = existing_path.read_text(encoding="utf-8")
+    legacy_start = "# BEGIN TradingCodex managed Codex MCP"
+    legacy_end = "# END TradingCodex managed Codex MCP"
+    if legacy_start in existing or legacy_end in existing:
+        if existing.count(legacy_start) != 1 or existing.count(legacy_end) != 1:
+            raise ValueError("legacy TradingCodex Codex MCP block is malformed")
+        prefix, remainder = existing.split(legacy_start, 1)
+        _, suffix = remainder.split(legacy_end, 1)
+        existing = f"{prefix}\n{suffix}"
+    blocks = _user_codex_capability_blocks(existing)
+    if not blocks:
+        return
+    preserved = "\n\n# BEGIN User Codex capabilities\n" + "\n\n".join(block.strip() for block in blocks)
+    preserved += "\n# END User Codex capabilities\n"
+    candidate = rendered[rel].rstrip() + preserved
+    try:
+        tomllib.loads(candidate)
+    except tomllib.TOMLDecodeError as exc:
+        raise ValueError("user Codex capability configuration cannot be preserved safely") from exc
+    rendered[rel] = candidate
+
+
+def _user_codex_capability_blocks(text: str) -> list[str]:
+    sections = re.split(r"(?=^\s*\[\[?[^\n]+\]\]?\s*$)", text, flags=re.M)
+    result: list[str] = []
+    for section in sections:
+        header_match = re.match(r"\s*(\[\[?[^\n]+\]\]?)", section)
+        if not header_match:
+            continue
+        header = header_match.group(1).strip()
+        if header == "[[skills.config]]":
+            path_match = re.search(r'^\s*path\s*=\s*["\']([^"\']+)["\']', section, flags=re.M)
+            path = path_match.group(1).replace("\\", "/") if path_match else ""
+            skill_id = Path(path).parent.name if path else ""
+            managed_skill = skill_id.startswith(("tcx-", "strategy-", "investment-brain-"))
+            if path and not managed_skill and "/.tradingcodex/" not in path:
+                result.append(section)
+            continue
+        mcp_match = re.match(r'^\[mcp_servers\.("[^"]+"|[A-Za-z0-9_-]+)', header)
+        if mcp_match:
+            name = mcp_match.group(1).strip('"')
+            if name not in {"tradingcodex", "tradingcodex-home"}:
+                result.append(section)
+            continue
+        if header.startswith("[plugins."):
+            result.append(section)
+    return result
 
 
 def write_generated_indexes(

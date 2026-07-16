@@ -8,8 +8,6 @@ from pathlib import Path
 
 import pytest
 
-from apps.mcp.services import _canonical_discovered_item, _iter_discovered_primitives
-from tradingcodex_cli.commands import mcp as mcp_command
 from tradingcodex_cli.commands.skills import optional_skills
 from tradingcodex_cli.commands.subagents import subagents
 from tradingcodex_cli.commands.utils import _option_value
@@ -59,91 +57,6 @@ def test_workflow_cli_begins_lightweight_run(capsys, tmp_path: Path) -> None:
     assert result["marker"] == "tradingcodex-analysis-run"
     assert "lane" not in result
     assert "selected_team" not in result
-
-
-@pytest.mark.parametrize("option", ["--router-id", "--router-name", "--external-tool-id", "--tool-name"])
-def test_external_mcp_cli_aliases_are_rejected(tmp_path: Path, option: str) -> None:
-    with pytest.raises(ValueError, match=f"unsupported option: {option}"):
-        mcp_command.mcp_external(tmp_path, ["review-tool", option, "1"])
-
-
-def test_external_mcp_cli_uses_name_and_external_name(monkeypatch, capsys, tmp_path: Path) -> None:
-    authority = object()
-    events: list[str] = []
-    calls: list[tuple[str, dict[str, object], str, object]] = []
-
-    def fake_call(
-        _root: Path,
-        tool: str,
-        payload: dict[str, object],
-        *,
-        transport_principal: str,
-        operator_authority: object,
-    ):
-        events.append("call")
-        calls.append((tool, payload, transport_principal, operator_authority))
-        return {"status": "reviewed"}
-
-    monkeypatch.setattr(mcp_command, "call_mcp_tool", fake_call)
-    monkeypatch.setattr(
-        mcp_command,
-        "_require_operator_confirmation",
-        lambda action, subject: events.append("confirmation"),
-    )
-    monkeypatch.setattr(
-        mcp_command,
-        "_issue_operator_authority",
-        lambda root, *, action, resource: events.append("authority") or authority,
-    )
-
-    mcp_command.mcp_external(
-        tmp_path,
-        ["review-tool", "--name", "market-data", "--external-name", "quote"],
-    )
-
-    assert calls == [
-        (
-            "review_external_mcp_tool",
-            {"name": "market-data", "external_name": "quote"},
-            "head-manager",
-            authority,
-        )
-    ]
-    assert events == ["confirmation", "authority", "call"]
-    assert json.loads(capsys.readouterr().out)["status"] == "reviewed"
-
-
-def test_external_mcp_schemas_use_one_connection_identity() -> None:
-    for name in ("check_external_mcp_connection", "discover_external_mcp_connection"):
-        schema = TOOL_REGISTRY[name].input_schema
-        assert schema["required"] == ["name"]
-        assert "router_id" not in schema["properties"]
-
-    review = TOOL_REGISTRY["review_external_mcp_tool"].input_schema
-    assert {"name", "tool_id", "external_name"} <= set(review["properties"])
-    assert {"router_id", "router_name", "external_tool_id", "tool_name"}.isdisjoint(review["properties"])
-
-
-def test_external_mcp_discovery_accepts_only_protocol_native_v1_shapes() -> None:
-    assert _canonical_discovered_item(
-        "tool",
-        {"name": "quote", "description": "Quote", "inputSchema": {"type": "object"}},
-    ) == ("quote", "Quote", {"type": "object"}, {})
-    assert _canonical_discovered_item(
-        "resource",
-        {"uri": "market://quote/AAPL", "name": "AAPL quote"},
-    ) == ("market://quote/AAPL", "", {}, {})
-
-    with pytest.raises(ValueError, match="unsupported external MCP discovery field.*input_schema"):
-        _canonical_discovered_item("tool", {"name": "quote", "input_schema": {"type": "object"}})
-    with pytest.raises(ValueError, match="unsupported external MCP discovery field.*id"):
-        _canonical_discovered_item("resource", {"id": "old-resource", "name": "Old"})
-    with pytest.raises(ValueError, match="tools must be an array"):
-        _iter_discovered_primitives({"tools": {"name": "quote"}})
-    with pytest.raises(ValueError, match=r"tools\[0\] must be an object"):
-        _iter_discovered_primitives({"tools": ["quote"]})
-    with pytest.raises(ValueError, match="must contain tools, resources, or prompts"):
-        _iter_discovered_primitives({})
 
 
 def test_audit_event_has_one_canonical_envelope() -> None:
@@ -215,7 +128,6 @@ def test_native_agent_shell_blocks_role_impersonation_and_state_mutation_cli(tmp
         "./tcx service status --json",
         "./tcx build status",
         "./tcx connectors status",
-        "./tcx mcp external list",
         "./tcx postmortem list",
     )
     for command in blocked:

@@ -13,7 +13,6 @@ import pytest
 
 from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application.build_gateway import (
-    BUILD_OPERATOR_ONLY_MCP_TOOLS,
     BUILD_PROTECTED_MCP_TOOLS,
     MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES,
 )
@@ -22,15 +21,8 @@ from tradingcodex_service.application.build_gateway import (
 ROOT = Path(__file__).resolve().parents[1]
 PROOF_FIELD = "_build_turn_proof"
 EXPECTED_BUILD_MCP_TOOLS = {
-    "record_broker_mapping_review",
     "register_broker_connector",
     "validate_broker_connector_build",
-}
-EXPECTED_OPERATOR_ONLY_MCP_TOOLS = {
-    "check_external_mcp_connection",
-    "discover_external_mcp_connection",
-    "register_external_mcp_connection",
-    "review_external_mcp_tool",
 }
 EXPECTED_MANAGED_MCP_TOOL_SCOPES = {
     "manage_investment_brain": "brain",
@@ -508,26 +500,6 @@ def test_local_file_and_shell_mutations_require_the_current_root_build_turn(work
         ),
     )
     assert allowed_workspace_update is None
-
-    allowed_workspace_mcp_config = run_hook(
-        workspace,
-        "pre-tool-use",
-        pre_tool_payload(
-            workspace,
-            session_id=session_id,
-            turn_id=turn_id,
-            tool_use_id="workspace-mcp-config-after-grant",
-            tool_name="exec_command",
-            tool_input={
-                "cmd": (
-                    "./tcx build codex-mcp add --name demo --scope workspace "
-                    "--command uvx --args-json '[\"broker-mcp\"]' --dry-run"
-                ),
-                "workdir": str(workspace),
-            },
-        ),
-    )
-    assert allowed_workspace_mcp_config is None
 
     blocked_strategy = run_hook(
         workspace,
@@ -1135,19 +1107,10 @@ def test_build_mcp_proof_cannot_be_model_supplied_or_used_without_grant(workspac
         ("exec_command", {"cmd": "tcx.cmd skills optional create private --role fundamental-analyst --body-file ..^\\outside.txt"}, ""),
         ("exec_command", {"cmd": "cat .env"}, ""),
         ("exec_command", {"cmd": "./tcx mcp call use_order_turn_grant"}, ""),
-        ("exec_command", {"cmd": "./tcx mcp permission approve --request-id 1"}, ""),
-        ("exec_command", {"cmd": "./tcx mcp external register --name hostile --transport stdio --command /bin/sh --enabled"}, ""),
-        ("exec_command", {"cmd": "./tcx mcp external check --name hostile"}, ""),
-        ("exec_command", {"cmd": "./tcx mcp external discover --name hostile"}, ""),
-        ("exec_command", {"cmd": "./tcx mcp external review-tool --tool-id 1 --enabled"}, ""),
         ("exec_command", {"cmd": "./tcx connectors register --provider-id demo --broker-id demo --credential-ref env:DEMO"}, ""),
         ("exec_command", {"cmd": "./tcx connectors approve-provider demo"}, ""),
         ("exec_command", {"cmd": "./tcx connectors revoke-provider demo"}, ""),
         ("exec_command", {"cmd": "./tcx mcp install-global --safe"}, ""),
-        ("exec_command", {"cmd": "./tcx build codex-mcp add demo --scope=global --command demo"}, ""),
-        ("exec_command", {"cmd": "./tcx build codex-mcp add --name demo --scope \"global\" --command demo"}, ""),
-        ("exec_command", {"cmd": "./tcx build codex-mcp add --name demo --s global --command demo"}, ""),
-        ("exec_command", {"cmd": "./tcx build codex-mcp import --source workspace --name demo"}, ""),
         ("exec_command", {"cmd": "codex mcp add demo --scope global -- echo demo"}, ""),
         ("exec_command", {"cmd": "git push origin main"}, ""),
         ("exec_command", {"cmd": "git remote set-url origin https://example.com/other.git"}, ""),
@@ -2079,7 +2042,7 @@ def test_research_profile_keeps_native_browser_navigation_available(workspace: P
     assert output is None
 
 
-def test_build_turn_blocks_browser_control_hidden_behind_external_mcp(workspace: Path) -> None:
+def test_build_turn_does_not_blanket_block_user_mcp_tools(workspace: Path) -> None:
     issue_build_turn(workspace, "browser-mcp-session", "browser-mcp-turn", permission_mode="trading-build")
     output = run_hook(
         workspace,
@@ -2094,8 +2057,7 @@ def test_build_turn_blocks_browser_control_hidden_behind_external_mcp(workspace:
             permission_mode="trading-build",
         ),
     )
-    assert output is not None and output["decision"] == "block"
-    assert "direct external MCP" in str(output["reason"])
+    assert output is None
 
 
 def test_subagent_reads_only_skills_projected_for_its_exact_role(workspace: Path) -> None:
@@ -2150,9 +2112,9 @@ def test_subagent_reads_only_skills_projected_for_its_exact_role(workspace: Path
         assert blocked is not None and blocked["decision"] == "block"
 
 
-def test_build_turn_never_allows_direct_external_mcp(workspace: Path) -> None:
-    session_id = "external-mcp-session"
-    turn_id = "external-mcp-turn"
+def test_build_turn_allows_user_mcp_tools_to_remain_codex_native(workspace: Path) -> None:
+    session_id = "user-mcp-session"
+    turn_id = "user-mcp-turn"
     issue_build_turn(workspace, session_id, turn_id)
     output = run_hook(
         workspace,
@@ -2161,33 +2123,12 @@ def test_build_turn_never_allows_direct_external_mcp(workspace: Path) -> None:
             workspace,
             session_id=session_id,
             turn_id=turn_id,
-            tool_use_id="external-mcp",
+            tool_use_id="user-mcp",
             tool_name="mcp__unmanaged_broker__place_order",
             tool_input={"symbol": "MSFT"},
         ),
     )
-    assert output is not None
-    assert output["decision"] == "block"
-
-
-def test_operator_only_tradingcodex_mcp_tools_are_blocked_before_service(workspace: Path) -> None:
-    assert set(BUILD_OPERATOR_ONLY_MCP_TOOLS) == EXPECTED_OPERATOR_ONLY_MCP_TOOLS
-    issue_build_turn(workspace, "operator-tool-session", "operator-tool-turn")
-    for index, tool_name in enumerate(sorted(EXPECTED_OPERATOR_ONLY_MCP_TOOLS)):
-        output = run_hook(
-            workspace,
-            "pre-tool-use",
-            pre_tool_payload(
-                workspace,
-                session_id="operator-tool-session",
-                turn_id="operator-tool-turn",
-                tool_use_id=f"operator-tool-{index}",
-                tool_name=f"mcp__tradingcodex__{tool_name}",
-                tool_input={},
-            ),
-        )
-        assert output is not None
-        assert output["decision"] == "block"
+    assert output is None
 
 
 def test_build_file_edit_allows_credential_references_without_raw_secrets(workspace: Path) -> None:

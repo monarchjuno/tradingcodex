@@ -14,13 +14,8 @@ from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.test import Client, RequestFactory
 
-from apps.mcp.services import (
-    check_external_mcp_connection,
-    redact_sensitive_data,
-    register_external_mcp_connection,
-    serialize_external_mcp_router,
-    serialize_external_mcp_tool,
-)
+from apps.mcp.services import redact_sensitive_data
+
 from tradingcodex_service.application import health as health_service
 from tradingcodex_service.application.brokers import (
     BrokerAdapter,
@@ -43,56 +38,11 @@ from tradingcodex_service.application.runtime import (
     tradingcodex_state_dir,
 )
 from tradingcodex_service.application.policy import PolicyConfigurationError, read_runtime_policy
-from tradingcodex_service.application.operator_authority import (
-    _issue_operator_authority,
-    external_mcp_operator_resource,
-)
 from tradingcodex_service.mcp_runtime import TOOL_REGISTRY, call_mcp_tool, validate_input_schema
 from tradingcodex_service.log_safety import RedactingFormatter, redact_log_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
-
-
-def call_test_operator_mcp_tool(
-    workspace: Path,
-    tool_name: str,
-    arguments: dict,
-) -> dict:
-    """Test-only stand-in for a completed interactive CLI confirmation."""
-
-    ensure_workspace_manifest(workspace)
-    authority = _issue_operator_authority(
-        workspace,
-        action=tool_name,
-        resource=external_mcp_operator_resource(tool_name, arguments),
-    )
-    return call_mcp_tool(
-        workspace,
-        tool_name,
-        arguments,
-        operator_authority=authority,
-    )
-
-
-def call_test_external_mcp_service(
-    workspace: Path,
-    action: str,
-    arguments: dict,
-) -> dict:
-    """Test-only direct service call with an interactive-CLI-equivalent token."""
-
-    ensure_workspace_manifest(workspace)
-    authority = _issue_operator_authority(
-        workspace,
-        action=action,
-        resource=external_mcp_operator_resource(action, arguments),
-    )
-    service = {
-        "register_external_mcp_connection": register_external_mcp_connection,
-        "check_external_mcp_connection": check_external_mcp_connection,
-    }[action]
-    return service(workspace, arguments, operator_authority=authority)
 
 
 def test_broker_mcp_inputs_expose_only_v1_canonical_identity_fields() -> None:
@@ -104,7 +54,6 @@ def test_broker_mcp_inputs_expose_only_v1_canonical_identity_fields() -> None:
         "get_broker_capability_profile",
         "get_broker_instrument_constraints",
         "sync_broker_account",
-        "record_broker_mapping_review",
     }
     removed_aliases = {"broker", "broker_connection_id", "label", "provider", "template"}
 
@@ -199,7 +148,7 @@ def test_broker_connection_identity_is_first_class_and_fail_closed(tmp_path: Pat
 
     cases = (
         ("paper", "api", "not valid for api transport"),
-        ("wrong-mcp-provider", "mcp", "mcp transport requires provider_id=external-mcp"),
+        ("unknown-transport", "mcp", "unsupported broker transport"),
         ("unknown-api-provider", "api", "unknown broker provider"),
     )
     for provider_id, transport, message in cases:
@@ -283,188 +232,6 @@ def test_package_metadata_uses_the_runtime_version_source() -> None:
     assert project["tool"]["setuptools"]["dynamic"]["version"] == {
         "attr": "tradingcodex_service.version.TRADINGCODEX_VERSION"
     }
-
-
-def test_external_mcp_env_is_reference_only_and_secret_never_persists(monkeypatch, tmp_path: Path) -> None:
-    ensure_runtime_database(tmp_path)
-    ensure_workspace_manifest(tmp_path)
-    from apps.audit.models import AuditEvent
-    from apps.mcp.models import (
-        McpExternalPermissionRequest,
-        McpExternalTool,
-        McpExternalToolCall,
-        McpExternalToolPermission,
-        McpRouter,
-        McpToolCall,
-        McpToolDefinition,
-    )
-
-    name = f"secret-wall-{uuid.uuid4().hex}"
-    canary = f"K8{uuid.uuid4().hex}"
-    monkeypatch.setenv(
-        "TRADINGCODEX_HOME",
-        str(tmp_path.parent / f"{tmp_path.name}-runtime-home"),
-    )
-    monkeypatch.setenv("MCP_TEST_SECRET", canary)
-    server = tmp_path / "server.py"
-    server.write_text(
-        "import json, os, sys\n"
-        "print(os.environ['TARGET_SECRET'], file=sys.stderr, flush=True)\n"
-        "for line in sys.stdin:\n"
-        "    request = json.loads(line)\n"
-        "    if 'id' in request:\n"
-        "        print(json.dumps({'jsonrpc': '2.0', 'id': request['id'], 'result': {'serverInfo': {'name': 'test'}}}), flush=True)\n",
-        encoding="utf-8",
-    )
-
-    registered = call_test_external_mcp_service(
-        tmp_path,
-        "register_external_mcp_connection",
-        {
-            "name": name,
-            "command": sys.executable,
-            "args": [str(server)],
-            "env": {"TARGET_SECRET": "env:MCP_TEST_SECRET"},
-            "enabled": True,
-        },
-    )
-    assert registered["connection"]["name"] == name
-    assert canary not in json.dumps(registered)
-    router = McpRouter.objects.get(name=name)
-    assert router.env == {"TARGET_SECRET": "env:MCP_TEST_SECRET"}
-
-    checked = call_test_external_mcp_service(
-        tmp_path,
-        "check_external_mcp_connection",
-        {"name": name, "timeout": 3},
-    )
-    assert checked["status"] == "checked"
-    log_path = tradingcodex_state_dir() / "run" / "external-mcp" / f"{name}.stderr.log"
-    assert canary not in log_path.read_text(encoding="utf-8")
-    assert "<redacted>" in log_path.read_text(encoding="utf-8")
-
-    invalid_name = f"secret-wall-invalid-{uuid.uuid4().hex}"
-    with pytest.raises(ValueError, match="raw values are not accepted"):
-        call_test_operator_mcp_tool(
-            tmp_path,
-            "register_external_mcp_connection",
-            {"name": invalid_name, "env": {"TARGET_SECRET": canary}},
-        )
-    assert not McpRouter.objects.filter(name=invalid_name).exists()
-    with pytest.raises(ValueError, match="inline credentials"):
-        call_test_operator_mcp_tool(
-            tmp_path,
-            "register_external_mcp_connection",
-            {
-                "name": f"secret-wall-args-{uuid.uuid4().hex}",
-                "command": sys.executable,
-                "args": ["--api-key", canary],
-            },
-        )
-    opaque_payloads = [
-        {"label": canary},
-        {"command": canary},
-        {"args": [canary]},
-        {"transport": "http", "url": f"https://example.test/mcp?key={canary}"},
-    ]
-    for index, fields in enumerate(opaque_payloads):
-        opaque_name = f"opaque-secret-{index}-{uuid.uuid4().hex}"
-        with pytest.raises(ValueError, match="resolved secrets"):
-            call_test_operator_mcp_tool(
-                tmp_path,
-                "register_external_mcp_connection",
-                {"name": opaque_name, **fields},
-            )
-        assert not McpRouter.objects.filter(name=opaque_name).exists()
-
-    request = RequestFactory().get("/admin/mcp/mcprouter/")
-    request.user = get_user_model().objects.create_superuser(
-        f"mcp-secret-admin-{uuid.uuid4().hex}",
-        "mcp-secret-admin@example.test",
-        uuid.uuid4().hex,
-    )
-    for model in (
-        McpRouter,
-        McpToolDefinition,
-        McpToolCall,
-        McpExternalTool,
-        McpExternalToolPermission,
-        McpExternalPermissionRequest,
-        McpExternalToolCall,
-    ):
-        model_admin = admin.site._registry[model]
-        assert model_admin.has_add_permission(request) is False
-        assert model_admin.has_change_permission(request) is False
-        assert model_admin.has_delete_permission(request) is False
-        assert set(model_admin.get_readonly_fields(request)) == {
-            field.name for field in model._meta.fields
-        }
-
-    unsafe_response = serialize_external_mcp_router(
-        McpRouter(
-            name=f"unsafe-secret-{uuid.uuid4().hex}",
-            label=canary,
-            transport="http",
-            command=canary,
-            args=[canary],
-            url=f"https://example.test/mcp?key={canary}",
-        )
-    )
-    assert canary not in json.dumps(unsafe_response)
-    unsafe_tool_response = serialize_external_mcp_tool(
-        McpExternalTool(
-            router=McpRouter(name="unsafe-tool-router"),
-            external_name=canary,
-            description=canary,
-            conditions={"note": canary},
-        )
-    )
-    assert canary not in json.dumps(unsafe_tool_response)
-
-    ledger = list(
-        McpToolCall.objects.filter(tool_name="register_external_mcp_connection").values(
-            "request", "response", "error"
-        )
-    )
-    assert ledger
-    assert canary not in json.dumps(ledger)
-    assert canary not in json.dumps(list(AuditEvent.objects.values_list("payload", flat=True)))
-    from django.db import connection
-
-    database_path = Path(connection.settings_dict["NAME"])
-    connection.close()
-    for candidate in (database_path, Path(f"{database_path}-wal"), Path(f"{database_path}-shm")):
-        if candidate.exists():
-            assert canary.encode() not in candidate.read_bytes()
-
-
-def test_external_mcp_http_transport_rejects_non_http_urls(tmp_path: Path) -> None:
-    ensure_runtime_database(tmp_path)
-
-    with pytest.raises(ValueError, match="HTTP or HTTPS URL"):
-        call_test_external_mcp_service(
-            tmp_path,
-            "register_external_mcp_connection",
-            {"name": f"local-file-{uuid.uuid4().hex}", "transport": "http", "url": "file:///etc/hosts"},
-        )
-    with pytest.raises(ValueError, match="unsupported external MCP transport"):
-        call_test_external_mcp_service(
-            tmp_path,
-            "register_external_mcp_connection",
-            {"name": f"unknown-transport-{uuid.uuid4().hex}", "transport": "ftp", "url": "https://example.test"},
-        )
-    with pytest.raises(ValueError, match="URL user-info credentials"):
-        call_test_external_mcp_service(
-            tmp_path,
-            "register_external_mcp_connection",
-            {"name": f"url-user-info-{uuid.uuid4().hex}", "transport": "http", "url": "https://user@example.test"},
-        )
-    with pytest.raises(ValueError, match="URL is invalid"):
-        call_test_external_mcp_service(
-            tmp_path,
-            "register_external_mcp_connection",
-            {"name": f"malformed-url-{uuid.uuid4().hex}", "transport": "http", "url": "http://[invalid"},
-        )
 
 
 class _ValidationAdapter(BrokerAdapter):

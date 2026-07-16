@@ -199,24 +199,17 @@ launcher, attached runtime, DB, registry, and projections denied. A model-side
 `tcx strategies` or `tcx investment-brains` command is blocked with a precise
 MCP/user-terminal handoff instead of reopening that runtime.
 Build cannot authorize global Codex config changes,
-raw credential access, External MCP consent, Git push/publication, direct edits
+raw credential access, Git push/publication, direct edits
 to hooks, grants, the managed `.gitignore`, credential files,
 audit/runtime DB/policy/approval/order state, or financial execution.
-External MCP Codex-config import/register/check/discover/review and consent
-decisions remain separate interactive user-terminal operator actions; Head
-Manager in a Build turn cannot reach them through MCP or its shell CLI. Direct
-user-terminal CLI mutations are likewise separate operator authority.
-Workspace provider approve/revoke, `tcx mcp external import-codex`, External
-MCP register/check/discover/review, aggregate MCP-broker import, and consent
-approve/deny mint one opaque, process-local, single-use service capability only
-after the CLI's TTY and exact-text confirmation. It is bound to the action,
-workspace, and exact resource: provider and reviewed bundle, named Codex MCP
-source, canonical External MCP/broker argument hash, or permission request plus
-decision-reason hash. User-facing services consume the original capability;
-trusted aggregate mutation helpers accept only the sealed service-stage
-capability. The canonical mutation services reject plain direct calls and
-caller-supplied identities; generic CLI, stdio, API, Admin, Build, and
-Automation surfaces cannot receive that capability.
+User-installed Codex MCP servers, skills, plugins, apps, and hooks remain owned
+by Codex and the user. TradingCodex does not install, enable, disable, remove,
+classify, approve, or proxy them. They remain subject to Codex sandbox,
+approval, and organization requirements, but are outside TradingCodex's
+license, trust, audit, data-terms, cost, and execution guarantees.
+Workspace provider approve/revoke still mints one opaque, process-local,
+single-use service capability only after the CLI's TTY and exact-text
+confirmation, bound to the exact workspace, provider, and reviewed bundle.
 
 The generated Build shell is intentionally narrow throughout every active
 Build turn/profile. Native `apply_patch` is the reviewable edit surface; shell
@@ -245,7 +238,7 @@ root workdir. Curl globbing, checkout-on-clone, secret-like/nonregular provider
 reads, and Git object/worktree indirection remain blocked. The hook separately
 proof-gates controlled `trading/` edits and protected workspace MCP mutations,
 keeps generic Write/Edit tools blocked, and blocks credentials, global Codex
-configuration, External MCP lifecycle, remote publication, and order effects.
+configuration, remote publication, and order effects.
 Broader unit, smoke, or build validation and any action that needs protected
 runtime access remain explicit user-terminal/operator or maintainer work.
 
@@ -469,8 +462,8 @@ TradingCodex must block:
 
 - direct live broker requests outside `submit_approved_order` /
   `cancel_submitted_order`
-- direct raw external MCP proxy for broker, execution, secret, or policy/admin
-  tools
+- any claim that a user-installed capability was blocked, reviewed, licensed,
+  audited, or made execution-safe by TradingCodex
 - raw broker API variants such as `broker.raw_api`, `broker_api.*`, and generic live execution actions
 - generic execution-like actions such as `execute_order`; final effects enter
   only through an exact immediate native action or a current hook-proven
@@ -498,73 +491,37 @@ TradingCodex must block:
 - cross-currency order approval without a valid point-in-time FX conversion
 - live execution when workspace config, policy, environment opt-in, enabled live adapter, signed health, trading-enabled connection, live scope, approval hash, explicit confirmation, idempotency, sync, or audit gates are missing
 
-## External MCP Gate
+## User-Installed Codex Capabilities (BYOR)
 
-External MCP servers are useful for broker account data, market data, research
-sources, and future adapter support, but they must enter through the
-TradingCodex External MCP Gate rather than direct Codex exposure.
+Codex exposes user-installed standalone MCP servers and skills, plus installed
+plugin skills, MCP servers, apps, and hooks, to the root agent and fixed
+subagents through its native configuration inheritance. TradingCodex does not
+classify data versus execution tools and applies no blanket tool-name block.
+Codex's sandbox, approval mode, plugin policy, and organization requirements
+remain authoritative.
 
-Use `tcx mcp external import-codex --source workspace|global|any --name
-<server>` from an interactive operator terminal to copy an existing Codex MCP
-entry into the gate in disabled state. The former `tcx build codex-mcp import`
-path is rejected with migration guidance because a Build grant is not operator
-authority. Discovery and config authoring may remain Build work, but importing,
-enabling, probing, and reviewing an External MCP connection do not.
+These capabilities are bring-your-own-risk. Their licenses, data terms,
+credentials, costs, availability, side effects, and outputs are the user's and
+provider's responsibility. TradingCodex neither recommends nor verifies them,
+and its audit and safety guarantees cover only TradingCodex-owned capabilities,
+state, and service actions.
 
-Discovery stores external tool/resource/prompt metadata, schema hash, risk
-category, sensitivity, canonical capability, role scope, proxy mode, and
-lifecycle status. Default posture is fail-closed:
+The read-only `list_codex_capabilities` tool and System page show only kind,
+identifier, label, scope, origin, enabled/availability state, and plugin
+ownership. Inventory collection uses local Codex list commands and installed
+plugin manifests without refreshing a marketplace, using the network, reading
+skill bodies or hook code, or executing plugin content. It never returns MCP
+commands, arguments, URLs, environment values, headers, tokens, credential
+paths, or raw configuration. Partial local metadata produces warnings instead
+of failing the whole request.
 
-- unknown tools are disabled until classified
-- schema-hash drift disables the tool until reviewed
-- secret and policy/admin tools are not proxyable
-- execution tools cannot use direct raw proxy and must map to the approved
-  service-layer connection path
-- account-read tools require explicit role scope and audit because balances,
-  positions, orders, and fills expose private strategy/account data
-- public market-data/news/filing tools may remain lightweight, but they require
-  source/as-of posture, cache/freshness discipline, and source-snapshot or
-  research-artifact handling when used in TradingCodex order, risk, approval,
-  or portfolio decisions
-
-External MCP permission is not execution authorization. Even if an external
-broker order tool is present and reviewed, order submission must still pass the
-TradingCodex order-ticket, approval, duplicate-request, connection, and audit lifecycle.
-
-External MCP launch configuration is reference-only. `env` maps child variable
-names to `env:SOURCE_NAME` references; `credential_ref` accepts reviewed
-environment/keychain-style references. Raw values, URL user-info, and inline
-credential arguments are rejected. HTTP transports accept only explicit
-`http://` or `https://` URLs; local-file and custom URL schemes are rejected.
-MCP registry, router, external-tool, permission, and call-ledger records are
-read-only in Django Admin so edits cannot bypass shared validation and audit.
-References are resolved only for child process launch. Stored requests/results,
-discovery payloads, audit records,
-responses, errors, and stderr logs pass through recursive redaction, and
-external-MCP stderr logs rotate with bounded backups. Any credential ever
-exposed as a raw value must be rotated.
-
-The built-in TradingCodex MCP server auto-approves safe enabled tools to avoid
-buried subagent prompts for routine research and audit writes. It exposes no
-raw submit, cancel, or broker-status-refresh mutation to any role. Head Manager
-alone sees `use_order_turn_grant`, whose handler rejects direct calls without
-the internal proof injected by `PreToolUse` for the exact current turn. Fixed
-roles receive no execution mutation.
-
-Reviewed external MCP calls that expose private account state, write research
-state, use workflow prompts, or map to execution require an explicit user
-permission request before proxy evaluation returns `allow`. The request is
-stored as pending service-layer state and surfaced through the viewer System
-page's Permission requests, `tcx mcp permission list`, and the coordinator-visible MCP
-pending-request list. Approve or deny remains an explicit interactive
-user-terminal operator action. Subagents must stop at
-`waiting_for_user_permission` instead of burying a Codex permission prompt in
-their transcript.
-
-Codex network access may be enabled for public web, filing, disclosure, news,
-and market-data evidence gathering. That access is read-only research support:
-it does not authorize direct broker APIs, raw external broker MCP exposure,
-secret reads, approval bypass, or execution.
+User-installed capabilities cannot mint a TradingCodex principal, write the
+reserved `tcx-*` namespace, create Build/Brain/Strategy/order grants, inject
+protected proof, or bypass protected workspace and service-ledger boundaries.
+TradingCodex prompts continue to route order approval and execution through the
+canonical TradingCodex MCP and service path. An effect performed independently
+by a user-installed capability is not a TradingCodex action and must not be
+described as TradingCodex-blocked, TradingCodex-audited, or TradingCodex-safe.
 
 ## Broker Safety
 

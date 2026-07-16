@@ -10,7 +10,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import textwrap
 import tomllib
 import venv
 from pathlib import Path
@@ -144,37 +143,6 @@ def generated_git_command_from_hook(path: Path) -> Path:
     if sys.platform == "darwin":
         assert os.path.normcase(os.path.abspath(command)) != os.path.normcase("/usr/bin/git")
     return command
-
-
-def external_mcp_fixture(python: Path, cwd: Path, env: dict[str, str]) -> None:
-    env = {**env, "DJANGO_SETTINGS_MODULE": "tradingcodex_service.settings", "TRADINGCODEX_WORKSPACE_ROOT": str(cwd)}
-    script = textwrap.dedent(
-        """
-        import json
-        import sys
-        from types import SimpleNamespace
-        import django
-        django.setup()
-        from apps.mcp.services import _stdio_mcp_rpc
-
-        server = '''
-        import json, sys
-        for line in sys.stdin:
-            request = json.loads(line)
-            if 'id' not in request:
-                continue
-            method = request.get('method')
-            result = {'protocolVersion':'2025-03-26','serverInfo':{'name':'native-wheel-fixture','version':'1'}} if method == 'initialize' else {'tools':[]}
-            print(json.dumps({'jsonrpc':'2.0','id':request['id'],'result':result}), flush=True)
-        '''
-        router = SimpleNamespace(name='native-wheel-fixture', command=sys.executable, args=['-u','-c',server], env={}, credential_ref='')
-        responses = _stdio_mcp_rpc(router, ['initialize', 'tools/list'], timeout=10)
-        assert responses['initialize']['result']['serverInfo']['name'] == 'native-wheel-fixture'
-        assert responses['tools/list']['result']['tools'] == []
-        print(json.dumps({'external_mcp_stdio':'ok'}))
-        """
-    )
-    run([str(python), "-c", script], cwd=cwd, env=env)
 
 
 def main() -> None:
@@ -441,8 +409,6 @@ def main() -> None:
             input_text='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
         )
         assert json.loads(mcp.stdout)["result"]["tools"]
-        external_mcp_fixture(python, workspace, environment)
-
         port = free_loopback_port()
         addr = f"127.0.0.1:{port}"
         try:

@@ -71,6 +71,16 @@ The source of truth is the existing file-native record:
 Existing events are not edited to make history look cleaner. Corrections,
 revisions, supersession, disputes, and retirement are new records.
 
+The rebuildable v2 artifact catalog provides a discovery projection across
+these file-native records without becoming Decision Memory itself. New
+type-specific service output projects with full canonical identity metadata;
+older files remain unchanged and may project as `legacy_partial`. Malformed
+records are quarantined as `invalid`. A point-in-time catalog query uses each
+type's explicit `knowledge_cutoff` or `known_at` field and excludes missing,
+malformed, or later values, so legacy discovery does not silently become
+historical provenance. The catalog can be discarded and recreated from source
+artifacts and verified forecast-ledger state.
+
 ### Time contract
 
 Decision Memory needs more than a document `updated_at`. Records should

@@ -37,8 +37,8 @@ follow it.
   on every run. File-mutating work also requires `trading-build`; prefer an
   isolated worktree or workspace and retain a reviewable diff.
 - Keep direct edits and commands workspace-local. Use typed TradingCodex
-  MCP services for connector state. External MCP lifecycle changes remain a
-  separate user-terminal operator workflow.
+  MCP services for connector state. User-installed Codex capabilities remain
+  outside Build ownership.
 - Keep local work in the native Build lane: use `apply_patch` for every edit.
   Shell access is an intentionally narrow review lane: credential-free public
   HTTP(S) GET/HEAD, enumerated read-only HTTPS Git retrieval, limited
@@ -78,26 +78,27 @@ blocker and stop. Do not create another TradingCodex permission state.
    still requires the user's explicit request. Do not run a helper, interpreter,
    test runner, or build system around that lifecycle command; if broader
    validation is needed, return an explicit user-terminal or maintainer step.
-5. For Codex config and MCP customization, use `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} build status`, `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} build codex-mcp discover`, and workspace-scoped `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} build codex-mcp add`. Importing a discovered entry into the External MCP Gate is not Build work; stop with the exact interactive user-terminal command `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} mcp external import-codex --source workspace|global|any --name <server>`. Use `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} mcp permission list` only to surface pending external consent requests; only the user may approve or deny them.
-6. Never register, probe, discover, or review an External MCP server from Head Manager in a Build turn. Prepare workspace-local config if requested, then stop with the exact user-terminal `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} mcp external ...` next step. Do not expose unmanaged external MCP tools directly to subagents.
-7. For broker connectors, inspect providers with the read-only provider-list
+5. Do not install, remove, enable, disable, recommend, or classify user-owned
+   Codex skills, plugins, apps, hooks, or MCP servers. `$tcx-server` may inspect
+   their secret-free native inventory; configuration remains owned by Codex.
+6. For broker connectors, inspect providers with the read-only provider-list
    tool. If the provider is already installed and available after any required
    restart, call `render_broker_connector_scaffold`. It returns target content
    plus content-addressed preimage existence/hash/size metadata and performs no
    workspace write; it never returns existing file content. Verify those
    preimages and create or update the returned files with `apply_patch`; never
    ask an MCP scaffold tool to write them. Use only the build-protected DB tools
-   `register_broker_connector`, `validate_broker_connector_build`, and
-   `record_broker_mapping_review` for service state. `connect` and the
+   `register_broker_connector` and `validate_broker_connector_build` for
+   service state. `connect` and the
    write-style `scaffold` command remain explicit user-terminal operator flows
    and are not agent MCP tools; do not invoke their CLI equivalents from the
    agent shell.
-8. If the requested provider is missing, develop and approve the provider
+7. If the requested provider is missing, develop and approve the provider
    before rendering or registering a connector. Create a
    `provider_development_required` connector first only when the user explicitly
    asks for scaffold-only output; do not leave one behind as apparent progress
    for an implementation or connection request.
-9. Fetch provider source only from credential-free public HTTP(S) or HTTPS Git
+8. Fetch provider source only from credential-free public HTTP(S) or HTTPS Git
    endpoints and only into
    `$TRADINGCODEX_SCRATCH/provider-sources/<provider-id>/`. GET/HEAD and public
    Git clone/fetch/ls-remote are retrieval; URL userinfo, auth/cookie/API-key
@@ -121,7 +122,7 @@ blocker and stop. Do not create another TradingCodex permission state.
    the existing real provider directory without `--create-dirs`.
    Inspect, hash, diff, and statically validate staged source; never execute or
    install it.
-10. When external material informed a provider, include
+9. When external material informed a provider, include
     `source-provenance.json` in the final bundle. Record `schema_version: 1` and a
     `sources` entry for each source with `kind` (`https` or `git`), a public
     credential-free HTTPS `url` without userinfo/query/fragment, an optional
@@ -133,12 +134,12 @@ blocker and stop. Do not create another TradingCodex permission state.
     file. Never copy `.git`, `.hg`, `.svn`, credential/key/`.env` material, or
     symlinks into a provider bundle. Write every final provider file with
     `apply_patch`, not a downloader, redirect, copy, or move into `trading/`.
-11. Store only credential references, env key names, and secret schemas. Never
+10. Store only credential references, env key names, and secret schemas. Never
     request or persist raw credentials. Review source inertly, use only the exact
     isolated `python -I -S -m py_compile <provider-python-files...>` form for
     syntax checking, and use allowlisted provider inspection for static contract
     validation before approval; do not import provider code.
-12. After final provider files are ready, run the trusted read-only
+11. After final provider files are ready, run the trusted read-only
     `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} connectors inspect-provider <provider-id>`
     command. In Build it may return `inspection_scope=bundle_only` with
     `approval_status=service_check_required` because the central ledger remains
@@ -155,10 +156,7 @@ blocker and stop. Do not create another TradingCodex permission state.
     reviewed bytes but executes no code. Report `service_restart_required` and
     stop until the service restarts. Connector render, registration, and
     validation then resume in a fresh Build turn.
-13. If an external MCP call needs user consent, stop at
-    `waiting_for_user_permission` and surface the pending request; do not bury
-    the prompt in a subagent transcript.
-14. In the generated Build turn, validate only through the trusted allowlisted
+12. In the generated Build turn, validate only through the trusted allowlisted
     `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} doctor`/inspection paths, limited
     workspace `pwd`/`cat`/`ls`, inert provider reads/hash/diff/Git inspection,
     and exact isolated `python -I -S -m py_compile` for admitted provider or
@@ -178,7 +176,7 @@ blocker and stop. Do not create another TradingCodex permission state.
   managed lifecycle edits. A non-writable Automation runtime remains limited
   to rendering/inspection, temporary computation, and specifically
   proof-protected canonical DB calls.
-- Do not use the grant for global Codex config, raw credential access, External MCP lifecycle or consent decisions, provider-source approval, Git push/publication, or direct edits to hooks, grants, managed `.gitignore`, credential files, runtime DB, audit, approval, policy, or execution state.
+- Do not use the grant for global Codex config, user-owned Codex capability management, raw credential access, provider-source approval, Git push/publication, or direct edits to hooks, grants, managed `.gitignore`, credential files, runtime DB, audit, approval, policy, or execution state.
 - Do not directly edit generated core harness files, hooks, workspace templates,
   fixed-role configuration, or service-owned projection blocks. Use the
   supported workspace refresh or managed lifecycle service instead.

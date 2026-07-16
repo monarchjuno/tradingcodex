@@ -65,7 +65,7 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 | Document | Owns |
 | --- | --- |
 | [guardrails.md](./guardrails.md) | Guardrail taxonomy: guidance, enforcement, and information barriers. |
-| [safety-policy-and-execution.md](./safety-policy-and-execution.md) | Permission checks, approval rules, execution lifecycle, adapter boundary, external MCP gate, blocked actions, and secret handling. |
+| [safety-policy-and-execution.md](./safety-policy-and-execution.md) | Permission checks, approval rules, execution lifecycle, adapter boundary, BYOR Codex capability boundary, blocked actions, and secret handling. |
 | [improvement-loop.md](./improvement-loop.md) | Workflow quality, research memory, improve records, skill evolution, postmortem review, validation feedback, and quality-learning loops. |
 
 ## Implementation And Operations Documents
@@ -73,7 +73,7 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 | Document | Owns |
 | --- | --- |
 | [system-architecture.md](./system-architecture.md) | Django modular monolith, central DB ownership, app boundaries, runtime planes, service-layer use cases, and core models. |
-| [interfaces-and-surfaces.md](./interfaces-and-surfaces.md) | Product web, Django Admin, Django Ninja API, MCP boundary, CLI, generated wrapper behavior, and external MCP surface. |
+| [interfaces-and-surfaces.md](./interfaces-and-surfaces.md) | Product web, Django Admin, Django Ninja API, MCP boundary, CLI, generated wrapper behavior, and read-only Codex capability inventory. |
 | [generated-workspaces.md](./generated-workspaces.md) | `tcx attach`, `tcx update`, generated files, project-scoped MCP config, hooks, workspace provenance, profile scope, and template rules. |
 | [investment-brain-plugins.md](./investment-brain-plugins.md) | Product plan for high-freedom community TradingCodex Investment Brain plugins, Codex-skill projection, layer/override semantics, Decision Memory boundaries, and Git-managed user workspaces. |
 | [validation-and-test-plan.md](./validation-and-test-plan.md) | Required validation commands, unit/API/generator/smoke coverage, MCP smokes, broker provider smokes, routing scenarios, and release-sensitive checks. |
@@ -89,7 +89,7 @@ If these layers disagree, treat `docs/` as the durable product intent and fix th
 | User-facing request scoping, investor-context suitability, plain-English output, or professional finance framing | `financial-workflow-references.md`, `interfaces-and-surfaces.md`, `roles-skills-and-workflows.md` |
 | Role roster, model policy, head-manager dispatch, skills, Investment Brain plugins, strategy behavior, routing, information barriers, or handoff quality | `release-readiness.md`, `investment-brain-plugins.md`, `codex-native-orchestration.md`, `roles-skills-and-workflows.md`, `harness.md`, `generated-workspaces.md`, `core-concepts-and-rules.md` |
 | Research or decision memory, source snapshots, ResearchSpec/replay/ExperimentRun, forecast/calibration ledgers, postmortem lessons, search indexes, readiness labels, artifact paths, report quality, or markdown preview | `decision-memory.md`, `research-memory-and-artifacts.md`, `improvement-loop.md`, `codex-native-orchestration.md` |
-| Policy, permissions, approvals, idempotency, execution, adapters, broker safety, external MCP gate, or secret handling | `safety-policy-and-execution.md`, `guardrails.md`, `core-concepts-and-rules.md` |
+| Policy, permissions, approvals, idempotency, execution, adapters, broker safety, BYOR capabilities, or secret handling | `safety-policy-and-execution.md`, `guardrails.md`, `core-concepts-and-rules.md` |
 | Django apps, models, service-layer contracts, central DB ownership, or runtime topology | `system-architecture.md` |
 | Product web, Admin, REST, MCP, CLI, or generated wrapper behavior | `interfaces-and-surfaces.md` |
 | Workspace templates, bootstrap, hooks, project MCP config, generated files, or update behavior | `generated-workspaces.md` |

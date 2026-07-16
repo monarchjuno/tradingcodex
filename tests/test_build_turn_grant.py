@@ -11,7 +11,6 @@ import pytest
 from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application import build_gateway, skill_invocations
 from tradingcodex_service.application.build_gateway import (
-    BUILD_OPERATOR_ONLY_MCP_TOOLS,
     BUILD_PROTECTED_MCP_TOOLS,
     BUILD_TURN_PROOF_FIELD,
     MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES,
@@ -34,17 +33,8 @@ from tradingcodex_service.application.runtime import (
 
 EXPECTED_BUILD_MCP_TOOLS = frozenset(
     {
-        "record_broker_mapping_review",
         "register_broker_connector",
         "validate_broker_connector_build",
-    }
-)
-EXPECTED_OPERATOR_ONLY_MCP_TOOLS = frozenset(
-    {
-        "check_external_mcp_connection",
-        "discover_external_mcp_connection",
-        "register_external_mcp_connection",
-        "review_external_mcp_tool",
     }
 )
 EXPECTED_MANAGED_MCP_TOOL_SCOPES = {
@@ -1122,30 +1112,3 @@ def test_stdio_schema_failure_releases_started_build_reservation(workspace: Path
         "register_broker_connector",
         {"provider_id": "paper", "broker_id": "demo", "credential_ref": "env:SCHEMA_TEST"},
     )
-
-
-def test_stdio_rejects_operator_only_external_mcp_tools_before_dispatch(
-    workspace: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    from tradingcodex_service import mcp_runtime
-
-    assert BUILD_OPERATOR_ONLY_MCP_TOOLS == EXPECTED_OPERATOR_ONLY_MCP_TOOLS
-
-    def fail_dispatch(*args, **kwargs):  # pragma: no cover - assertion helper
-        raise AssertionError("operator-only stdio call reached raw dispatch")
-
-    monkeypatch.setattr(mcp_runtime, "raw_call_tool", fail_dispatch)
-    for index, tool_name in enumerate(sorted(EXPECTED_OPERATOR_ONLY_MCP_TOOLS)):
-        response = mcp_runtime.handle_mcp_rpc(
-            workspace,
-            {
-                "jsonrpc": "2.0",
-                "id": index,
-                "method": "tools/call",
-                "params": {"name": tool_name, "arguments": {}},
-            },
-            transport_principal="head-manager",
-        )
-        assert response is not None
-        assert "interactive operator authority" in response["error"]["message"]

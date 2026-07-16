@@ -23,7 +23,7 @@ When source behavior changes, update the relevant `docs/` page. Update `guideboo
 | Change `tcx attach/update`, templates, generated files, or projection | [Generated Workspaces](generated-workspaces.md) |
 | Change React viewer/web/API/MCP/CLI behavior, models, research/decision memory, or investor context | [Interfaces And Data](interfaces-and-data.md) |
 | Change the public task-first guide or its navigation | `guidebook/`, the owning `docs/` page, and `docs/deployment.md` |
-| Change policy, approval, broker, execution, external MCP, or secrets | [Safety And Execution](safety-and-execution.md) |
+| Change policy, approval, broker, execution, BYOR Codex capabilities, or secrets | [Safety And Execution](safety-and-execution.md) |
 | Choose validation before handoff | [Development And Validation](development-and-validation.md) |
 
 ## Setup Guard

@@ -159,7 +159,7 @@ grant is limited to its matching native source/staging path and protected MCP
 tool. The generated lifecycle launcher and attached runtime remain denied in
 Research. Brain management always uses an explicit
 workspace-local source or public credential-free HTTPS Git source and
-never implies global config, raw credential access, External MCP lifecycle or consent,
+never implies global config, raw credential access, user capability management,
 source-repository or Git-publication actions. It may create live-capable
 provider code. A missing provider is implemented and statically validated
 before connector rendering; a `provider_development_required` scaffold is
@@ -173,9 +173,9 @@ idempotency, sync, and audit gates.
 
 Persistent `tcx mode` is retired. Its compatibility status is inert, old
 `.tradingcodex/runtime/mode.json` state is ignored, and `tcx mode set ...`
-cannot enable Build. External MCP lifecycle/consent and provider-source approval
-are separate interactive user-terminal operator actions; user-terminal CLI
-mutations remain separate operator authority.
+cannot enable Build. User capability management belongs to Codex, while
+provider-source approval is a separate interactive user-terminal operator
+action; user-terminal CLI mutations remain separate operator authority.
 
 `tcx-order-submit` and `tcx-order-cancel` are native-only exact
 action protocols, not model procedures. Their bundles disable implicit

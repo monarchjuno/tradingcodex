@@ -1,26 +1,15 @@
 from __future__ import annotations
 
-import argparse
 import os
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.customization import import_codex_mcp_server, replace_managed_block
 from tradingcodex_service.application.common import atomic_write_text, workspace_launcher_command
-from tradingcodex_service.application.operator_authority import (
-    EXTERNAL_MCP_PERMISSION_APPROVE,
-    EXTERNAL_MCP_PERMISSION_DENY,
-    EXTERNAL_MCP_IMPORT_CODEX,
-    _issue_operator_authority,
-    external_mcp_codex_import_resource,
-    external_mcp_permission_resource,
-    external_mcp_operator_resource,
-)
 from tradingcodex_service.application.runtime import ensure_runtime_database, tradingcodex_db_path
 from tradingcodex_service.mcp_runtime import SAFE_HOME_TOOL_NAMES, TOOL_REGISTRY, call_mcp_tool, default_principal_for_tool
-from tradingcodex_cli.commands.utils import _list_option, _option_value, _validate_options, print_json
+from tradingcodex_cli.commands.utils import _list_option, _option_value, print_json
 from tradingcodex_cli.generator import resolve_package_runner
 from tradingcodex_cli.package_source import (
     EXECUTABLE_SOURCE_ENV,
@@ -43,20 +32,11 @@ def mcp(root: Path, argv: list[str]) -> None:
     if argv and argv[0] == "ledger":
         mcp_ledger(root, argv[1:])
         return
-    if argv and argv[0] == "external":
-        mcp_external(root, argv[1:])
-        return
-    if argv and argv[0] == "permission":
-        mcp_permission(root, argv[1:])
-        return
     if argv and argv[0] == "install-global":
         install_global_mcp(argv[1:])
         return
     if not argv or argv[0] != "call":
-        raise ValueError(
-            "Usage: tcx mcp call <tool> [tool args] | tcx mcp external <action> [options] | "
-            "tcx mcp permission <list|approve|deny> [options] | tcx mcp ledger [--tool name] | tcx mcp stdio"
-        )
+        raise ValueError("Usage: tcx mcp call <tool> [tool args] | tcx mcp ledger [--tool name] | tcx mcp stdio")
     tool = argv[1] if len(argv) > 1 else ""
     if tool == "promote_lesson":
         raise PermissionError(
@@ -232,207 +212,6 @@ def mcp_ledger(root: Path, args: list[str]) -> None:
     })
 
 
-def mcp_external(root: Path, args: list[str]) -> None:
-    if not args or args[0] in {"--help", "-h", "help"}:
-        print_external_help()
-        return
-    action = args[0]
-    rest = args[1:]
-    if action == "import-codex":
-        parser = argparse.ArgumentParser(prog="tcx mcp external import-codex")
-        parser.add_argument("--source", choices=["workspace", "global", "any"], default="workspace")
-        parser.add_argument("--name", required=True)
-        parsed = parser.parse_args(rest)
-        subject = f"{parsed.source}:{parsed.name}"
-        _require_operator_confirmation(action, subject)
-        operator_authority = _issue_operator_authority(
-            root,
-            action=EXTERNAL_MCP_IMPORT_CODEX,
-            resource=external_mcp_codex_import_resource(parsed.name, parsed.source),
-        )
-        print_json(
-            import_codex_mcp_server(
-                root,
-                name=parsed.name,
-                source=parsed.source,
-                operator_authority=operator_authority,
-            )
-        )
-        return
-    _validate_options(
-        rest,
-        value_options={
-            "--allowed-roles", "--args", "--capability", "--category", "--command",
-            "--credential-ref", "--env", "--external-name", "--label", "--limit", "--name",
-            "--primitive", "--proxy-mode", "--review-status", "--risk-level",
-            "--sensitivity", "--timeout", "--tool-id", "--transport", "--url",
-        },
-        flag_options={"--disabled", "--enabled"},
-    )
-    payload: dict[str, Any] = {
-        "name": _option_value(rest, "--name"),
-        "label": _option_value(rest, "--label"),
-        "transport": _option_value(rest, "--transport"),
-        "command": _option_value(rest, "--command"),
-        "url": _option_value(rest, "--url"),
-        "credential_ref": _option_value(rest, "--credential-ref"),
-        "timeout": _float_option(rest, "--timeout"),
-        "tool_id": _int_option(rest, "--tool-id"),
-        "external_name": _option_value(rest, "--external-name"),
-        "primitive": _option_value(rest, "--primitive"),
-        "category": _option_value(rest, "--category"),
-        "risk_level": _option_value(rest, "--risk-level"),
-        "sensitivity": _option_value(rest, "--sensitivity"),
-        "canonical_capability": _option_value(rest, "--capability"),
-        "proxy_mode": _option_value(rest, "--proxy-mode"),
-        "review_status": _option_value(rest, "--review-status"),
-        "limit": _int_option(rest, "--limit"),
-    }
-    if "--enabled" in rest:
-        payload["enabled"] = True
-    if "--disabled" in rest:
-        payload["enabled"] = False
-    args_value = _option_value(rest, "--args")
-    if args_value:
-        payload["args"] = _parse_json_or_split(args_value)
-    env_value = _option_value(rest, "--env")
-    if env_value:
-        payload["env"] = json.loads(env_value)
-    roles_value = _option_value(rest, "--allowed-roles")
-    if roles_value:
-        payload["allowed_roles"] = [item.strip() for item in roles_value.split(",") if item.strip()]
-    payload = {key: value for key, value in payload.items() if value not in (None, "")}
-    tool_by_action = {
-        "list": "list_external_mcp_connections",
-        "register": "register_external_mcp_connection",
-        "check": "check_external_mcp_connection",
-        "discover": "discover_external_mcp_connection",
-        "review-tool": "review_external_mcp_tool",
-    }
-    tool = tool_by_action.get(action)
-    if not tool:
-        raise ValueError(f"unknown external MCP action: {action}")
-    operator_authority = None
-    if action != "list":
-        subject = str(
-            payload.get("name")
-            or payload.get("external_name")
-            or (f"tool-{payload['tool_id']}" if payload.get("tool_id") is not None else "external-mcp")
-        )
-        _require_operator_confirmation(action, subject)
-        operator_authority = _issue_operator_authority(
-            root,
-            action=tool,
-            resource=external_mcp_operator_resource(tool, payload),
-        )
-    result = call_mcp_tool(
-        root,
-        tool,
-        payload,
-        transport_principal="head-manager",
-        operator_authority=operator_authority,
-    )
-    print_json(result)
-    if result.get("status") in {"check_failed", "disabled", "rejected"}:
-        sys.exit(1)
-
-
-def mcp_permission(root: Path, args: list[str]) -> None:
-    """Review external MCP consent requests from the explicit operator CLI."""
-
-    if not args or args[0] in {"--help", "-h", "help"}:
-        print_permission_help()
-        return
-    action = args[0]
-    rest = args[1:]
-    if action == "list":
-        parser = argparse.ArgumentParser(prog="tcx mcp permission list")
-        parser.add_argument("--status", default="pending")
-        parser.add_argument("--limit", type=int, default=50)
-        parsed = parser.parse_args(rest)
-        ensure_runtime_database(root)
-        from apps.mcp.services import list_external_mcp_permission_requests
-
-        print_json(
-            list_external_mcp_permission_requests(
-                root,
-                {"status": parsed.status, "limit": parsed.limit},
-            )
-        )
-        return
-    if action not in {"approve", "deny"}:
-        raise ValueError("Usage: tcx mcp permission list|approve|deny")
-    parser = argparse.ArgumentParser(prog=f"tcx mcp permission {action}")
-    parser.add_argument("--request-id", required=True)
-    parser.add_argument("--reason", default="")
-    parsed = parser.parse_args(rest)
-    payload = {
-        "request_id": parsed.request_id,
-        "reason": parsed.reason,
-    }
-    _require_operator_confirmation(action, parsed.request_id)
-    operator_action = (
-        EXTERNAL_MCP_PERMISSION_APPROVE
-        if action == "approve"
-        else EXTERNAL_MCP_PERMISSION_DENY
-    )
-    operator_authority = _issue_operator_authority(
-        root,
-        action=operator_action,
-        resource=external_mcp_permission_resource(
-            operator_action,
-            parsed.request_id,
-            parsed.reason,
-        ),
-    )
-    ensure_runtime_database(root)
-    from apps.mcp.services import (
-        approve_external_mcp_permission_request,
-        deny_external_mcp_permission_request,
-    )
-
-    if action == "approve":
-        print_json(
-            approve_external_mcp_permission_request(
-                root,
-                payload,
-                operator_authority=operator_authority,
-            )
-        )
-        return
-    print_json(
-        deny_external_mcp_permission_request(
-            root,
-            payload,
-            operator_authority=operator_authority,
-        )
-    )
-
-
-def _require_operator_confirmation(action: str, subject: str) -> None:
-    """Require an explicit human terminal confirmation for operator-only state."""
-
-    if not sys.stdin.isatty():
-        raise PermissionError(
-            "this operator action requires an interactive user terminal; it cannot run from an agent or automation"
-        )
-    expected = f"{action}:{subject}"
-    entered = input(
-        f"Operator-only action `{action}` for `{subject}`. Type `{expected}` to continue: "
-    ).strip()
-    if entered != expected:
-        raise PermissionError("operator confirmation did not match; no change was made")
-
-
-def _parse_json_or_split(value: str) -> Any:
-    try:
-        return json.loads(value)
-    except Exception:
-        if os.name == "nt":
-            raise ValueError("on Windows, external MCP args must be a JSON array")
-        return [item for item in value.split() if item]
-
-
 def _int_option(args: list[str], name: str) -> int | None:
     value = _option_value(args, name)
     return int(value) if value not in (None, "") else None
@@ -441,6 +220,16 @@ def _int_option(args: list[str], name: str) -> int | None:
 def _float_option(args: list[str], name: str) -> float | None:
     value = _option_value(args, name)
     return float(value) if value not in (None, "") else None
+
+
+def _replace_managed_block(existing: str, block: str, name: str) -> str:
+    start = f"# BEGIN {name}"
+    end = f"# END {name}"
+    if start in existing and end in existing:
+        prefix, remainder = existing.split(start, 1)
+        _, suffix = remainder.split(end, 1)
+        return f"{prefix.rstrip()}\n\n{block.strip()}\n{suffix.lstrip()}"
+    return f"{existing.rstrip()}\n\n{block.strip()}\n"
 
 
 def install_global_mcp(args: list[str]) -> None:
@@ -453,7 +242,7 @@ def install_global_mcp(args: list[str]) -> None:
         return
     config_path.parent.mkdir(parents=True, exist_ok=True)
     existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
-    updated = replace_managed_block(existing, block, "TradingCodex home MCP")
+    updated = _replace_managed_block(existing, block, "TradingCodex home MCP")
     atomic_write_text(config_path, updated)
     print_json({
         "status": "installed",
@@ -501,8 +290,6 @@ def print_mcp_help() -> None:
 
 Usage:
   {launcher} mcp call <tool> [--principal <role>] [tool args]
-  {launcher} mcp external <list|import-codex|register|check|discover|review-tool> [options]
-  {launcher} mcp permission <list|approve|deny> [options]
   {launcher} mcp ledger [--tool <name>] [--principal <role>] [--status ok]
   {launcher} mcp install-global --safe
   {launcher} mcp stdio
@@ -513,49 +300,9 @@ Examples:
   {launcher} mcp call preview_order_translation --principal head-manager --broker-id <broker-id> --symbol <symbol> --side buy --order-type market --quote-notional 25
   {launcher} mcp call create_order_ticket --principal portfolio-manager --natural-language "buy 5 AAPL limit 180"
   {launcher} mcp call run_order_checks --principal portfolio-manager --ticket-id ticket-id
-  {launcher} mcp external import-codex --source workspace --name broker-mcp
-  {launcher} mcp external register --name broker-mcp --transport stdio --command uvx --args '["broker-mcp"]' --env '{{"API_KEY":"env:BROKER_API_KEY"}}' --enabled
-  {launcher} mcp external discover --name broker-mcp
-  {launcher} mcp external review-tool --tool-id 1 --proxy-mode summary_only --allowed-roles head-manager --enabled
-  {launcher} mcp permission list --status pending
-  {launcher} mcp permission approve --request-id 1 --reason "Reviewed"
   {launcher} mcp ledger --tool create_research_artifact --status ok
 
 Connector registration is Build-protected and intentionally unavailable from
 generic `mcp call`. Start a root turn whose first meaningful line invokes
 `$tcx-build` instead.
-""")
-
-
-def print_external_help() -> None:
-    launcher = workspace_launcher_command()
-    print(f"""TradingCodex External MCP Gate
-
-Usage:
-  {launcher} mcp external list [--name router]
-  {launcher} mcp external import-codex --source workspace|global|any --name server
-  {launcher} mcp external register --name router --transport stdio --command uvx --args '["broker-mcp"]' [--env '{{"TARGET":"env:SOURCE"}}'] [--credential-ref env:NAME] [--enabled]
-  {launcher} mcp external register --name router --transport http --url http://127.0.0.1:9000/mcp [--enabled]
-  {launcher} mcp external check --name router
-  {launcher} mcp external discover --name router
-  {launcher} mcp external review-tool --tool-id id --proxy-mode read_only --allowed-roles head-manager --enabled
-  {launcher} mcp external review-tool --name router --external-name tool --proxy-mode read_only --allowed-roles head-manager --enabled
-
-`import-codex`, `register`, `check`, `discover`, and `review-tool` are
-operator-only. They require an interactive user terminal and an exact typed
-confirmation; agents and Scheduled Tasks cannot perform them.
-""")
-
-
-def print_permission_help() -> None:
-    launcher = workspace_launcher_command()
-    print(f"""TradingCodex External MCP Permission
-
-Usage:
-  {launcher} mcp permission list [--status pending|approved|denied|expired|all] [--limit 50]
-  {launcher} mcp permission approve --request-id <id> [--reason <text>]
-  {launcher} mcp permission deny --request-id <id> [--reason <text>]
-
-`approve` and `deny` require an interactive user terminal and an exact typed
-confirmation. They cannot run from an agent or Scheduled Task.
 """)

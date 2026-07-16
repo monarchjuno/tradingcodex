@@ -95,15 +95,6 @@ needs revision, or is blocked.
 | **Django service** | Enforces artifact identity, policy, approval, broker, idempotency, execution, and audit rules through shared application services. | It does not replace Codex with a semantic router, preset team, or stored workflow DAG. |
 | **Read-only viewer** | Lets you browse Library artifacts, Skills, System posture, and registered workspaces. | It does not launch Codex, write workspace files, or mutate orders, brokers, skills, or policy. |
 
-```mermaid
-flowchart LR
-  question[Your mandate] --> codex[Native Codex task]
-  codex --> team[Head Manager and fixed-role evidence]
-  team --> artifacts[Authenticated research artifacts]
-  artifacts --> viewer[Read-only Library and System viewer]
-  artifacts --> service[Policy, approval, broker, and audit gates]
-```
-
 ## What You Keep
 
 TradingCodex keeps the work inspectable after the chat ends:
@@ -128,6 +119,11 @@ that state in prompts or workspace files.
 - Fixed roles have bounded tools and handoff responsibilities. A final order
   path is available only from an exact root-native protocol, never from the
   viewer, a subagent, public REST, generic CLI, or direct MCP call.
+- User-installed MCP servers, skills, and plugins are BYOR native Codex
+  capabilities. TradingCodex neither recommends nor verifies them; their
+  licenses, data terms, costs, and side effects remain the user/provider's
+  responsibility, and TradingCodex guarantees cover only its own capabilities,
+  state, and actions.
 - Raw credentials do not belong in prompts, workspace files, reports, API/MCP
   output, or audit data.
 

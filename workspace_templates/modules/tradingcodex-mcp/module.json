@@ -19,7 +19,6 @@
       "mcp.tradingcodex.render_broker_connector_scaffold",
       "mcp.tradingcodex.register_broker_connector",
       "mcp.tradingcodex.validate_broker_connector_build",
-      "mcp.tradingcodex.record_broker_mapping_review",
       "mcp.tradingcodex.record_audit_event"
     ]
   },

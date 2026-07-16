@@ -29,9 +29,10 @@ filesystem denials and permits credential-free public HTTP(S) and HTTPS Git
 retrieval through the native limited-public network boundary. It blocks
 authenticated requests, uploads, local/private destinations, package installs,
 fetch-to-execute pipelines, remote mutation, and broker access. Neither profile
-grants order, approval, broker, External MCP, or canonical state authority;
+grants order, approval, broker, or canonical TradingCodex state authority;
 those effects remain typed service calls with their own proofs and policy
-checks. Fixed roles inherit the active Research profile and must not be
+checks. User-installed Codex capabilities are outside that guarantee. Fixed
+roles inherit the active Research profile and must not be
 dispatched from a Build turn.
 
 Brain and Strategy management stays in `trading-research`. A `$tcx-brain` or
@@ -128,19 +129,17 @@ browser. Use an external browser only on an explicit user request, and never use
 the shell to launch either browser. Do not begin an analysis run or infer a
 change without trusted comparison evidence.
 
-Use `$tcx-server` for operate-plane status, recovery, MCP setup, update readiness, viewer URL, and safe broker connector inspection.
+Use `$tcx-server` for operate-plane status, recovery, read-only Codex capability inventory, update readiness, viewer URL, and safe broker connector inspection.
 
 Use `$tcx-build` only when it is the first meaningful invocation of the
 original root prompt. Accept either the plain token or a Markdown skill link
 whose label and target match the projected workspace skill, with the concrete
 request on that line or later. It authorizes current-turn workspace-local self-update,
-managed optional-role-skill lifecycle work, connector implementation, workspace
-Codex config, and managed MCP config preparation. Generated core harness files,
+managed optional-role-skill lifecycle work and connector implementation. Generated core harness files,
 hooks, templates, fixed-role configuration, and service-owned projection blocks
-are not direct-edit targets. External MCP registration,
-probing, discovery, review, and consent remain explicit user-terminal operator
-actions. Do not expose unmanaged external MCP servers directly to subagents and
-do not infer a Brain source or marketplace. A follow-up mutation needs a new
+are not direct-edit targets. User-installed Codex capabilities remain visible
+through native Codex and are not Build-managed, classified, recommended, or
+audited by TradingCodex. Do not infer a Brain source or marketplace. A follow-up mutation needs a new
 exact Build turn. Codex platform Plan mode cannot issue or use a Build grant;
 ordinary user-owned files outside `trading/` are not Build work. Use a new root
 `trading-build` turn when the task requires controlled `trading/` writes or a
@@ -331,11 +330,11 @@ fetch-to-execute pipelines, and remote mutation. Stage provider sources only
 under `$TRADINGCODEX_SCRATCH/provider-sources/<provider-id>/` and do not execute
 them. Trusted
 workspace-launcher commands remain allowlisted and proof-gated. Do not use the
-Build grant for global config, raw credentials,
-External MCP consent, Git publication, policy, approval, provider-source
+Build grant for global config, user-owned Codex capability management, raw credentials,
+Git publication, policy, approval, provider-source
 approval, or order execution. Render connector files through the read-only
 content-addressed tool and apply them natively. Use only connector registration,
-validation, and mapping review as build-protected DB calls; direct connector
+and validation as build-protected DB calls; direct connector
 `connect` and write-style `scaffold` remain user-terminal operations. After
 provider-file changes, report the exact user-terminal approval command, service
 restart, and revalidation requirement.
@@ -461,7 +460,7 @@ credential references and secret schemas only.
 - Do not paste full strategy libraries, artifacts, role manuals, source dumps, or repeated guardrails into briefs.
 - Skills are procedures. `$tcx-build` is only deterministic current-turn Build
   intent for the hook; it does not grant role eligibility, Codex filesystem
-  permission, approval, execution, External MCP consent, or policy overrides.
+  permission, approval, execution, user-owned capability control, or policy overrides.
 
 # Coding Style
 
