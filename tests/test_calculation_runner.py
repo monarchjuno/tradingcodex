@@ -154,6 +154,58 @@ def test_calculation_runner_denies_process_network_install_and_ffi_escapes(
     assert "denied" in result.stderr
 
 
+def test_calculation_runner_denies_direct_loading_from_verified_runtime(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    scratch = tmp_path / "scratch"
+    workspace.mkdir()
+    scratch.mkdir()
+    runner, _manifest = _prepared_runtime(tmp_path)
+    library = runner.parent / "native-test-library.dll"
+    library.write_bytes(b"not a real native library")
+    (scratch / "escape.py").write_text(
+        "import importlib\n"
+        "ctypes = importlib.import_module('ctypes')\n"
+        f"ctypes.CDLL({str(library)!r})\n",
+        encoding="utf-8",
+    )
+
+    result = _run_prepared(runner, workspace, scratch, "escape.py")
+
+    assert result.returncode == 2
+    assert "native-library loading is denied" in result.stderr
+
+
+def test_calculation_runner_allows_verified_runtime_package_native_bootstrap(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    scratch = tmp_path / "scratch"
+    workspace.mkdir()
+    scratch.mkdir()
+    runner, _manifest = _prepared_runtime(tmp_path)
+    library = runner.parent / "native-test-library.dll"
+    library.write_bytes(b"not a real native library")
+    (runner.parent / "trusted_runtime_loader.py").write_text(
+        "import ctypes\n"
+        "try:\n"
+        f"    ctypes.CDLL({str(library)!r})\n"
+        "except OSError:\n"
+        "    print('native loader reached')\n",
+        encoding="utf-8",
+    )
+    (scratch / "calc.py").write_text(
+        "import trusted_runtime_loader\n",
+        encoding="utf-8",
+    )
+
+    result = _run_prepared(runner, workspace, scratch, "calc.py")
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["native loader reached"]
+
+
 def test_calculation_runtime_requirements_are_fully_hash_locked_and_tamper_evident() -> None:
     lock = _load_calculation_runtime_lock(CALCULATION_RUNTIME_LOCK.read_bytes())
     hashes = _validate_calculation_runtime_requirements(

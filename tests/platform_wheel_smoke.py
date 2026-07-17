@@ -416,14 +416,21 @@ def main() -> None:
         calculation_script = scratch / "platform-smoke.py"
         calculation_script.write_text(
             """from decimal import Decimal
+import importlib
 import importlib.util
 import os
-import numpy
-import numpy_financial
-import pandas
-import pyarrow
-import scipy
-import statsmodels
+_packages = {}
+for _name in ('numpy', 'numpy_financial', 'pandas', 'pyarrow', 'scipy', 'statsmodels'):
+    try:
+        _packages[_name] = importlib.import_module(_name)
+    except Exception as exc:
+        raise RuntimeError(f'fixed-runtime import failed: {_name}: {exc}') from exc
+numpy = _packages['numpy']
+numpy_financial = _packages['numpy_financial']
+pandas = _packages['pandas']
+pyarrow = _packages['pyarrow']
+scipy = _packages['scipy']
+statsmodels = _packages['statsmodels']
 print(Decimal('100') * Decimal('1.1') ** 2)
 print(','.join((numpy.__version__, pandas.__version__, scipy.__version__, statsmodels.__version__, numpy_financial.__version__, pyarrow.__version__)))
 print(importlib.util.find_spec('django'))

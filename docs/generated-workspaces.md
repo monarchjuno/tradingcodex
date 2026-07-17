@@ -681,9 +681,14 @@ bounds CPU, wall time, file count, file size, and normal text output, and
 rejects links and oversized source. It never imports or starts Django, MCP, the
 service, or the ledger. The runner also denies process creation and replacement,
 shell/system execution, sockets and network access, package bootstrap, and
-dangerous dynamic-library loading. This is a constrained calculation surface
-inside the existing Codex OS sandbox, not a new Python security sandbox or a
-Django-owned Python environment.
+dangerous dynamic-library loading. A pinned package may bootstrap a native
+library only when the initiating imported package frame is inside the verified
+content-addressed runtime; a named target must also be an absolute file inside
+that runtime. The same trusted bootstrap may initialize its process-local
+ctypes handle, while scratch code, bare or system-library names, raw integer
+handles, and paths outside that runtime remain denied. This is a constrained
+calculation surface inside the existing Codex OS sandbox, not a new Python
+security sandbox or a Django-owned Python environment.
 
 Without a service-authored sidecar, `tcx-calc` is exploratory compatibility
 mode and cannot support an accepted research conclusion. Prepared mode binds
