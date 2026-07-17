@@ -111,8 +111,15 @@ def test_doctor_verifies_calculation_launcher_hashes_against_module_lock(
 
 def _workspace_launcher_argv(workspace: Path, *args: str) -> list[str]:
     if os.name == "nt":
-        command = subprocess.list2cmdline([str(workspace / "tcx.cmd"), *args])
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
+        return [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/s",
+            "/c",
+            "call",
+            str(workspace / "tcx.cmd"),
+            *args,
+        ]
     return [str(workspace / "tcx"), *args]
 
 

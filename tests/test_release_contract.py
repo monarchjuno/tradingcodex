@@ -56,6 +56,21 @@ def test_native_windows_smoke_calls_spaced_batch_launcher_without_escaped_quotes
     ]
     assert r'\"' not in subprocess.list2cmdline(argv)
 
+    calculation_argv = module["windows_batch_launcher_argv"](
+        PureWindowsPath(r"C:\Workspace With Spaces\tcx-calc.cmd"),
+        "platform-smoke.py",
+    )
+    assert calculation_argv == [
+        r"C:\Windows\System32\cmd.exe",
+        "/d",
+        "/s",
+        "/c",
+        "call",
+        r"C:\Workspace With Spaces\tcx-calc.cmd",
+        "platform-smoke.py",
+    ]
+    assert r'\"' not in subprocess.list2cmdline(calculation_argv)
+
 
 def test_cli_hook_dispatch_preserves_standard_input_and_output(
     monkeypatch: pytest.MonkeyPatch,

@@ -12,7 +12,7 @@ import sys
 import tempfile
 import tomllib
 import venv
-from pathlib import Path
+from pathlib import Path, PurePath
 from urllib.error import HTTPError
 from urllib.parse import urljoin
 from urllib.request import build_opener, ProxyHandler
@@ -48,16 +48,20 @@ def run(
     return result
 
 
-def windows_launcher_argv(workspace: Path, *args: str) -> list[str]:
+def windows_batch_launcher_argv(launcher: PurePath, *args: str) -> list[str]:
     return [
         os.environ.get("COMSPEC", "cmd.exe"),
         "/d",
         "/s",
         "/c",
         "call",
-        str(workspace / "tcx.cmd"),
+        str(launcher),
         *args,
     ]
+
+
+def windows_launcher_argv(workspace: PurePath, *args: str) -> list[str]:
+    return windows_batch_launcher_argv(workspace / "tcx.cmd", *args)
 
 
 def launcher_argv(workspace: Path, *args: str) -> list[str]:
@@ -68,8 +72,7 @@ def launcher_argv(workspace: Path, *args: str) -> list[str]:
 
 def calculation_launcher_argv(workspace: Path, script_name: str) -> list[str]:
     if os.name == "nt":
-        command = subprocess.list2cmdline([str(workspace / "tcx-calc.cmd"), script_name])
-        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
+        return windows_batch_launcher_argv(workspace / "tcx-calc.cmd", script_name)
     return [str(workspace / "tcx-calc"), script_name]
 
 
