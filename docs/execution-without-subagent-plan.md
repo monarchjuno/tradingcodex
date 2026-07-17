@@ -60,7 +60,7 @@ design, migration, and validation evidence.
 - Provider canary regressions prove that submit/cancel results, health details,
   account-sync exceptions, and successful account display metadata do not
   reappear in DB rows, API/MCP projections, execution results, or audit events.
-- A disposable generated workspace reports nine fixed roles and 32 skills,
+- A disposable generated workspace reports nine fixed roles and 33 skills,
   contains no retired execution role, and exposes no ungated submit, cancel, or
   broker status-refresh mutation. Its one execution-risk MCP tool is
   `use_order_turn_grant`, which has no authority without hook-injected proof.

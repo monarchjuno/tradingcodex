@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "python_requires": ">=3.11,<3.15",
+  "requirements_sha256": "46d7d00dc326958af7d2a3bbdb03182b07653f830a4526cddb5bf8144e1c26d7",
+  "installer": {
+    "dependencies": false,
+    "source_distributions": false
+  },
+  "direct_packages": [
+    "numpy",
+    "numpy-financial",
+    "pandas",
+    "pyarrow",
+    "scipy",
+    "statsmodels"
+  ],
+  "packages": {
+    "numpy": "2.3.5",
+    "numpy-financial": "1.0.0",
+    "packaging": "26.2",
+    "pandas": "2.3.3",
+    "patsy": "1.0.2",
+    "pyarrow": "25.0.0",
+    "python-dateutil": "2.9.0.post0",
+    "pytz": "2026.2",
+    "scipy": "1.16.3",
+    "six": "1.17.0",
+    "statsmodels": "0.14.6",
+    "tzdata": "2026.3"
+  }
+}

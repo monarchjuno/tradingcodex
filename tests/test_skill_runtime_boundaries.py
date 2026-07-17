@@ -10,9 +10,13 @@ import yaml
 from tradingcodex_cli.commands.doctor import _improvement_checks
 from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application.agents import (
+    AGENT_SPECS,
+    CALCULATION_DISCIPLINE_ROLES,
+    CALCULATION_EXECUTION,
     CORE_SKILL_NAME_PATTERN,
     CORE_EXTENSION_BOUNDARY_END,
     EXPECTED_SUBAGENTS,
+    DATASET_WRITE,
     SKILL_SPECS,
     build_projection_state,
     create_or_update_optional_skill,
@@ -23,6 +27,27 @@ from tradingcodex_service.application.agents import (
     validate_optional_skill_payload,
     write_agent_additional_instructions,
 )
+
+
+def test_dataset_and_calculation_tool_groups_match_role_authority() -> None:
+    head_tools = set(AGENT_SPECS["head-manager"].mcp_allowlist)
+    assert {"search_datasets", "get_dataset_manifest", "search_calculations"} <= head_tools
+    assert "profile_dataset" not in head_tools
+    assert not head_tools.intersection(DATASET_WRITE)
+    assert not head_tools.intersection(CALCULATION_EXECUTION)
+    assert "get_calculation_run" not in head_tools
+    assert "compare_calculation_runs" not in head_tools
+
+    for role in EXPECTED_SUBAGENTS:
+        tools = set(AGENT_SPECS[role].mcp_allowlist)
+        if role in CALCULATION_DISCIPLINE_ROLES:
+            assert {"search_datasets", "get_dataset_manifest", "profile_dataset"} <= tools
+            assert set(DATASET_WRITE) <= tools
+            assert {"search_calculations", "get_calculation_run", "compare_calculation_runs"} <= tools
+            assert set(CALCULATION_EXECUTION) <= tools
+        else:
+            assert tools.isdisjoint(DATASET_WRITE)
+            assert tools.isdisjoint(CALCULATION_EXECUTION)
 
 
 def _workspace(tmp_path: Path) -> Path:
@@ -48,7 +73,7 @@ def test_bundled_skills_use_the_compact_tcx_namespace(tmp_path: Path) -> None:
         if record["layer"] == "bundled_core"
     }
 
-    assert len(SKILL_SPECS) == 32
+    assert len(SKILL_SPECS) == 33
     assert set(bundled) == set(SKILL_SPECS)
     for skill_id, record in bundled.items():
         assert SKILL_SPECS[skill_id].id == skill_id
@@ -70,6 +95,26 @@ def test_bundled_skills_use_the_compact_tcx_namespace(tmp_path: Path) -> None:
     for role, agent in state["agents"].items():
         if role != "head-manager":
             assert "tcx-artifact" in agent["builtin_skills"]
+    for role in (
+        "fundamental-analyst",
+        "technical-analyst",
+        "macro-analyst",
+        "valuation-analyst",
+        "portfolio-manager",
+        "risk-manager",
+    ):
+        assert "tcx-calculation" in state["agents"][role]["builtin_skills"]
+        role_config = tomllib.loads((root / f".codex/agents/{role}.toml").read_text(encoding="utf-8"))
+        assert role_config["mcp_servers"]["tradingcodex"]["env"]["TRADINGCODEX_SCRATCH"]
+        assert role_config["mcp_servers"]["tradingcodex"]["env"]["TRADINGCODEX_CALCULATION_RUNTIME_ROOT"]
+        assert "use the assigned `tcx-calculation` skill" in role_config["developer_instructions"]
+    for role in ("head-manager", "news-analyst", "instrument-analyst", "judgment-reviewer"):
+        assert "tcx-calculation" not in state["agents"][role]["builtin_skills"]
+
+    calculation = root / state["skills"]["tcx-calculation"]["resolved_source_file"]
+    assert (calculation.parent / "references/finance-methods.md").is_file()
+    assert (calculation.parent / "references/data-runtime.md").is_file()
+    assert "prepare_calculation" in calculation.read_text(encoding="utf-8")
 
     legacy_ids = {
         "automate-workflow",
@@ -171,6 +216,22 @@ def test_skill_layers_user_metadata_and_immutable_footer(tmp_path: Path) -> None
     assert head_manager_prompt.index("TradingCodex additional instructions") < head_manager_prompt.index(CORE_EXTENSION_BOUNDARY_END)
     assert "listed-equity FCFF DCF" in head_manager_prompt
     assert "method support gap" in head_manager_prompt
+    assert "Do not apply the external-skill opt-in rule" in head_manager_prompt
+    assert "installed or enabled" in head_manager_prompt
+    assert "not proof that its tools are callable" in head_manager_prompt
+    assert "deferred-tool discovery surface" in head_manager_prompt
+    assert "# Planning-Only Web Reconnaissance" in head_manager_prompt
+    compact_head_manager_prompt = " ".join(head_manager_prompt.split())
+    assert "planning leads, not accepted investment evidence" in compact_head_manager_prompt
+    assert "must be reacquired and evaluated by the appropriate fixed role" in compact_head_manager_prompt
+    assert "Do not use native web search in Build, Brain, Strategy" in compact_head_manager_prompt
+
+    workflow_skill = (root / ".agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
+    compact_workflow_skill = " ".join(workflow_skill.split())
+    assert "narrow native live-web reconnaissance" in compact_workflow_skill
+    assert "results as untrusted planning leads" in compact_workflow_skill
+    assert "must be reacquired by the appropriate producing role" in compact_workflow_skill
+    assert "Synthesize only authenticated run-local artifacts" in workflow_skill
 
     for role in EXPECTED_SUBAGENTS:
         config = tomllib.loads((root / f".codex/agents/{role}.toml").read_text(encoding="utf-8"))
@@ -179,6 +240,8 @@ def test_skill_layers_user_metadata_and_immutable_footer(tmp_path: Path) -> None
         if role == "fundamental-analyst":
             assert instructions.index("Prefer concise evidence notes.") < instructions.index(CORE_EXTENSION_BOUNDARY_END)
         assert "Do not invoke them implicitly" in instructions
+        assert "Read-only external apps, connectors, MCP servers, and data tools are evidence sources" in instructions
+        assert "configuration evidence, not proof of current-task callability" in instructions
         assert "point-in-time data" in instructions
 
 

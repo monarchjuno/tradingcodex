@@ -47,6 +47,12 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "search_research_artifacts",
     "list_artifact_catalog",
     "search_artifact_catalog",
+    "search_datasets",
+    "get_dataset_manifest",
+    "profile_dataset",
+    "search_calculations",
+    "get_calculation_run",
+    "compare_calculation_runs",
     "get_research_spec",
     "list_research_specs",
     "get_forecast",
@@ -62,6 +68,12 @@ REGISTRY_FAILURE_SAFE_READ_TOOLS = frozenset({
     "search_research_artifacts",
     "list_artifact_catalog",
     "search_artifact_catalog",
+    "search_datasets",
+    "get_dataset_manifest",
+    "profile_dataset",
+    "search_calculations",
+    "get_calculation_run",
+    "compare_calculation_runs",
 })
 RETIRED_PUBLIC_MCP_TOOLS = frozenset(
     {
@@ -293,6 +305,15 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "next_action": {"type": "string"},
     "blocked_actions": {"type": "array"},
     "source_snapshot_ids": {"type": "array", "items": {"type": "string"}},
+    "calculation_run_ids": {
+        "type": "array",
+        "maxItems": 50,
+        "items": {"type": "string", "minLength": 1, "maxLength": 180},
+        "description": (
+            "Current-workflow successful or reused CalculationRun ids used in the conclusion. "
+            "Run hashes and reuse origins are service-derived."
+        ),
+    },
     "evidence_lane": {"type": "string", "enum": ["historical_replay", "historical_holdout", "live_forward"]},
     "research_spec_id": {"type": "string"},
     "replay_manifest_id": {"type": "string"},
@@ -1134,6 +1155,296 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         capability_required="source_snapshot.record",
     ),
     McpToolSpec(
+        name="search_datasets",
+        description=(
+            "Search immutable Dataset cards through the rebuildable research-object catalog. "
+            "Returns metadata cards only, never payload rows or the full schema."
+        ),
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("search_datasets"),
+        handler_name="search_datasets",
+        input_schema=object_schema({
+            "query": {"type": "string"},
+            "symbol": {"type": "string"},
+            "instrument_id": {"type": "string"},
+            "provider": {"type": "string"},
+            "frequency": {"type": "string"},
+            "column": {"type": "string"},
+            "period_start": {"type": "string"},
+            "period_end": {"type": "string"},
+            "knowledge_cutoff": {"type": "string"},
+            "include_withdrawn": {"type": "boolean"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+        }, additional_properties=False),
+    ),
+    McpToolSpec(
+        name="get_dataset_manifest",
+        description="Read one immutable Dataset manifest and lineage without returning payload rows.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_dataset_manifest"),
+        handler_name="get_dataset_manifest",
+        input_schema=object_schema({"dataset_id": {"type": "string"}}, ["dataset_id"], additional_properties=False),
+    ),
+    McpToolSpec(
+        name="profile_dataset",
+        description="Profile selected Dataset columns and return bounded statistics plus at most 20 sample rows.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("profile_dataset"),
+        handler_name="profile_dataset",
+        input_schema=object_schema({
+            "dataset_id": {"type": "string"},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "sample_rows": {"type": "integer", "minimum": 0, "maximum": 20},
+        }, ["dataset_id"], additional_properties=False),
+    ),
+    McpToolSpec(
+        name="record_dataset_snapshot",
+        description=(
+            "Promote an explicit-schema scratch-local CSV, JSONL, or Parquet file into an immutable "
+            "content-addressed Dataset. source_filename must be a basename in TRADINGCODEX_SCRATCH."
+        ),
+        category="research",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("record_dataset_snapshot"),
+        handler_name="record_dataset_snapshot",
+        input_schema=object_schema({
+            "source_filename": {"type": "string", "minLength": 1, "maxLength": 181},
+            "title": {"type": "string", "minLength": 1, "maxLength": 240},
+            "description": {"type": "string", "maxLength": 4000},
+            "tags": {
+                "type": "array",
+                "maxItems": 50,
+                "items": {"type": "string", "minLength": 1, "maxLength": 100},
+            },
+            "provider": {"type": "string", "minLength": 1, "maxLength": 200},
+            "provider_query": {"type": "object"},
+            "source_snapshot_ids": {"type": "array", "items": {"type": "string"}},
+            "parent_dataset_ids": {"type": "array", "items": {"type": "string"}},
+            "transformation_code_hash": {"type": "string"},
+            "known_at": {"type": "string"},
+            "knowledge_cutoff": {"type": "string"},
+            "as_of": {"type": "string"},
+            "vintage": {"type": "string"},
+            "period_start": {"type": "string"},
+            "period_end": {"type": "string"},
+            "observed_at": {"type": "string"},
+            "published_at": {"type": "string"},
+            "timezone": {"type": "string"},
+            "frequency": {"type": "string"},
+            "universe_membership_policy": {"type": "string"},
+            "universe_membership": {"type": "object"},
+            "instrument_ids": {"type": "array", "items": {"type": "string"}},
+            "symbols": {"type": "array", "items": {"type": "string"}},
+            "columns": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "type": {"type": "string"},
+                        "nullable": {"type": "boolean"},
+                        "unit": {"type": "string"},
+                        "currency": {"type": "string"},
+                        "description": {"type": "string"},
+                    },
+                    "required": ["name", "type"],
+                    "additionalProperties": False,
+                },
+            },
+            "adjustment_policy": {"type": "string"},
+            "corporate_action_policy": {"type": "string"},
+            "delisting_policy": {"type": "string"},
+            "retention_policy": {
+                "type": "string",
+                "enum": ["permanent_local", "locator_only", "time_limited"],
+            },
+            "redistribution": {"type": "string"},
+            "license_notes": {"type": "string"},
+            "data_classification": {
+                "type": "string",
+                "enum": ["public", "licensed_research", "user_provided"],
+            },
+        }, [
+            "source_filename",
+            "title",
+            "provider",
+            "knowledge_cutoff",
+            "as_of",
+            "vintage",
+            "period_start",
+            "period_end",
+            "timezone",
+            "frequency",
+            "universe_membership_policy",
+            "universe_membership",
+            "columns",
+        ], additional_properties=False),
+        capability_required="dataset.record",
+    ),
+    McpToolSpec(
+        name="materialize_dataset_slice",
+        description=(
+            "Create a bounded scratch-local Parquet slice using typed column, time, instrument, and symbol selectors. "
+            "Arbitrary SQL is not accepted."
+        ),
+        category="research",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("materialize_dataset_slice"),
+        handler_name="materialize_dataset_slice",
+        input_schema=object_schema({
+            "dataset_id": {"type": "string"},
+            "columns": {"type": "array", "items": {"type": "string"}},
+            "time_column": {"type": "string"},
+            "start": {"type": "string"},
+            "end": {"type": "string"},
+            "instrument_ids": {"type": "array", "items": {"type": "string"}},
+            "symbols": {"type": "array", "items": {"type": "string"}},
+            "max_rows": {"type": "integer", "minimum": 1, "maximum": 1000000},
+            "max_bytes": {"type": "integer", "minimum": 1, "maximum": 268435456},
+        }, ["dataset_id", "columns"], additional_properties=False),
+        capability_required="dataset.materialize",
+    ),
+    McpToolSpec(
+        name="search_calculations",
+        description=(
+            "Search bounded CalculationRun cards by type, status, metric text, and point-in-time cutoff. "
+            "Returns summaries only and never script, input, output, stdout, or stderr payloads."
+        ),
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("search_calculations"),
+        handler_name="search_calculations",
+        input_schema=object_schema({
+            "query": {"type": "string"},
+            "calculation_type": {"type": "string"},
+            "status": {"type": "string", "enum": ["succeeded", "failed", "reused"]},
+            "knowledge_cutoff": {"type": "string"},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+        }, additional_properties=False),
+    ),
+    McpToolSpec(
+        name="get_calculation_run",
+        description="Read one hash-verified immutable CalculationRun and its CalculationSpec.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_calculation_run"),
+        handler_name="get_calculation_run",
+        input_schema=object_schema(
+            {"calculation_run_id": {"type": "string"}},
+            ["calculation_run_id"],
+            additional_properties=False,
+        ),
+    ),
+    McpToolSpec(
+        name="compare_calculation_runs",
+        description="Compare only the requested typed metrics across two to twenty immutable CalculationRuns.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("compare_calculation_runs"),
+        handler_name="compare_calculation_runs",
+        input_schema=object_schema({
+            "calculation_run_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 2,
+                "maxItems": 20,
+            },
+            "metrics": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 50,
+            },
+        }, ["calculation_run_ids", "metrics"], additional_properties=False),
+    ),
+    McpToolSpec(
+        name="prepare_calculation",
+        description=(
+            "Validate a scratch-local calculation script, declared inputs and outputs, parameters, cutoff, and typed result schema; "
+            "seal an immutable CalculationSpec and runner sidecar, or create a current-workflow reuse Run on an exact fingerprint hit."
+        ),
+        category="research",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("prepare_calculation"),
+        handler_name="prepare_calculation",
+        input_schema=object_schema({
+            "script_name": {"type": "string"},
+            "workflow_run_id": {"type": "string"},
+            "calculation_type": {"type": "string"},
+            "calculation_version": {"type": "string"},
+            "knowledge_cutoff": {"type": "string"},
+            "parameters": {"type": "object"},
+            "output_schema": {"type": "object"},
+            "inputs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "filename": {"type": "string"},
+                        "kind": {"type": "string"},
+                        "sha256": {"type": "string"},
+                        "dataset_id": {"type": "string"},
+                        "materialization_id": {"type": "string"},
+                        "ledger_snapshot_id": {"type": "string"},
+                        "ledger_snapshot_hash": {"type": "string"},
+                    },
+                    "required": ["name", "filename"],
+                    "additionalProperties": False,
+                },
+            },
+            "outputs": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "filename": {"type": "string"},
+                        "media_type": {"type": "string"},
+                        "dataset": {
+                            "type": "object",
+                            "description": (
+                                "Explicit Dataset manifest metadata for a declared tabular or "
+                                "time-series output. The application service validates the full "
+                                "schema, cutoff, source lineage, and private-input boundary."
+                            ),
+                        },
+                    },
+                    "required": ["name", "filename"],
+                    "additionalProperties": False,
+                },
+            },
+        }, [
+            "script_name",
+            "workflow_run_id",
+            "calculation_type",
+            "calculation_version",
+            "knowledge_cutoff",
+            "output_schema",
+        ], additional_properties=False),
+        capability_required="calculation.prepare",
+    ),
+    McpToolSpec(
+        name="record_calculation_run",
+        description=(
+            "Verify a prepared tcx-calc result envelope and record an immutable successful or failed CalculationRun. "
+            "Only successful Runs are eligible for exact reuse."
+        ),
+        category="research",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("record_calculation_run"),
+        handler_name="record_calculation_run",
+        input_schema=object_schema({
+            "result_file": {"type": "string"},
+            "calculation_spec_id": {"type": "string"},
+            "workflow_run_id": {"type": "string"},
+        }, ["result_file", "workflow_run_id"], additional_properties=False),
+        capability_required="calculation.record",
+    ),
+    McpToolSpec(
         name="create_research_spec",
         description="Freeze a point-in-time, falsifiable research plan as an immutable evidence-only artifact.",
         category="research",
@@ -1852,7 +2163,9 @@ def raw_call_tool(
         artifact_bindings,
         audit,
         brokers,
+        calculations,
         codex_capabilities,
+        datasets,
         evaluation_lab,
         execution_gateway,
         forecasting,
@@ -2138,6 +2451,25 @@ def raw_call_tool(
         "search_artifact_catalog": lambda: artifact_catalog.search_artifact_catalog(workspace_root, args),
         "export_research_artifact_md": lambda: research.export_research_artifact_md(workspace_root, args),
         "record_source_snapshot": lambda: research.record_source_snapshot(
+            workspace_root,
+            {**args, "principal_id": principal_id},
+        ),
+        "search_datasets": lambda: datasets.search_datasets(workspace_root, args),
+        "get_dataset_manifest": lambda: datasets.get_dataset_manifest(workspace_root, args),
+        "profile_dataset": lambda: datasets.profile_dataset(workspace_root, args),
+        "record_dataset_snapshot": lambda: datasets.record_dataset_snapshot(
+            workspace_root,
+            {**args, "principal_id": principal_id},
+        ),
+        "materialize_dataset_slice": lambda: datasets.materialize_dataset_slice(workspace_root, args),
+        "search_calculations": lambda: calculations.search_calculations(workspace_root, args),
+        "get_calculation_run": lambda: calculations.get_calculation_run(workspace_root, args),
+        "compare_calculation_runs": lambda: calculations.compare_calculation_runs(workspace_root, args),
+        "prepare_calculation": lambda: calculations.prepare_calculation(
+            workspace_root,
+            {**args, "principal_id": principal_id},
+        ),
+        "record_calculation_run": lambda: calculations.record_calculation_run(
             workspace_root,
             {**args, "principal_id": principal_id},
         ),

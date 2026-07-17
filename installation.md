@@ -222,15 +222,15 @@ package release should refresh generated files and service schema:
 uvx --refresh --from tradingcodex tcx update . --from tradingcodex
 ```
 
-### Updating from 1.0.2 or 1.1.0 to 1.1.1
+### Updating from 1.0.2, 1.1.0, or 1.1.1 to 1.1.2
 
 Run the new package as the updater; do not run the old generated launcher and
 expect it to discover the new release automatically:
 
 ```bash
 cd /path/to/existing-workspace
-uvx --refresh --from "tradingcodex==1.1.1" \
-  tcx update . --from "tradingcodex==1.1.1"
+uvx --refresh --from "tradingcodex==1.1.2" \
+  tcx update . --from "tradingcodex==1.1.2"
 ./tcx doctor
 ```
 
@@ -239,19 +239,19 @@ regenerated Windows launcher:
 
 ```powershell
 cd C:\path\to\existing-workspace
-uvx --refresh --from "tradingcodex==1.1.1" tcx update . --from "tradingcodex==1.1.1"
+uvx --refresh --from "tradingcodex==1.1.2" tcx update . --from "tradingcodex==1.1.2"
 .\tcx.cmd doctor
 ```
 
 The update keeps the workspace id, paper-account scope, user-owned research,
 Brain and Strategy sources, connector sources, explicit runtime home, explicit
-database override, and projected loopback service address. Version 1.1.1
+database override, and projected loopback service address. Version 1.1.2
 applies the forward migration that removes the retired External MCP Gate
 tables and Gate-derived broker connections while preserving ordinary broker,
 order, and append-only audit history. The generated module lock advances to
-1.1.1.
+1.1.2.
 
-Version 1.1.1 replaces generated permission, hook, prompt, and skill files so
+Version 1.1.2 replaces generated permission, hook, prompt, and skill files so
 the first-meaningful-line invocation, limited-public Build fetch, and narrow
 Build shell contracts load together. Build edits now use `apply_patch`; the
 model-side shell is limited to public reads, read-only HTTPS Git, inert provider
@@ -281,7 +281,7 @@ Existing manually authored providers do not need provenance added solely for
 the update. An unchanged, previously approved safe bundle keeps the same
 content hash and immutable snapshot. New VCS metadata, symlinks, or
 secret/credential-like files make a provider fail closed under the strengthened
-1.1.1 supply-chain checks; TradingCodex neither deletes those files nor silently
+1.1.2 supply-chain checks; TradingCodex neither deletes those files nor silently
 re-approves the bundle. Inspect the reported bundle, remove unsafe material,
 and perform a fresh interactive hash approval only when the resulting source is
 the provider you intend to run.

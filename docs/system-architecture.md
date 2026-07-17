@@ -53,6 +53,10 @@ tradingcodex_service/
     portfolio.py
     policy.py
     research.py
+    research_objects.py
+    research_object_catalog.py
+    datasets.py
+    calculations.py
     research_specs.py
     investment_analysis.py
     forecasting.py
@@ -108,11 +112,20 @@ directly.
 | --- | --- | --- |
 | Codex control plane | Role prompts, hooks, skills, dynamic Head Manager coordination, lightweight run bindings, generated project config, exact immediate-action interception, and `$tcx-order-allow` turn-grant admission/proof injection | Generated workspace files and Codex session state |
 | Django service plane | Policy, brokers, orders, approvals, portfolio, audit, harness, TradingCodex MCP registry, Admin, REST, read-only React viewing, native Codex capability inventory, and file-native research/artifact catalog indexing | Central Django DB for non-research runtime records plus operational service state |
-| Workspace system plane | Agent TOML, skill files, research markdown, schemas, local wrapper, MCP config, artifact directories | Codex-native workspace files and provenance |
+| Workspace system plane | Agent TOML, skill files, research markdown, immutable Dataset/Calculation objects, schemas, local wrappers, MCP config, artifact directories | Codex-native workspace files and provenance |
 
 The control plane can request actions. The service plane decides and records
 durable outcomes. The workspace system plane makes those outcomes readable and
 repeatable for Codex and humans.
+
+The generated calculation runtime is an execution dependency of the Codex
+control plane, not a fourth authority plane. Attach/update provisions its
+wheel-locked, content-addressed runtime v2 in a separate platform cache. The
+runner cannot import or start Django, MCP, the service, or the central ledger;
+the Django application service alone prepares and records immutable
+CalculationSpec/Run metadata. Prepared scripts exchange declared scratch-local
+files and a typed bounded result envelope, while Codex's active OS sandbox
+remains the security boundary.
 
 Control-plane maintainability depends on clear ownership:
 
@@ -163,6 +176,13 @@ Control-plane maintainability depends on clear ownership:
   bundle validation, immutable source/version records, activation, rollback,
   and Head Manager-only projection. `analysis_runs.py` and the research service
   own sealed run and artifact lineage.
+- `research_objects.py` owns shared canonical JSON, content IDs, immutable
+  writes, safe-file checks, and timezone ordering. `datasets.py` owns canonical
+  Parquet Dataset manifests/payloads/withdrawals; `calculations.py` owns
+  CalculationSpec/Run preparation, exact fingerprint reuse, and recording.
+  `research_object_catalog.py` owns the rebuildable SQLite+FTS v3 projection.
+  Interfaces call these services instead of implementing their own data or
+  calculation memory.
 - `tradingcodex_service/application/workspace_git.py` owns generated-workspace
   Git membership, privacy-first managed ignore rules, and read-only repository
   diagnostics; it never stages, commits, creates a remote, or publishes. Git
@@ -219,8 +239,9 @@ DB selector or paper-account identifier. `.tradingcodex/workspace.json` stores
 the immutable workspace id; `path_hash` remains path provenance and may change
 if a workspace moves.
 
-Two generated workspaces have separate research handoff markdown and source
-snapshot JSON because those files belong to the workspace. Their service
+Two generated workspaces have separate research handoff markdown, source
+snapshot JSON, immutable Dataset manifests/payloads, and Calculation specs/runs
+because those files belong to the workspace. Their service
 records live in the same central DB by default, but the storage location is not
 a cross-workspace user context: records retain workspace provenance and
 execution-sensitive operations bind to the selected internal paper-account
@@ -257,7 +278,7 @@ refuses remote hosts or an unverified listener PID.
 | `policy` | Principals, capabilities, restricted list, limits, policy decisions. |
 | `orders` | Canonical order tickets, order checks, approval receipts, current-turn order grants, broker order timeline, fills, and execution attempts/results. |
 | `portfolio` | Cash, positions, exposure snapshots, normalized ledger events, broker sync runs, reconciliation runs, paper portfolio state. |
-| `research` | Workspace markdown research artifacts, artifact versions, evidence packs, report metadata, and file-native source/as-of snapshots. No Django DB models or Admin DB surface. |
+| `research` | Workspace markdown research artifacts, artifact versions, evidence packs, report metadata, file-native source/as-of snapshots, immutable Dataset and Calculation objects, and rebuildable catalog projections. No Django DB models or Admin DB surface. |
 | `audit` | Append-only audit events, request hashes, result hashes, policy/action provenance. |
 | `mcp` | Protocol adapter metadata, tool registry, and non-research tool call ledger. |
 | `integrations` | Broker connections, broker accounts, instrument maps, paper and validation-only execution paths, read-only data adapters, future broker adapter definitions. |
@@ -343,6 +364,18 @@ Read/write research and audit use cases:
 - `create_evidence_run_card`
 - `create_validation_card`
 - `record_source_snapshot`
+- `search_datasets`
+- `get_dataset_manifest`
+- `profile_dataset`
+- `record_dataset_snapshot`
+- `materialize_dataset_slice`
+- `search_calculations`
+- `get_calculation_run`
+- `compare_calculation_runs`
+- `prepare_calculation`
+- `record_calculation_run`
+- `refresh_research_object_catalog`
+- `rebuild_research_object_catalog`
 - `rebuild_research_index`
 - `create_research_spec`
 - `get_research_spec`
@@ -371,6 +404,24 @@ confidence, missing evidence, next-recipient routing, blocked actions, and
 source snapshots. `quality-check --strict` validates the markdown handoff
 contract, Evidence Run Card shape, and Validation Card shape without moving
 research memory into the central DB.
+
+Dataset manifests and Calculation specs/runs use the same immutable research-
+object primitives as Source Snapshots, ResearchSpecs, and ExperimentRuns.
+Dataset payloads are content-addressed Parquet objects ignored by Git; their
+manifests and append-only withdrawal events remain reviewable. The v3 SQLite
+catalog is only a structured/FTS projection and can be rebuilt from canonical
+files after corruption. Search cards and metadata never pull numeric Dataset
+rows into agent context.
+
+Prepared calculation is a two-boundary protocol. The Django application
+service authenticates the role, verifies declared inputs and cutoff, derives
+the CalculationSpec and exact-reuse fingerprint, and writes the runner sidecar.
+The separate `tcx-calc` runtime executes one scratch script and emits a bounded
+typed envelope. The service then verifies that envelope and records an
+immutable success/failure Run or a current-workflow reuse Run; declared
+tabular/time-series outputs become derived Datasets with exact lineage. Private
+central-ledger values remain scratch-only; durable calculation metadata binds their
+service-issued snapshot id and hash, not the values themselves.
 
 ResearchSpec, replay-manifest, ExperimentRun, forecast, score, and calibration
 operations are evidence-only file-native services. They cannot draft, approve,

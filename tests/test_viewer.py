@@ -17,7 +17,7 @@ def test_viewer_snapshot_has_no_work_execution_state(tmp_path: Path) -> None:
     snapshot = viewer.viewer_snapshot(workspace)
 
     section_names = set(snapshot["sections"])
-    assert {"workspace", "skills", "artifacts"}.issubset(section_names)
+    assert {"workspace", "skills", "artifacts", "datasets", "calculations"}.issubset(section_names)
     assert section_names.isdisjoint({"runs", "workflow", "work"})
     assert snapshot["sections"]["workspace"]["ok"] is True
 
@@ -52,12 +52,22 @@ def test_viewer_routes_are_get_only_and_old_workbench_routes_are_gone(
     workspace = tmp_path / "viewer-routes"
     bootstrap_workspace(workspace)
     monkeypatch.setenv("TRADINGCODEX_WORKSPACE_ROOT", str(workspace))
-    client = Client(REMOTE_ADDR="127.0.0.1")
+    client = Client(REMOTE_ADDR="127.0.0.1", enforce_csrf_checks=True)
 
     response = client.get("/api/viewer/")
     assert response.status_code == 200
     assert response.json()["sections"]["workspace"]["ok"] is True
-    assert client.post("/api/viewer/", data={}, content_type="application/json").status_code == 405
+    for method in ("POST", "PUT", "DELETE"):
+        for path in (
+            "/api/viewer/",
+            "/api/viewer/skills/tcx-workflow/",
+            "/api/viewer/artifacts/example/",
+            "/api/viewer/datasets/dataset-example/",
+            "/api/viewer/calculations/calc-run-example/",
+        ):
+            response = client.generic(method, path, data=b"{}", content_type="application/json")
+            assert response.status_code == 405
+            assert response.headers["Allow"] == "GET"
     assert client.get("/api/workbench/").status_code == 404
 
 

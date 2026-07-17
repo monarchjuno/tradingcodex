@@ -23,13 +23,25 @@ Head Manager uses `gpt-5.6-sol` with `xhigh` reasoning. Analytical fixed roles
 use `gpt-5.6-terra` with `high` reasoning. Final provider effects are not a role
 and run through the deterministic service gateway rather than an execution
 model. All analysis sessions inherit the project-wide `trading-research`
-permission profile: ordinary shell/Python and credential-free public HTTP are
+permission profile: ordinary shell and credential-free public HTTP are
 available, and user-owned files outside `trading/` are readable and writable.
-Disposable intermediates stay under `$TRADINGCODEX_SCRATCH`; `trading/`,
+For deterministic Python calculations, a fixed role stages one direct `.py`
+file under `$TRADINGCODEX_SCRATCH` with `apply_patch` and invokes only the
+platform-native `tcx-calc` launcher. Its content-addressed runtime v2 contains
+only the wheel-locked NumPy, pandas, SciPy, statsmodels, numpy-financial, and
+PyArrow stack and remains separate from Django, MCP, the service runtime, and
+the DB; the Codex OS sandbox remains the authority boundary. Conclusion-
+relevant work uses the prepared CalculationSpec/Run flow, while a direct run
+without its service-authored sidecar is exploratory only. Disposable
+intermediates stay under
+`$TRADINGCODEX_SCRATCH`; `trading/`,
 generated control files, TradingCodex runtime/DB, protected artifacts,
 credentials, local/private network targets, and Unix sockets remain protected.
-Evidence roles receive live web search through their role config; Head Manager
-does not.
+Head Manager receives live web search only for narrow workflow-planning
+reconnaissance. Its raw results are untrusted planning leads and cannot support
+synthesis claims; material facts must be reacquired through producing-role
+artifacts. The six evidence roles retain live search, while portfolio, risk,
+and judgment review explicitly disable it.
 
 MultiAgent V2 must expose exact `agent_type`. Every TradingCodex spawn uses a
 fresh child, compact underscore-only task name, compact assignment, and
@@ -37,6 +49,25 @@ fresh child, compact underscore-only task name, compact assignment, and
 role emulation, and model overrides are invalid. Generated config explicitly
 enables V2 and uses its session-wide concurrency setting; the incompatible V1
 `agents.max_threads` key is not projected.
+
+External skills and external data tools have different runtime semantics.
+Host-global or plugin skills remain explicit current-workflow overlays, while
+read-only app, connector, MCP, and data tools may supply evidence when the task
+requires them. Head Manager preserves a user-named provider in the role brief;
+root and evidence roles inspect the current task's callable surface, use the
+runtime's available deferred-tool discovery surface when needed, and attempt
+the smallest relevant read-only call before public-web fallback. The sanitized System inventory reports
+discovered configuration, not current-task callability.
+
+Reusable tabular evidence and calculations remain file-native research
+objects. A Source Snapshot can be promoted to an immutable Dataset manifest
+plus content-addressed Parquet payload when its rows will be reused. Agents
+search cards first, inspect manifest/profile metadata next, and materialize a
+typed scratch slice only when a role needs rows. Exact successful calculation
+fingerprints may be reused, but every reuse creates a current-run record and
+retains the original Run lineage. Head Manager receives discovery cards only;
+the six calculation roles receive the bounded write/execution groups, and the
+viewer remains read-only.
 
 ## Hooks
 
@@ -214,8 +245,11 @@ After harness changes:
    modes, binding/revocation/proof injection, subagent/direct-MCP
    rejection, ordinary analysis transport behavior, and exact V2 dispatch;
 5. run a real Korean request and inspect parent/child JSONL, role model, sandbox, and artifacts;
-6. verify viewer workspace selection and sanitized artifact/skill detail;
-7. run focused pytest, Django check, compile, and the full suite.
+6. with a user-enabled read-only test plugin or MCP, verify current-task tool
+   discovery and one narrow successful call, then verify the same prompt reports
+   a distinct loading gap when the tool is intentionally absent;
+7. verify viewer workspace selection and sanitized artifact/skill detail;
+8. run focused pytest, Django check, compile, and the full suite.
 
 See [Codex-Native Orchestration](codex-native-orchestration.md),
 [Roles, Skills, And Workflows](roles-skills-and-workflows.md), and

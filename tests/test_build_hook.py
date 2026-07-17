@@ -51,6 +51,8 @@ def run_hook(
     payload: dict[str, object],
 ) -> dict[str, object] | None:
     environment = {**os.environ, "PYTHONPATH": str(ROOT)}
+    config = tomllib.loads((workspace / ".codex/config.toml").read_text(encoding="utf-8"))
+    environment.update(config["shell_environment_policy"]["set"])
     result = subprocess.run(
         [sys.executable, str(workspace / ".codex/hooks/tradingcodex_hook.py"), event],
         cwd=workspace,
@@ -2205,6 +2207,51 @@ def test_namespaced_apply_patch_allows_ordinary_workspace_files_without_build(wo
         ),
     )
     assert role_edit is None
+
+    config = tomllib.loads((workspace / ".codex/config.toml").read_text(encoding="utf-8"))
+    scratch_target = Path(config["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"]) / "role-calc.py"
+    scratch_edit = run_hook(
+        workspace,
+        "pre-tool-use",
+        pre_tool_payload(
+            workspace,
+            session_id="role-scratch-session",
+            turn_id="role-scratch-turn",
+            tool_use_id="role-scratch-edit",
+            tool_name="apply_patch",
+            tool_input={
+                "patch": f"*** Begin Patch\n*** Add File: {scratch_target}\n+print('ok')\n*** End Patch",
+            },
+            agent_type="technical-analyst",
+        ),
+    )
+    assert scratch_edit is None
+
+    outside_scratch = run_hook(
+        workspace,
+        "pre-tool-use",
+        pre_tool_payload(
+            workspace,
+            session_id="role-outside-session",
+            turn_id="role-outside-turn",
+            tool_use_id="role-outside-edit",
+            tool_name="apply_patch",
+            tool_input={
+                "patch": "*** Begin Patch\n*** Add File: /tmp/tradingcodex-role-escape.py\n+print('no')\n*** End Patch",
+            },
+            agent_type="technical-analyst",
+        ),
+    )
+    assert outside_scratch is not None and outside_scratch["decision"] == "block"
+    hook_audit = [
+        json.loads(line)
+        for line in (workspace / "trading/audit/codex-hooks.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert hook_audit[-1]["reason_code"] == "subagent_managed_workspace_tool"
+    assert hook_audit[-1]["redacted"] is True
+    assert "session_id" not in hook_audit[-1]
+    assert "turn_id" not in hook_audit[-1]
 
     issue_build_turn(workspace, "namespaced-session", "namespaced-turn")
     allowed = run_hook(

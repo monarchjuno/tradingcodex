@@ -29,6 +29,8 @@ workspaces do not run Node.
 | React workspace viewer | frontend test/typecheck/build, committed-output diff, focused GET API tests, real-browser desktop/narrow/keyboard/error checks |
 | MCP registry/handler/allowlist | `tools/list` smoke plus focused MCP tests |
 | Research memory/artifact quality | create/search/export/source snapshot flow and `tcx quality-check --strict` |
+| Dataset/catalog memory | canonical Parquet/id/lineage/withdrawal tests, bounded card/profile/slice tests, SQLite+FTS incremental/corruption/fallback tests, and legacy JSON compatibility |
+| Calculation runtime/memory | locked imports/manifest/launcher doctor, prepared and exploratory runner tests, exact reuse/cache-miss lineage, private-input non-persistence, and native fixed-role smoke |
 | Generated templates/hooks/prompts/skills | disposable workspace smoke and generated contract inspection |
 | Build shell/network policy | hook probes plus disposable native smoke for `apply_patch`, narrow reads/hash/diff/Git inspection, isolated `py_compile`, allowlisted launcher commands, public GET/HEAD/read-only HTTPS Git, and fail-closed interpreter/helper/test/build/POST cases |
 | Routing/head-manager/subagents | generated workspace smoke plus Codex-native smoke when available |
@@ -60,6 +62,15 @@ generated indexes, run-specific
 `.tradingcodex/mainagent/runs/<analysis-run-id>/run.json`, authenticated research
 artifacts and receipts, `.tradingcodex/mainagent/subagent-session-state.json`
 when present, and `trading/audit/codex-hooks.jsonl`.
+
+For Dataset/Calculation changes, also inspect the managed Git ignore entry for
+`trading/research/datasets/objects/`, the v3 SQLite catalog status, exact Head
+Manager card-only versus calculation-role allowlists, the projected
+`tcx-calculation` skill, runtime v2 manifest/lock/launcher hashes, and one
+prepared result envelope. Native E2E should cover provider data → Source
+Snapshot → Dataset → slice → Calculation → artifact, exact rerun reuse, a
+one-row/parameter/cutoff cache miss, DCF/IRR, statsmodels regression, SciPy
+optimizer diagnostics, and private portfolio/risk input non-persistence.
 
 For Build-policy changes, do not treat source-checkout pytest or build commands
 as commands the model may run inside an active generated Build turn. The native
@@ -118,10 +129,16 @@ invoke `tcx.cmd`, not Bash `./tcx`. Run real Codex CLI only after all non-Codex
 checks, and do not infer a Windows Codex-client result from launcher CI.
 The wheel smoke must load `/` and the packaged viewer JavaScript/CSS without
 installing Node.
+Calculation runtime release checks also resolve the hash-locked wheel set and
+run doctor/import/prepared/exploratory smokes on Python 3.11–3.14 across
+supported macOS, Linux, and native Windows x86-64 jobs. Missing wheels fail
+before workspace mutation; source-build fallback is invalid evidence.
 
 For viewer changes, verify GET-only routes, registered-workspace rejection,
-sanitized skill/artifact detail, and the absence of any Codex subprocess or
-mutation endpoint. Then run desktop and narrow browser checks.
+sanitized skill/artifact/Dataset/Calculation detail, absence of raw Dataset
+payloads beyond the bounded 20-row profile sample or private inputs, and the
+absence of any Codex subprocess or mutation
+endpoint. Then run desktop and narrow browser checks.
 
 ## MCP Smoke
 

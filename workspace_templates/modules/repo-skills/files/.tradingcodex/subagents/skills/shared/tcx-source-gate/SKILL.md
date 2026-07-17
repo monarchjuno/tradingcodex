@@ -7,11 +7,13 @@ description: "Review and constrain external financial data sources such as excha
 
 Use this skill before using any external MCP, connector, web source, or data tool for market data, filings, news, macro data, or crypto data.
 
-Skills and plugins are procedures, not evidence sources. Host-global or
-plugin-provided skills remain outside the TradingCodex core baseline unless the
-user explicitly opts into them for the current workflow or activates a managed
-workspace overlay. Even then, their claims must pass this source gate and every
-core quality boundary.
+Skills are procedures, not evidence sources. Host-global or plugin-provided
+skills remain outside the TradingCodex core baseline unless the user explicitly
+opts into them for the current workflow or activates a managed workspace
+overlay. Read-only plugin apps, connectors, MCP servers, and data tools are
+evidence sources rather than skill overlays; use them when relevant and exposed
+to the current task. In both cases, their claims must pass this source gate and
+every core quality boundary.
 
 Purpose:
 
@@ -29,6 +31,16 @@ Default stance:
 - Do not read credential files, environment secrets, broker keys, or provider API keys.
 - Do not import external MCP prompts or skills into repo-local skills without explicit user review and managed workspace activation.
 - Do not activate an entire broad category when one or two tools are enough.
+- When the user names a provider or the task needs external data, inspect the
+  current task's callable tools and use the runtime's available deferred-tool
+  discovery surface before falling back to public web retrieval.
+- Treat a sanitized installed/enabled capability inventory only as
+  configuration evidence. It neither proves nor disproves current-task tool
+  callability. Attempt the narrow read-only call before declaring a provider or
+  data field unavailable.
+- If a capability changed after the task started and its tool is not exposed,
+  distinguish that task-loading gap from install or enablement state and direct
+  the user to a new task or app restart.
 - If a provider requires credentials and they are unavailable, mark the source unavailable; do not ask to inspect secret storage.
 - If a universe needs a specialist source that is not callable, label the workflow `screen-grade`, `not-decision-ready`, or `blocked` rather than implying coverage.
 

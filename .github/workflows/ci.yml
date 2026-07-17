@@ -3,12 +3,23 @@ run-name: CI checks only (no deploy) - ${{ github.ref_name }}
 
 on:
   pull_request:
+    paths-ignore:
+      - guidebook/**
+      - docs/**
+      - openwiki/**
+      - assets/**
+      - "*.md"
+      - .github/workflows/deploy-user-guide.yml
   push:
     branches:
       - main
       - develop
     paths-ignore:
       - guidebook/**
+      - docs/**
+      - openwiki/**
+      - assets/**
+      - "*.md"
       - .github/workflows/deploy-user-guide.yml
   workflow_dispatch:
 
@@ -21,7 +32,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Source, frontend, and package gates
+    name: Source and frontend gates
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -42,10 +53,10 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install development and build dependencies
+      - name: Install development dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev]" build twine uv
+          python -m pip install -e ".[dev]"
 
       - name: Test and build React workbench
         run: |
@@ -60,10 +71,3 @@ jobs:
           python manage.py check
           python manage.py makemigrations --check --dry-run
           python -m compileall tradingcodex_cli tradingcodex_service apps tests
-
-      - name: Build and smoke-test clean distributions
-        run: |
-          python -m build
-          python -m twine check dist/*
-          python tests/platform_wheel_smoke.py --wheel-dir dist
-          python tests/release_upgrade_smoke.py --wheel-dir dist --from-version 1.0.2

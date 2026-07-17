@@ -909,6 +909,13 @@ def test_managed_skill_mcp_tools_are_scope_bound_and_consume_proof(workspace: Pa
         "language": "en",
         "status": "draft",
     }
+    with pytest.raises(BuildInvocationError, match=r"\$tcx-strategy turn proof is required"):
+        call_mcp_tool(
+            workspace,
+            "manage_strategy",
+            args,
+            transport_principal="head-manager",
+        )
     with pytest.raises(PermissionError, match=r"\$tcx-brain"):
         reserve_build_turn_use(
             workspace,
@@ -953,6 +960,13 @@ def test_managed_skill_mcp_tools_are_scope_bound_and_consume_proof(workspace: Pa
     )
     assert issued is not None and issued["authority_scope"] == "brain"
     brain_args = {"action": "list"}
+    with pytest.raises(BuildInvocationError, match=r"\$tcx-brain turn proof is required"):
+        call_mcp_tool(
+            workspace,
+            "manage_investment_brain",
+            brain_args,
+            transport_principal="head-manager",
+        )
     brain_proof = reserve_build_turn_use(
         workspace,
         "brain-mcp-session",

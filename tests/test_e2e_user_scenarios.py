@@ -54,7 +54,7 @@ def hook_context(workspace: Path, prompt: str, env_extra: dict[str, str | None],
         command = json.loads((workspace / ".codex" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["UserPromptSubmit"][0]["hooks"][0]["command"]
         result = run(shlex.split(command), workspace, input_text=payload, env_extra=env_extra)
     else:
-        result = run([str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), "user-prompt-submit"], workspace, input_text=payload, env_extra=env_extra)
+        result = run(["./tcx", "__hook", "user-prompt-submit"], workspace, input_text=payload, env_extra=env_extra)
     if not result.stdout.strip():
         return None
     output = json.loads(result.stdout)
@@ -62,7 +62,7 @@ def hook_context(workspace: Path, prompt: str, env_extra: dict[str, str | None],
 
 
 def hook_event(workspace: Path, event: str, payload: dict[str, Any], env_extra: dict[str, str | None]) -> subprocess.CompletedProcess[str]:
-    return run([str(workspace / ".codex" / "hooks" / "tradingcodex_hook.py"), event], workspace, input_text=json.dumps(payload), env_extra=env_extra)
+    return run(["./tcx", "__hook", event], workspace, input_text=json.dumps(payload), env_extra=env_extra)
 
 
 def tcx(
@@ -242,7 +242,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     status = json.loads(tcx(workspace, env_extra, "subagents", "status").stdout)
     assert status["installed_count"] == 9
     assert status["fixed_roster_ok"] is True
-    assert status["skills_installed"] == 32
+    assert status["skills_installed"] == 33
     plan = json.loads(tcx(workspace, env_extra, "subagents", "plan", "--all").stdout)
     assert plan["requested_count"] == 9
     assert plan["parallel_spawn_ok"] is False
@@ -252,6 +252,7 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
         "tcx-source-gate",
         "tcx-evidence",
         "tcx-data-qc",
+        "tcx-calculation",
         "tcx-scenarios",
         "tcx-forecast",
         "tcx-artifact",

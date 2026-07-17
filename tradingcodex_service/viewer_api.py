@@ -5,11 +5,14 @@ from typing import Any, Callable
 
 from django.conf import settings
 from django.http import HttpRequest, JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from tradingcodex_service.application.common import local_or_staff_source
 from tradingcodex_service.application.viewer import (
     get_artifact_detail,
+    get_calculation_detail,
+    get_dataset_detail,
     get_skill_detail,
     viewer_snapshot,
 )
@@ -36,22 +39,44 @@ def _read_allowed(view: Callable[..., JsonResponse]) -> Callable[..., JsonRespon
     return wrapped
 
 
+@csrf_exempt
 @require_GET
 @_read_allowed
 def snapshot(request: HttpRequest) -> JsonResponse:
     return JsonResponse(viewer_snapshot(request.tradingcodex_workspace_root))
 
 
+@csrf_exempt
 @require_GET
 @_read_allowed
 def skill_detail(request: HttpRequest, skill_id: str) -> JsonResponse:
     return _read_response(lambda: get_skill_detail(request.tradingcodex_workspace_root, skill_id))
 
 
+@csrf_exempt
 @require_GET
 @_read_allowed
 def artifact_detail(request: HttpRequest, artifact_id: str) -> JsonResponse:
     return _read_response(lambda: get_artifact_detail(request.tradingcodex_workspace_root, artifact_id))
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def dataset_detail(request: HttpRequest, dataset_id: str) -> JsonResponse:
+    return _read_response(lambda: get_dataset_detail(request.tradingcodex_workspace_root, dataset_id))
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def calculation_detail(request: HttpRequest, calculation_run_id: str) -> JsonResponse:
+    return _read_response(
+        lambda: get_calculation_detail(
+            request.tradingcodex_workspace_root,
+            calculation_run_id,
+        )
+    )
 
 
 def _read_response(operation: Callable[[], dict[str, Any]]) -> JsonResponse:

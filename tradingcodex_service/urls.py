@@ -12,6 +12,12 @@ urlpatterns = [
     path("api/viewer/", viewer_api.snapshot, name="viewer-snapshot"),
     path("api/viewer/skills/<str:skill_id>/", viewer_api.skill_detail, name="viewer-skill-detail"),
     path("api/viewer/artifacts/<path:artifact_id>/", viewer_api.artifact_detail, name="viewer-artifact-detail"),
+    path("api/viewer/datasets/<str:dataset_id>/", viewer_api.dataset_detail, name="viewer-dataset-detail"),
+    path(
+        "api/viewer/calculations/<str:calculation_run_id>/",
+        viewer_api.calculation_detail,
+        name="viewer-calculation-detail",
+    ),
     path("api/", api.urls),
     path("favicon.ico", RedirectView.as_view(url=static("tradingcodex_admin/favicon.svg"), permanent=False)),
     path("", web.spa_index, name="web-spa"),

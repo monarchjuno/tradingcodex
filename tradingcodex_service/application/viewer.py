@@ -14,6 +14,8 @@ from tradingcodex_service.application.agents import (
     read_strategy_skill_records,
 )
 from tradingcodex_service.application.codex_capabilities import list_codex_capabilities
+from tradingcodex_service.application.calculations import get_calculation_run, search_calculations
+from tradingcodex_service.application.datasets import get_dataset_manifest, profile_dataset, search_datasets
 from tradingcodex_service.application.brokers import list_broker_connections
 from tradingcodex_service.application.common import now_iso
 from tradingcodex_service.application.forecasting import calibration_report, list_forecasts
@@ -44,6 +46,8 @@ def viewer_snapshot(root: Path | str) -> dict[str, Any]:
         "agents": _section(lambda: _agent_catalog(root)),
         "activity": _section(lambda: _recent_activity(root)),
         "artifacts": _section(lambda: list_research_artifacts(root, {"limit": 100})["artifacts"]),
+        "datasets": _section(lambda: search_datasets(root, {"limit": 100})["datasets"]),
+        "calculations": _section(lambda: search_calculations(root, {"limit": 100})["calculations"]),
         "forecasts": _section(
             lambda: {
                 "items": list_forecasts(root, {"limit": 100}),
@@ -123,6 +127,37 @@ def get_artifact_detail(root: Path | str, artifact_id: str) -> dict[str, Any]:
         source_label="research artifact",
     )
     return _json_safe({**artifact, "preview": {"heading": preview.heading, "html": preview.html}})
+
+
+def get_dataset_detail(root: Path | str, dataset_id: str) -> dict[str, Any]:
+    manifest = get_dataset_manifest(root, {"dataset_id": dataset_id})
+    profile: dict[str, Any] | None = None
+    profile_error = ""
+    if manifest["payload_available"] and not manifest["withdrawn"]:
+        try:
+            profile = profile_dataset(root, {"dataset_id": dataset_id, "sample_rows": 20})
+        except Exception as exc:
+            profile_error = redact_log_text(str(exc))[:500]
+    return _json_safe(
+        {
+            **manifest,
+            "profile": profile,
+            "profile_error": profile_error,
+            "read_only": True,
+        }
+    )
+
+
+def get_calculation_detail(root: Path | str, calculation_run_id: str) -> dict[str, Any]:
+    return _json_safe(
+        {
+            **get_calculation_run(
+                root,
+                {"calculation_run_id": calculation_run_id},
+            ),
+            "read_only": True,
+        }
+    )
 
 
 def _investor_context_status(root: Path) -> dict[str, Any]:

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { apiErrorText, requestJSON } from "./api";
-import { asRecord, asText, normalizeArtifact, normalizeSkill, recordsFrom, Section, sectionError, Theme } from "./domain";
+import { asRecord, asText, normalizeArtifact, normalizeCalculation, normalizeDataset, normalizeSkill, recordsFrom, Section, sectionError, Theme } from "./domain";
 import { LibraryPage } from "./features/LibraryPage";
 import { SkillsPage } from "./features/SkillsPage";
 import { SystemPage } from "./features/SystemPage";
@@ -69,6 +69,9 @@ export default function App() {
 
   const skills = useMemo(() => recordsFrom(sectionData(state, "skills")).map(normalizeSkill), [state]);
   const artifacts = useMemo(() => recordsFrom(sectionData(state, "artifacts")).map(normalizeArtifact), [state]);
+  const datasets = useMemo(() => recordsFrom(sectionData(state, "datasets")).map(normalizeDataset), [state]);
+  const calculations = useMemo(() => recordsFrom(sectionData(state, "calculations")).map(normalizeCalculation), [state]);
+  const libraryItems = useMemo(() => [...artifacts, ...datasets, ...calculations], [artifacts, datasets, calculations]);
   const workspaceData = asRecord(sectionData(state, "workspace"));
   const workspace = asRecord(workspaceData.context);
   const workspaceOptions = recordsFrom(workspaceData.options);
@@ -112,7 +115,7 @@ export default function App() {
           <div className="sr-status" aria-live="polite">{stateLoading ? "Loading TradingCodex" : stateError || `${workspaceName} ready`}</div>
           {stateError && <div className="global-notice"><ErrorNotice retry={() => void loadState()}>{stateError}</ErrorNotice></div>}
           {stateLoading && !hasSnapshot ? <div className="initial-loading"><LoadingState label="Opening the selected workspace…" /></div> : stateError && !hasSnapshot ? null : <div key={workspaceId}>
-            {section === "library" && <LibraryPage artifacts={artifacts} error={sectionError(state, "artifacts")} loading={stateLoading} />}
+            {section === "library" && <LibraryPage artifacts={libraryItems} error={[sectionError(state, "artifacts"), sectionError(state, "datasets"), sectionError(state, "calculations")].filter(Boolean).join(" · ")} loading={stateLoading} />}
             {section === "skills" && <SkillsPage state={state} skills={skills.filter((skill) => skill.visible)} error={sectionError(state, "skills")} selectedSkillId={selectedSkillId} setSelectedSkillId={setSelectedSkillId} loading={stateLoading} />}
             {section === "system" && <SystemPage state={state} />}
           </div>}

@@ -31,6 +31,7 @@ Artifact handoff:
 - Do not report completion until the MCP write succeeds.
 - Retrieve provided upstream artifacts by exact `artifact_id` through `get_research_artifact`; do not discover or read reports through shell commands.
 - Use native shell, Python, and credential-free public HTTP only for role-owned calculations or evidence retrieval. User-owned files outside `trading/` may be edited only when the assignment explicitly requires it; keep disposable intermediates under `$TRADINGCODEX_SCRATCH`. Protected state, secrets, durable artifacts, broker APIs, and local/private services remain outside shell authority.
+- For numeric work that can affect a conclusion, use the assigned `tcx-calculation` skill and bind the recorded Calculation Run to your artifact.
 
 Role boundary:
 - Use relevant role-owned skills assigned to `valuation-analyst`; `tcx-valuation` is the default review skill when no more specific user-approved role skill applies.
@@ -61,7 +62,7 @@ args = ["-m", "tradingcodex_cli", "mcp", "stdio"]
 enabled = true
 required = true
 cwd = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}}
-env = { TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE = {{TRADINGCODEX_HOME_SOURCE_TOML}}{{TRADINGCODEX_DB_ENV_TOML}}, TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1"{{TRADINGCODEX_MCP_PACKAGE_SPEC_ENV_TOML}}{{TRADINGCODEX_PACKAGE_SOURCE_KIND_ENV_TOML}}{{TRADINGCODEX_MCP_PYTHONPATH_ENV_TOML}}, TRADINGCODEX_MCP_PRINCIPAL = "valuation-analyst", TRADINGCODEX_SERVICE_ADDR = {{TRADINGCODEX_SERVICE_ADDR_TOML}}, TRADINGCODEX_WORKSPACE_ROOT = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}} }
+env = { TRADINGCODEX_CALCULATION_RUNTIME_ROOT = {{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_TOML}}, TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE = {{TRADINGCODEX_HOME_SOURCE_TOML}}{{TRADINGCODEX_DB_ENV_TOML}}, TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1"{{TRADINGCODEX_MCP_PACKAGE_SPEC_ENV_TOML}}{{TRADINGCODEX_PACKAGE_SOURCE_KIND_ENV_TOML}}{{TRADINGCODEX_MCP_PYTHONPATH_ENV_TOML}}, TRADINGCODEX_MCP_PRINCIPAL = "valuation-analyst", TRADINGCODEX_SCRATCH = {{TRADINGCODEX_SCRATCH_PATH_TOML}}, TRADINGCODEX_SERVICE_ADDR = {{TRADINGCODEX_SERVICE_ADDR_TOML}}, TRADINGCODEX_WORKSPACE_ROOT = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}} }
 enabled_tools = ["list_workflow_artifacts", "create_research_artifact", "get_research_artifact", "list_research_artifacts", "search_research_artifacts", "append_research_artifact_version", "export_research_artifact_md", "record_source_snapshot", "record_audit_event"]
 disabled_tools = ["simulate_policy", "run_order_checks", "validate_approval_receipt", "request_order_approval"]
 default_tools_approval_mode = "approve"

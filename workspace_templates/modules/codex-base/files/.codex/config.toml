@@ -2,7 +2,7 @@ default_permissions = "trading-research"
 approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = false, skill_approval = false } }
 approvals_reviewer = "user"
 allow_login_shell = false
-web_search = "disabled"
+web_search = "live"
 model_instructions_file = "prompts/base_instructions/head-manager.md"
 
 [permissions.trading-research]
@@ -16,6 +16,7 @@ extends = ":workspace"
 {{TRADINGCODEX_HOME_TOML}} = "deny"
 {{TRADINGCODEX_DB_PATH_TOML}} = "deny"
 {{TRADINGCODEX_PYTHON_TOML}} = "deny"
+{{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_TOML}} = "read"
 "~/.codex" = "deny"
 "~/.codex/proxy" = "read"
 "~/.codex/packages/standalone" = "read"
@@ -60,6 +61,8 @@ glob_scan_max_depth = 4
 "AGENTS.md" = "read"
 "tcx" = "read"
 "tcx.cmd" = "read"
+"tcx-calc" = "read"
+"tcx-calc.cmd" = "read"
 "trading" = "read"
 "trading/audit" = "deny"
 "trading/approvals" = "deny"
@@ -110,6 +113,7 @@ extends = ":workspace"
 {{TRADINGCODEX_DB_PATH_TOML}} = "deny"
 {{TRADINGCODEX_PYTHON_RUNTIME_ROOT_TOML}} = "read"
 {{TRADINGCODEX_PYTHON_TOML}} = "read"
+{{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_TOML}} = "deny"
 "~/.codex" = "deny"
 "~/.codex/proxy" = "read"
 "~/.codex/packages/standalone" = "read"
@@ -155,6 +159,8 @@ glob_scan_max_depth = 4
 "AGENTS.md" = "read"
 "tcx" = "read"
 "tcx.cmd" = "read"
+"tcx-calc" = "read"
+"tcx-calc.cmd" = "read"
 "trading/audit" = "deny"
 "trading/approvals" = "deny"
 "trading/decisions" = "deny"
@@ -193,7 +199,6 @@ dangerously_allow_all_unix_sockets = false
 "*" = "allow"
 
 [features]
-apps = false
 browser_use = true
 browser_use_external = true
 browser_use_full_cdp_access = false

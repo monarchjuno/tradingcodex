@@ -30,7 +30,7 @@ from tradingcodex_service.application.runtime import (
 )
 
 
-ARTIFACT_BINDING_SCHEMA_VERSION = 1
+ARTIFACT_BINDING_SCHEMA_VERSION = 2
 ARTIFACT_BINDING_DIR = "artifact-bindings"
 ARTIFACT_BINDING_SIGNING_KEY_FILE = "artifact-receipt-signing.key"
 ARTIFACT_BINDING_SIGNATURE_ALGORITHM = "hmac-sha256"
@@ -44,7 +44,7 @@ RUN_LINEAGE_FIELDS = (
     "investor_context_applied",
     "investor_context_hash",
 )
-ARTIFACT_BINDING_FIELDS = {
+ARTIFACT_BINDING_FIELDS_V1 = {
     "schema_version",
     "marker",
     "workspace_id",
@@ -68,6 +68,12 @@ ARTIFACT_BINDING_FIELDS = {
     "signature_algorithm",
     "receipt_hash",
 }
+ARTIFACT_BINDING_FIELDS_V2 = ARTIFACT_BINDING_FIELDS_V1 | {
+    "calculation_run_ids",
+    "calculation_run_hashes",
+    "calculation_reuse_origins",
+}
+ARTIFACT_BINDING_FIELDS = ARTIFACT_BINDING_FIELDS_V2
 _AUTHENTICATED_SERVICE_BINDING_WRITE = object()
 _PENDING_AUTHENTICATED_ARTIFACT_WRITE = object()
 _HISTORICAL_ARCHIVE_VERIFICATION = object()
@@ -273,7 +279,9 @@ def _authenticated_binding_history_matches(
                 require_file=True,
             )
             receipt = read_json(receipt_path, None)
-            if not isinstance(receipt, dict) or set(receipt) != ARTIFACT_BINDING_FIELDS:
+            if not isinstance(receipt, dict) or set(receipt) != set(
+                _receipt_fields_for_schema(receipt.get("schema_version"))
+            ):
                 raise ValueError(
                     f"authenticated artifact receipt schema is invalid: {receipt_path}"
                 )
@@ -487,8 +495,56 @@ def _expected_receipt_material(
         raise ValueError(
             "authenticated artifact source snapshot ids and hashes must match current snapshots"
         )
+    calculation_run_ids = artifact.get("calculation_run_ids", [])
+    if not isinstance(calculation_run_ids, list):
+        raise ValueError("authenticated artifact binding requires array calculation_run_ids")
+    normalized_calculation_run_ids = [str(value).strip() for value in calculation_run_ids]
+    if any(not value for value in normalized_calculation_run_ids):
+        raise ValueError("authenticated artifact calculation_run_ids must be non-empty strings")
+    if len(normalized_calculation_run_ids) != len(set(normalized_calculation_run_ids)):
+        raise ValueError("authenticated artifact calculation_run_ids must not contain duplicates")
+    calculation_hashes: dict[str, str] = {}
+    calculation_reuse_origins: dict[str, dict[str, str]] = {}
+    if normalized_calculation_run_ids:
+        from tradingcodex_service.application.calculations import (
+            verify_calculation_run_binding,
+        )
+
+        calculation_bindings = [
+            verify_calculation_run_binding(
+                root,
+                calculation_run_id,
+                workflow_run_id=run_id,
+                knowledge_cutoff=str(artifact.get("knowledge_cutoff") or ""),
+            )
+            for calculation_run_id in normalized_calculation_run_ids
+        ]
+        calculation_hashes = {
+            item["calculation_run_id"]: item["run_sha256"]
+            for item in calculation_bindings
+        }
+        calculation_reuse_origins = {
+            item["calculation_run_id"]: {
+                "original_run_id": item["original_run_id"],
+                "original_run_sha256": item["original_run_sha256"],
+            }
+            for item in calculation_bindings
+            if item["original_run_id"]
+        }
+    if artifact.get("calculation_run_hashes", {}) != calculation_hashes:
+        raise ValueError(
+            "authenticated artifact calculation run ids and hashes must match current runs"
+        )
+    if artifact.get("calculation_reuse_origins", {}) != calculation_reuse_origins:
+        raise ValueError(
+            "authenticated artifact calculation reuse origins must match current runs"
+        )
     receipt = {
-        "schema_version": ARTIFACT_BINDING_SCHEMA_VERSION,
+        "schema_version": (
+            ARTIFACT_BINDING_SCHEMA_VERSION
+            if normalized_calculation_run_ids
+            else 1
+        ),
         "marker": "tradingcodex-authenticated-research-artifact",
         "workspace_id": workspace_id,
         "workflow_run_id": run_id,
@@ -516,6 +572,20 @@ def _expected_receipt_material(
         "run_lineage": {field: artifact.get(field) for field in RUN_LINEAGE_FIELDS},
         "signature_algorithm": ARTIFACT_BINDING_SIGNATURE_ALGORITHM,
     }
+    if normalized_calculation_run_ids:
+        receipt.update(
+            {
+                "calculation_run_ids": normalized_calculation_run_ids,
+                "calculation_run_hashes": {
+                    key: calculation_hashes[key]
+                    for key in sorted(calculation_hashes)
+                },
+                "calculation_reuse_origins": {
+                    key: calculation_reuse_origins[key]
+                    for key in sorted(calculation_reuse_origins)
+                },
+            }
+        )
     if not receipt["producer_role"] or receipt["role"] != receipt["producer_role"]:
         raise ValueError("authenticated artifact binding requires matching role and producer_role")
     if not receipt["created_by"] or not receipt["artifact_recorded_at"]:
@@ -625,13 +695,24 @@ def _validate_receipt_signature(
     value: Any,
     path: Path,
 ) -> None:
-    if not isinstance(value, dict) or set(value) != ARTIFACT_BINDING_FIELDS:
+    if not isinstance(value, dict):
+        raise ValueError(f"authenticated artifact receipt schema is invalid: {path}")
+    expected_fields = _receipt_fields_for_schema(value.get("schema_version"))
+    if set(value) != set(expected_fields):
         raise ValueError(f"authenticated artifact receipt schema is invalid: {path}")
     claimed_hash = str(value.get("receipt_hash") or "")
     material = {key: item for key, item in value.items() if key != "receipt_hash"}
     expected_signature = _receipt_signature(root, material, create_signing_key=False)
     if not claimed_hash or not hmac.compare_digest(expected_signature, claimed_hash):
         raise ValueError(f"authenticated artifact receipt integrity check failed: {path}")
+
+
+def _receipt_fields_for_schema(schema_version: Any) -> set[str]:
+    if schema_version == 1:
+        return ARTIFACT_BINDING_FIELDS_V1
+    if schema_version == ARTIFACT_BINDING_SCHEMA_VERSION:
+        return ARTIFACT_BINDING_FIELDS_V2
+    return set()
 
 
 def _receipt_signature(

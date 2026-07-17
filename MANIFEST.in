@@ -11,5 +11,7 @@ recursive-include frontend *.css *.html *.json *.js *.ts *.tsx
 recursive-include workspace_templates *
 recursive-include workspace_templates .*
 recursive-include tradingcodex_service/static *
+include tradingcodex_cli/calculation-runtime-lock.json
+include tradingcodex_cli/calculation-runtime-requirements.txt
 recursive-exclude frontend/node_modules *
 global-exclude *.py[cod]

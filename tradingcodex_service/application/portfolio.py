@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import re
 import time
 from decimal import Decimal, InvalidOperation, ROUND_HALF_EVEN
 from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.application.common import now_iso
+from tradingcodex_service.application.research_objects import content_hash
 from tradingcodex_service.application.runtime import (
     DEFAULT_BASE_CURRENCY,
     active_profile_for_workspace,
@@ -424,4 +426,78 @@ def list_positions(workspace_root: Path | str) -> dict[str, Any]:
             "started_at": sync_run.started_at.isoformat(),
             "finished_at": sync_run.finished_at.isoformat() if sync_run.finished_at else "",
         }
+    state["private_calculation_binding"] = paper_portfolio_state_binding(
+        workspace_root
+    )
     return state
+
+
+def paper_portfolio_state_binding(
+    workspace_root: Path | str,
+    *,
+    expected_snapshot_id: str = "",
+    expected_snapshot_hash: str = "",
+) -> dict[str, str | int]:
+    """Return or verify the active DB-canonical private calculation binding.
+
+    Only the opaque state identity, version, and strict content hash leave this
+    application boundary. The portfolio payload remains in the central ledger.
+    """
+
+    ensure_runtime_database(workspace_root)
+    from apps.portfolio.models import PaperPortfolioState
+
+    portfolio_id, account_id, strategy_id = portfolio_keys({}, workspace_root)
+    requested_pk = 0
+    requested_version = 0
+    if expected_snapshot_id:
+        match = re.fullmatch(
+            r"paper-portfolio-state:([1-9][0-9]*):v([1-9][0-9]*)",
+            str(expected_snapshot_id),
+        )
+        if match is None:
+            raise ValueError("private ledger snapshot id is invalid")
+        requested_pk = int(match.group(1))
+        requested_version = int(match.group(2))
+        row = PaperPortfolioState.objects.filter(
+            pk=requested_pk,
+            portfolio_id=portfolio_id,
+            account_id=account_id,
+            strategy_id=strategy_id,
+        ).first()
+    else:
+        row = PaperPortfolioState.objects.filter(
+            portfolio_id=portfolio_id,
+            account_id=account_id,
+            strategy_id=strategy_id,
+        ).first()
+    if row is None:
+        raise ValueError("private ledger snapshot is unavailable for the active workspace")
+    version = int(row.version)
+    snapshot_id = f"paper-portfolio-state:{row.pk}:v{version}"
+    if requested_version and requested_version != version:
+        raise ValueError("private ledger snapshot version is no longer current")
+    normalized = _normalize_state(
+        row.payload,
+        portfolio_id,
+        account_id,
+        strategy_id,
+        workspace_root,
+    )
+    normalized["version"] = version
+    material = {
+        "portfolio_id": portfolio_id,
+        "account_id": account_id,
+        "strategy_id": strategy_id,
+        "state_pk": int(row.pk),
+        "version": version,
+        "payload": _storage_state(normalized),
+    }
+    snapshot_hash = content_hash(material)
+    if expected_snapshot_hash and expected_snapshot_hash != snapshot_hash:
+        raise ValueError("private ledger snapshot hash does not match the central ledger")
+    return {
+        "ledger_snapshot_id": snapshot_id,
+        "ledger_snapshot_hash": snapshot_hash,
+        "version": version,
+    }

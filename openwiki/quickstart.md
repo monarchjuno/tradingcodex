@@ -52,7 +52,7 @@ Keep three product layers separate when editing:
   strategies, and explicit Investment Brain plugins that extend the baseline
   without weakening the kernel.
 
-All 32 bundled skill ids use the reserved compact `tcx-` namespace with one
+All 33 bundled skill ids use the reserved compact `tcx-` namespace with one
 suffix word when possible and no more than two. User-owned `strategy-*`,
 `investment-brain-*`, and optional role skills remain separate namespaces.
 
@@ -79,9 +79,13 @@ app Scheduled Tasks submit the saved prompt through the same root-turn path;
 TradingCodex does not detect or trust an Automation origin.
 
 Normal Head Manager and fixed-role analysis inherits the project-wide
-`trading-research` permission profile. General shell/Python, credential-free
+`trading-research` permission profile. General shell, credential-free
 public retrieval, user-owned file changes outside `trading/`, and the dedicated
-`$TRADINGCODEX_SCRATCH` path are available. The `trading/` tree, generated
+`$TRADINGCODEX_SCRATCH` path are available. Fixed-role Python calculation uses
+one direct scratch-local script through the generated wheel-locked `tcx-calc`
+runtime v2. Prepared conclusion-relevant work becomes an immutable
+CalculationSpec/Run; a direct unprepared run is exploratory only. The
+`trading/` tree, generated
 control files, TradingCodex runtime/DB, protected artifacts, credentials, and
 local/private services remain protected. Authenticated service/MCP tools own
 durable TradingCodex writes. Controlled `trading/`, product, or connector
@@ -122,6 +126,7 @@ and Build, Brain, Strategy, and order markers must never be combined. Persistent
 | `tradingcodex_service/application/workspace_git.py` | Generated-workspace Git and privacy-ignore contract without automatic repository actions. |
 | `tradingcodex_service/application/investor_context.py` | Optional workspace-local suitability context and its saved application default. |
 | `tradingcodex_service/application/research_specs.py`, `forecasting.py` | Point-in-time research plans, method profiles, experiment runs, and forecast lifecycle. |
+| `tradingcodex_service/application/research_objects.py`, `datasets.py`, `calculations.py`, `research_object_catalog.py` | Shared immutable research objects, canonical Parquet Datasets, CalculationSpec/Run memory, and the rebuildable SQLite+FTS v3 catalog. |
 | `tradingcodex_service/application/investment_analysis.py`, `evaluation_lab.py` | Method-bound causal valuation plus pristine and corpus-declared paired model-evaluation profiles. |
 | `tradingcodex_service/api.py` | Local/staff API surface. |
 | `tradingcodex_service/viewer_api.py`, `application/viewer.py` | Read-only selected-workspace snapshot and skill/artifact detail API. |
@@ -141,7 +146,9 @@ and Build, Brain, Strategy, and order markers must never be combined. Persistent
   or execution authority.
 - Node 22 is a maintainer frontend-build dependency only. The wheel and
   generated workspaces remain Node-free; attach/update never run npm.
-- Research artifacts and source snapshots are workspace-file-native, not Django research DB models.
+- Research artifacts, Source Snapshots, Dataset manifests/payloads/withdrawals,
+  and Calculation specs/runs are workspace-file-native, not Django research DB
+  models. The SQLite+FTS catalog is rebuildable and never authoritative.
 - Final submit/cancel begins with either an exact complete immediate root action
   or an exact first-meaningful-line `$tcx-order-allow` grant plus current
   `PreToolUse` proof;

@@ -2,6 +2,77 @@
 
 ## Unreleased
 
+## 1.1.2 - 2026-07-17
+
+- Add a cross-platform fixed-role calculation surface with generated
+  `tcx-calc`/`tcx-calc.cmd` launchers and a content-addressed runtime v2 outside
+  Django, MCP, the service home, DB, workspace, and scratch. Its wheel-only
+  per-artifact hash resource pins the complete 12-package direct/transitive
+  set around NumPy, pandas, SciPy, statsmodels, numpy-financial, and PyArrow.
+  The exact basename-only contract replaces host-dependent system
+  Python and heredocs, sanitizes environment and temp state before exposing the
+  verified runtime, rejects links and compound forms, applies resource bounds,
+  blocks child-process and network escape paths in prepared mode, verifies the
+  generated launcher hashes in doctor, and remains inside the native Codex OS
+  sandbox. Windows scratch now uses `TradingCodexScratch` so it cannot overlap
+  the default service home. The explicit manual release workflow gates the exact
+  wheel through an x86-64 Linux/macOS/Windows and Python 3.11-3.14 runtime
+  matrix.
+- Separate ordinary GitHub uploads from deployment work. Normal source CI keeps
+  source, framework, and deterministic frontend checks but does not build or
+  upload distributions, run release-upgrade or platform matrices, or publish.
+  Documentation-only pushes and pull requests skip source CI, GitHub Pages
+  becomes manual-only, and package build/publication remains confined to
+  explicit Manual Release dispatches.
+- Add immutable Dataset memory with Source Snapshot lineage, explicit typed
+  manifests, content-addressed canonical Parquet payloads, append-only license
+  withdrawals, bounded card/manifest/profile/slice retrieval, and a managed
+  Git ignore rule for payload objects. A rebuildable SQLite+FTS v3 catalog now
+  unifies existing research artifacts with Dataset and Calculation objects,
+  reprojects only changed files, rebuilds after corruption, and continues the
+  legacy JSON exports for one compatibility release. Lineage timestamps cannot
+  predate their Source Snapshot or parent Dataset, withdrawn shared payloads
+  cannot be profiled, malformed manifests fail closed per object, and L0 cards
+  are size-bounded.
+- Add prepared CalculationSpec/Run memory around `tcx-calc`, including declared
+  scratch inputs/outputs, typed finite result envelopes, exact full-fingerprint
+  reuse with a current-workflow reuse Run, comparison by requested metric, and
+  private-ledger snapshot hash binding without durable input values. The new
+  shared `tcx-calculation` skill gives the six financial calculation roles the
+  bounded procedure; Head Manager receives card-only planning discovery and
+  the viewer remains read-only. Calculation cards also project bounded symbols
+  and immutable Dataset relations so instrument-scoped role searches do not
+  miss an existing exact calculation. Prepared recording independently
+  revalidates script/input/sidecar/runtime/output hashes and schemas; Dataset
+  materializations and private central-ledger snapshots are service-bound
+  rather than caller-asserted.
+- Route legacy Source Snapshot, ResearchSpec, ReplayManifest, and ExperimentRun
+  path construction, regular-file reads, hash verification, and immutable
+  writes through the shared Research Object primitives while preserving their
+  released v1 hash encoding and IDs without migration.
+- Enable Head Manager live web search for narrow workflow-planning
+  reconnaissance. Durable root instructions and `tcx-workflow` keep raw search
+  results untrusted and prohibit using them as accepted evidence or synthesis
+  support; material facts must be reacquired by producing roles. Portfolio,
+  risk, and judgment-review roles explicitly keep web search disabled, and the
+  existing Build hook continues to block native web and browser tools.
+- Fix BYOR Codex capability use after the 1.1.1 gate removal. Head Manager and
+  fixed roles now distinguish explicit external skill overlays from read-only
+  app, connector, MCP, and data tools; inspect the current task's callable
+  surface before falling back or declaring a provider unavailable; and treat
+  the sanitized inventory as configuration evidence rather than runtime
+  callability proof. Capability inventory now names plugin app/MCP/hook
+  components from secret-free top-level identifiers and includes compatible
+  user skills discovered below `CODEX_HOME/skills`. Generated workspaces no
+  longer disable Codex apps, leaving app exposure to user, organization, and
+  host policy.
+- Align observed E2E behavior with the workspace contract: fixed roles may edit
+  files in their dedicated private scratch root while arbitrary external paths
+  remain blocked; viewer write-shaped requests consistently return GET-only
+  `405` responses even with CSRF enforcement; managed Brain and Strategy proof
+  errors name their own entrypoints; and E2E hooks execute through the generated
+  launcher runtime.
+
 ## 1.1.1 - 2026-07-16
 
 - Remove the legacy user-capability gate, its CLI and broker-import paths,

@@ -777,8 +777,9 @@ def begin_reserved_build_turn_use(
     required_scope = _protected_tool_scope(canonical_tool)
     marker = _scope_marker(required_scope)
     arguments_hash = _build_arguments_hash(args)
+    proof_label = "Build turn proof" if required_scope == "build" else f"{marker} turn proof"
     proof_hash = _secret_hash(
-        _validate_binding_value("Build turn proof", proof, max_length=_MAX_PROOF_LENGTH)
+        _validate_binding_value(proof_label, proof, max_length=_MAX_PROOF_LENGTH)
     )
     now = django_timezone.now()
     context = workspace_context_payload(root)

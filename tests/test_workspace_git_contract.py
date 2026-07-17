@@ -115,6 +115,7 @@ def test_privacy_ignore_keeps_user_brain_strategy_research_and_memory_eligible(
         ".tradingcodex/user/investor-context.md",
         "trading/audit/codex-hooks.jsonl",
         "trading/research/.index/research-index.json",
+        "trading/research/datasets/objects/2d711642b726b04401627ca9fbac32f5da7e5c3c.parquet",
         ".env",
         "broker.pem",
     )
@@ -122,6 +123,8 @@ def test_privacy_ignore_keeps_user_brain_strategy_research_and_memory_eligible(
         ".agents/skills/investment-brain-local/SKILL.md",
         ".agents/skills/strategy-local/SKILL.md",
         "trading/research/company-thesis.md",
+        "trading/research/datasets/manifests/dataset-1.json",
+        "trading/research/datasets/withdrawals/withdrawal-1.json",
         "trading/reports/postmortem/lesson.md",
         "trading/decisions/decision-1.md",
         ".tradingcodex/mainagent/improve.jsonl",

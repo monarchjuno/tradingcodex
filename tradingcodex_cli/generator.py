@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
 import os
+import platform
 import re
 import shlex
 import shutil
@@ -28,7 +30,7 @@ from tradingcodex_service.application.agents import (
     project_agent_configuration,
 )
 from tradingcodex_service.application.components import list_harness_components
-from tradingcodex_service.application.common import atomic_write_text, exclusive_file_lock, workspace_launcher_command
+from tradingcodex_service.application.common import atomic_write_text, exclusive_file_lock, stable_hash, workspace_launcher_command
 from tradingcodex_service.application.runtime import (
     assert_runtime_home_outside_workspace,
     assert_runtime_database_compatible,
@@ -101,6 +103,13 @@ BOOTSTRAP_WRITE_PATHS = frozenset({
     ".tradingcodex/workspace.json",
 })
 MANAGED_PYTHON_RUNTIME_ROOT = Path("runtime/python")
+CALCULATION_RUNTIME_SCHEMA_VERSION = 2
+CALCULATION_RUNNER_SOURCE = Path(__file__).with_name("calculation_runner.py")
+CALCULATION_RUNTIME_LOCK = Path(__file__).with_name("calculation-runtime-lock.json")
+CALCULATION_RUNTIME_REQUIREMENTS = Path(__file__).with_name(
+    "calculation-runtime-requirements.txt"
+)
+CALCULATION_RUNTIME_MANIFEST_NAME = "runtime-manifest.json"
 LOCAL_RUNTIME_SOURCE_ROOTS = (
     "pyproject.toml",
     "uv.lock",
@@ -334,6 +343,19 @@ def _generation_context(
             or os.environ.get("TRADINGCODEX_LAUNCHED_BY_PACKAGE_RUNNER") == "1"
         ),
     )
+    calculation_runtime_root, calculation_python, calculation_runner = (
+        calculation_runtime_paths(
+            workspace_id,
+            provision=provision_runtime,
+            protected_paths={
+                "generated workspace": target,
+                "TradingCodex scratch": scratch_path,
+                "TRADINGCODEX_HOME": resolution.home,
+                "TradingCodex database": tradingcodex_db_path(),
+                "CODEX_HOME": codex_home,
+            },
+        )
+    )
     raw = {
         "PROJECT_NAME": sanitize_project_name(target.name or "tradingcodex-workspace"),
         "WORKSPACE_ID": workspace_id,
@@ -348,6 +370,9 @@ def _generation_context(
             else PERSISTENT_EXECUTABLE_SOURCE_KIND
         ),
         "TRADINGCODEX_PYTHON": generated_python,
+        "TRADINGCODEX_CALCULATION_RUNTIME_ROOT": str(calculation_runtime_root),
+        "TRADINGCODEX_CALCULATION_PYTHON": str(calculation_python),
+        "TRADINGCODEX_CALCULATION_RUNNER": str(calculation_runner),
         "TRADINGCODEX_WORKSPACE_ROOT": str(target.resolve()),
         "TRADINGCODEX_SCRATCH_PATH": str(scratch_path),
         "TRADINGCODEX_NULL_DEVICE": os.devnull,
@@ -411,12 +436,456 @@ def resolve_generated_git_command() -> str:
 
 def _workspace_scratch_display_path(workspace_id: str) -> Path:
     if os.name == "nt":
-        cache_base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "TradingCodex"
+        cache_base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "TradingCodexScratch"
     elif sys.platform == "darwin":
         cache_base = Path.home() / "Library" / "Caches" / "TradingCodex"
     else:
         cache_base = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "tradingcodex"
     return cache_base.expanduser().absolute() / "scratch-v1" / workspace_id
+
+
+def _calculation_runtime_cache_root() -> Path:
+    if os.name == "nt":
+        cache_base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "TradingCodexCalculation"
+    elif sys.platform == "darwin":
+        cache_base = Path.home() / "Library" / "Caches" / "TradingCodexCalculation"
+    else:
+        cache_base = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "tradingcodex-calculation"
+    return cache_base.expanduser().absolute() / f"runtime-v{CALCULATION_RUNTIME_SCHEMA_VERSION}"
+
+
+def calculation_runtime_paths(
+    _workspace_id: str,
+    *,
+    provision: bool,
+    protected_paths: dict[str, Path | str] | None = None,
+) -> tuple[Path, Path, Path]:
+    """Resolve and optionally provision the pinned financial calculation runtime.
+
+    This runtime is intentionally independent of Django, the MCP process, the
+    service ledger, and the package-bearing generated launcher interpreter.
+    """
+
+    source = CALCULATION_RUNNER_SOURCE.read_bytes()
+    lock_bytes = CALCULATION_RUNTIME_LOCK.read_bytes()
+    lock = _load_calculation_runtime_lock(lock_bytes)
+    requirements_bytes = CALCULATION_RUNTIME_REQUIREMENTS.read_bytes()
+    _validate_calculation_runtime_requirements(requirements_bytes, lock)
+    bootstrap_python = _runtime_bootstrap_python("")
+    try:
+        bootstrap_stat = bootstrap_python.stat()
+        bootstrap_identity = {
+            "path": str(bootstrap_python.resolve()),
+            "sha256": hashlib.sha256(bootstrap_python.read_bytes()).hexdigest(),
+            "size": bootstrap_stat.st_size,
+            "mtime_ns": bootstrap_stat.st_mtime_ns,
+            "host_system": platform.system(),
+            "host_machine": platform.machine(),
+        }
+    except OSError as exc:
+        raise ValueError(
+            "TradingCodex calculation runtime bootstrap Python is unreadable"
+        ) from exc
+    digest = hashlib.sha256()
+    digest.update(source)
+    digest.update(b"\0")
+    digest.update(lock_bytes)
+    digest.update(b"\0")
+    digest.update(requirements_bytes)
+    digest.update(b"\0")
+    digest.update(
+        json.dumps(bootstrap_identity, sort_keys=True).encode("utf-8")
+    )
+    runtime_root = _calculation_runtime_cache_root() / f"finance-{digest.hexdigest()[:16]}"
+    runtime_python = runtime_root / (
+        "Scripts/python.exe" if os.name == "nt" else "bin/python"
+    )
+    runtime_runner = runtime_root / "calculation_runner.py"
+    runtime_manifest = runtime_root / CALCULATION_RUNTIME_MANIFEST_NAME
+    _validate_calculation_runtime_location(
+        runtime_root,
+        protected_paths=protected_paths,
+    )
+    if not provision:
+        return runtime_root, runtime_python, runtime_runner
+
+    runtime_parent = runtime_root.parent
+    runtime_parent.mkdir(parents=True, exist_ok=True)
+    if _path_is_link_or_reparse_point(runtime_parent):
+        raise ValueError("TradingCodex calculation runtime parent must be a real directory")
+    lock_target = runtime_parent / f".{runtime_root.name}.provision"
+    with exclusive_file_lock(lock_target, timeout_seconds=300):
+        if runtime_root.exists():
+            _validate_calculation_runtime(
+                runtime_root,
+                runtime_python,
+                runtime_runner,
+                runtime_manifest,
+                source,
+                lock_bytes,
+                requirements_bytes,
+                lock,
+            )
+            return runtime_root, runtime_python, runtime_runner
+        staging = Path(tempfile.mkdtemp(prefix=f".{runtime_root.name}.", dir=runtime_parent))
+        environment = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "PYTHONSTARTUP"):
+            environment.pop(key, None)
+        try:
+            _run_runtime_provision_command(
+                [
+                    str(bootstrap_python),
+                    "-m",
+                    "venv",
+                    "--copies",
+                    "--without-pip",
+                    str(staging),
+                ],
+                environment,
+            )
+            staging_python = staging / (
+                "Scripts/python.exe" if os.name == "nt" else "bin/python"
+            )
+            staging_runner = staging / "calculation_runner.py"
+            atomic_write_text(staging_runner, source.decode("utf-8"))
+            uv = shutil.which("uv")
+            if not uv:
+                raise ValueError(
+                    "uv is required to provision the TradingCodex calculation runtime"
+                )
+            try:
+                _run_runtime_provision_command(
+                    [
+                        uv,
+                        "pip",
+                        "install",
+                        "--python",
+                        str(staging_python),
+                        "--link-mode",
+                        "copy",
+                        "--strict",
+                        "--no-deps",
+                        "--only-binary",
+                        ":all:",
+                        "--require-hashes",
+                        "-r",
+                        str(CALCULATION_RUNTIME_REQUIREMENTS),
+                    ],
+                    environment,
+                )
+            except ValueError as exc:
+                raise ValueError(
+                    "the pinned wheel-only TradingCodex financial calculation runtime "
+                    "is unavailable for this Python/platform"
+                ) from exc
+            staging_manifest = staging / CALCULATION_RUNTIME_MANIFEST_NAME
+            _write_calculation_runtime_manifest(
+                staging,
+                staging_python,
+                staging_runner,
+                staging_manifest,
+                lock_bytes,
+                requirements_bytes,
+                lock,
+            )
+            try:
+                staging_runner.chmod(0o444)
+                staging_manifest.chmod(0o444)
+            except OSError:
+                pass
+            _validate_calculation_runtime(
+                staging,
+                staging_python,
+                staging_runner,
+                staging_manifest,
+                source,
+                lock_bytes,
+                requirements_bytes,
+                lock,
+            )
+            staging.replace(runtime_root)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+    _validate_calculation_runtime(
+        runtime_root,
+        runtime_python,
+        runtime_runner,
+        runtime_manifest,
+        source,
+        lock_bytes,
+        requirements_bytes,
+        lock,
+    )
+    return runtime_root, runtime_python, runtime_runner
+
+
+def _load_calculation_runtime_lock(lock_bytes: bytes) -> dict[str, Any]:
+    try:
+        lock = json.loads(lock_bytes)
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("TradingCodex calculation runtime lock is invalid") from exc
+    expected_fields = {
+        "schema_version",
+        "python_requires",
+        "requirements_sha256",
+        "installer",
+        "direct_packages",
+        "packages",
+    }
+    packages = lock.get("packages") if isinstance(lock, dict) else None
+    if (
+        not isinstance(lock, dict)
+        or set(lock) != expected_fields
+        or lock.get("schema_version") != 1
+        or lock.get("python_requires") != ">=3.11,<3.15"
+        or re.fullmatch(r"[0-9a-f]{64}", str(lock.get("requirements_sha256") or ""))
+        is None
+        or lock.get("installer")
+        != {"dependencies": False, "source_distributions": False}
+        or not isinstance(packages, dict)
+        or not packages
+    ):
+        raise ValueError("TradingCodex calculation runtime lock is invalid")
+    for name, version in packages.items():
+        if re.fullmatch(r"[a-z0-9][a-z0-9.-]*", str(name)) is None:
+            raise ValueError("TradingCodex calculation runtime lock has an invalid package")
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.+!-]*", str(version)) is None:
+            raise ValueError("TradingCodex calculation runtime lock has an invalid version")
+    required = {
+        "numpy": "2.3.5",
+        "pandas": "2.3.3",
+        "scipy": "1.16.3",
+        "statsmodels": "0.14.6",
+        "numpy-financial": "1.0.0",
+        "pyarrow": "25.0.0",
+    }
+    if lock.get("direct_packages") != sorted(required) or any(
+        packages.get(name) != version for name, version in required.items()
+    ):
+        raise ValueError("TradingCodex calculation runtime direct package pins changed")
+    return lock
+
+
+def _validate_calculation_runtime_requirements(
+    requirements_bytes: bytes,
+    lock: dict[str, Any],
+) -> dict[str, tuple[str, ...]]:
+    expected_digest = str(lock.get("requirements_sha256") or "")
+    actual_digest = hashlib.sha256(requirements_bytes).hexdigest()
+    if not hmac.compare_digest(expected_digest, actual_digest):
+        raise ValueError("TradingCodex calculation requirements hash mismatch")
+    try:
+        lines = requirements_bytes.decode("utf-8").splitlines()
+    except UnicodeDecodeError as exc:
+        raise ValueError("TradingCodex calculation requirements must be UTF-8") from exc
+    packages: dict[str, dict[str, Any]] = {}
+    current = ""
+    for raw_line in lines:
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        requirement = re.fullmatch(
+            r"([a-z0-9][a-z0-9.-]*)==([A-Za-z0-9][A-Za-z0-9_.+!-]*) \\",
+            line,
+        )
+        if requirement:
+            current = requirement.group(1)
+            if current in packages:
+                raise ValueError("TradingCodex calculation requirements contain duplicates")
+            packages[current] = {"version": requirement.group(2), "hashes": []}
+            continue
+        hash_line = re.fullmatch(r"--hash=sha256:([0-9a-f]{64})(?: \\)?", line)
+        if hash_line and current:
+            packages[current]["hashes"].append(hash_line.group(1))
+            continue
+        raise ValueError("TradingCodex calculation requirements structure is invalid")
+    expected_packages = lock.get("packages")
+    actual_packages = {
+        name: record["version"] for name, record in packages.items()
+    }
+    if actual_packages != expected_packages or any(
+        not record["hashes"] for record in packages.values()
+    ):
+        raise ValueError("TradingCodex calculation requirements do not match the package lock")
+    return {
+        name: tuple(record["hashes"])
+        for name, record in packages.items()
+    }
+
+
+def _calculation_site_packages(runtime_root: Path, runtime_python: Path) -> Path:
+    if os.name == "nt":
+        return runtime_root / "Lib" / "site-packages"
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"COMSPEC", "LANG", "LC_ALL", "PATH", "PATHEXT", "SYSTEMROOT", "WINDIR"}
+        or key.startswith("LC_")
+    }
+    version = subprocess.run(
+        [str(runtime_python), "-I", "-S", "-c", "import sys; print(f'{sys.version_info[0]}.{sys.version_info[1]}')"],
+        cwd=runtime_root,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=True,
+    ).stdout.strip()
+    return runtime_root / "lib" / f"python{version}" / "site-packages"
+
+
+def _write_calculation_runtime_manifest(
+    runtime_root: Path,
+    runtime_python: Path,
+    runtime_runner: Path,
+    runtime_manifest: Path,
+    lock_bytes: bytes,
+    requirements_bytes: bytes,
+    lock: dict[str, Any],
+) -> None:
+    site_packages = _calculation_site_packages(runtime_root, runtime_python)
+    probe_source = (
+        "import importlib.metadata as m,json,platform,sys;"
+        f"sys.path.insert(0,{str(site_packages)!r});"
+        "import numpy;"
+        f"names={sorted(lock['packages'])!r};"
+        "packages={name:m.version(name) for name in names};"
+        "config=getattr(numpy.__config__,'CONFIG',{});"
+        "print(json.dumps({'python_version':platform.python_version(),"
+        "'python_implementation':platform.python_implementation(),"
+        "'platform_system':platform.system(),'platform_machine':platform.machine(),"
+        "'packages':packages,'numpy_config':config},sort_keys=True,default=str))"
+    )
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"COMSPEC", "LANG", "LC_ALL", "PATHEXT", "SYSTEMROOT", "WINDIR"}
+        or key.startswith("LC_")
+    }
+    try:
+        probe = subprocess.run(
+            [str(runtime_python), "-I", "-B", "-S", "-c", probe_source],
+            cwd=runtime_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=True,
+        )
+        platform_payload = json.loads(probe.stdout)
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError) as exc:
+        raise ValueError("TradingCodex calculation runtime package probe failed") from exc
+    manifest = {
+        "schema_version": CALCULATION_RUNTIME_SCHEMA_VERSION,
+        "lock_sha256": hashlib.sha256(lock_bytes).hexdigest(),
+        "requirements_sha256": hashlib.sha256(requirements_bytes).hexdigest(),
+        "runner_sha256": hashlib.sha256(runtime_runner.read_bytes()).hexdigest(),
+        "site_packages": str(site_packages.relative_to(runtime_root)).replace("\\", "/"),
+        **platform_payload,
+    }
+    manifest["manifest_sha256"] = stable_hash(manifest)
+    atomic_write_text(
+        runtime_manifest,
+        json.dumps(manifest, indent=2, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n",
+    )
+
+
+def _validate_calculation_runtime_location(
+    runtime_root: Path,
+    *,
+    protected_paths: dict[str, Path | str] | None,
+) -> None:
+    resolved = runtime_root.resolve(strict=False)
+    for label, raw_path in (protected_paths or {}).items():
+        protected = Path(raw_path).expanduser().resolve(strict=False)
+        if _paths_overlap(resolved, protected):
+            raise ValueError(f"TradingCodex calculation runtime must not overlap {label}")
+    for candidate in (runtime_root.parent, runtime_root):
+        if _path_is_link_or_reparse_point(candidate):
+            raise ValueError(
+                "TradingCodex calculation runtime must not use a symlink or reparse point"
+            )
+
+
+def _validate_calculation_runtime(
+    runtime_root: Path,
+    runtime_python: Path,
+    runtime_runner: Path,
+    runtime_manifest: Path,
+    expected_source: bytes,
+    lock_bytes: bytes,
+    requirements_bytes: bytes,
+    lock: dict[str, Any],
+) -> None:
+    _validate_calculation_runtime_requirements(requirements_bytes, lock)
+    if not runtime_root.is_dir() or _path_is_link_or_reparse_point(runtime_root):
+        raise ValueError("TradingCodex calculation runtime is incomplete")
+    for candidate in (runtime_python, runtime_runner, runtime_manifest):
+        if not candidate.is_file() or _path_is_link_or_reparse_point(candidate):
+            raise ValueError("TradingCodex calculation runtime contains an invalid file")
+    if runtime_runner.read_bytes() != expected_source:
+        raise ValueError("TradingCodex calculation runner does not match this release")
+    try:
+        manifest = json.loads(runtime_manifest.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError("TradingCodex calculation runtime manifest is invalid") from exc
+    manifest_payload = dict(manifest)
+    manifest_hash = str(manifest_payload.pop("manifest_sha256", ""))
+    if (
+        manifest.get("schema_version") != CALCULATION_RUNTIME_SCHEMA_VERSION
+        or manifest_hash != stable_hash(manifest_payload)
+        or manifest.get("lock_sha256") != hashlib.sha256(lock_bytes).hexdigest()
+        or manifest.get("requirements_sha256")
+        != hashlib.sha256(requirements_bytes).hexdigest()
+        or manifest.get("runner_sha256") != hashlib.sha256(expected_source).hexdigest()
+        or manifest.get("packages") != lock["packages"]
+    ):
+        raise ValueError("TradingCodex calculation runtime manifest does not match this release")
+    site_relative = str(manifest.get("site_packages") or "")
+    site_packages = (runtime_root / site_relative).resolve(strict=False)
+    if not site_packages.is_dir() or not site_packages.is_relative_to(runtime_root.resolve()):
+        raise ValueError("TradingCodex calculation runtime site-packages is invalid")
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key in {"COMSPEC", "LANG", "LC_ALL", "PATHEXT", "SYSTEMROOT", "WINDIR"}
+        or key.startswith("LC_")
+    }
+    try:
+        probe = subprocess.run(
+            [
+                str(runtime_python),
+                "-I",
+                "-S",
+                "-c",
+                (
+                    "import importlib.metadata as m,json,sys; "
+                    "sys.exit(2) if not (sys.flags.isolated and sys.flags.no_site) else None; "
+                    f"sys.path.insert(0,{str(site_packages)!r}); "
+                    f"expected={lock['packages']!r}; "
+                    "actual={name:m.version(name) for name in expected}; "
+                    "import numpy,pandas,scipy,statsmodels,numpy_financial,pyarrow; "
+                    "sys.exit(3 if actual != expected else 0)"
+                ),
+            ],
+            cwd=runtime_root,
+            env=environment,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ValueError("TradingCodex calculation runtime is not executable") from exc
+    if probe.returncode != 0:
+        raise ValueError(
+            "TradingCodex calculation runtime package set is unavailable or changed "
+            f"(probe exit {probe.returncode})"
+        )
 
 
 def workspace_scratch_permission_aliases(
@@ -758,7 +1227,13 @@ def _runtime_bootstrap_python(prior_runtime_python: str) -> Path:
             raise ValueError("TradingCodex prior runtime Python must be an absolute path")
         candidates = [prior]
     else:
+        path_candidates = [
+            Path(candidate).expanduser()
+            for name in ("python3.13", "python3.12", "python3.11", "python3.14", "python3", "python")
+            if (candidate := shutil.which(name))
+        ]
         candidates = [
+            *path_candidates,
             Path(str(getattr(sys, "_base_executable", "") or sys.executable)).expanduser(),
             Path(sys.executable).expanduser(),
         ]
@@ -973,6 +1448,27 @@ def serialized_template_context(raw: dict[str, str]) -> dict[str, str]:
         windows_python if windows_python.is_absolute() else Path(python_value)
     )
     raw.setdefault("TRADINGCODEX_PYTHON_RUNTIME_ROOT", str(python_path.parent.parent))
+    raw.setdefault(
+        "TRADINGCODEX_CALCULATION_RUNTIME_ROOT",
+        str(python_path.parent.parent / "calculation-stdlib"),
+    )
+    calculation_root = raw["TRADINGCODEX_CALCULATION_RUNTIME_ROOT"]
+    calculation_root_path: Path | PureWindowsPath = (
+        PureWindowsPath(calculation_root)
+        if PureWindowsPath(calculation_root).is_absolute()
+        else Path(calculation_root)
+    )
+    raw.setdefault(
+        "TRADINGCODEX_CALCULATION_PYTHON",
+        str(
+            calculation_root_path
+            / ("Scripts/python.exe" if isinstance(calculation_root_path, PureWindowsPath) else "bin/python")
+        ),
+    )
+    raw.setdefault(
+        "TRADINGCODEX_CALCULATION_RUNNER",
+        str(calculation_root_path / "calculation_runner.py"),
+    )
     raw.setdefault("TRADINGCODEX_MCP_PYTHONPATH", "")
     raw.setdefault("TRADINGCODEX_PACKAGE_RUNNER", package_runner)
     if "TRADINGCODEX_GIT_COMMAND" not in raw:

@@ -34,6 +34,18 @@ contracts and are not research-index entries.
 Non-artifact research freshness records are also file-native:
 
 - `trading/research/source-snapshots/*.json` for provider/as-of/retrieved metadata
+- `trading/research/datasets/manifests/*.json` for immutable Dataset metadata,
+  source bindings, schema, quality, lineage, license, retention, and exact
+  payload hashes
+- `trading/research/datasets/objects/<payload-sha256>.parquet` for canonical
+  table payloads; these are permanent-local workspace evidence but are ignored
+  by the managed Git privacy block
+- `trading/research/datasets/withdrawals/*.json` for append-only user-directed
+  license or legal withdrawal events
+- `trading/research/calculations/specs/*.json` and
+  `trading/research/calculations/runs/*.json` for immutable CalculationSpec and
+  CalculationRun records; prepared sidecars and result envelopes remain in
+  scratch
 - `trading/research/specs/*.json` for immutable ResearchSpec records
 - `trading/research/replay-manifests/*.json` for frozen point-in-time evidence
   sets
@@ -41,11 +53,12 @@ Non-artifact research freshness records are also file-native:
 - `trading/research/analyses/*.json`, `judgment-priors/*.json`, and
   `judgment-reviews/*.json` for deterministic causal valuation and two-pass
   independent review
-- `trading/research/.index/research-index.json` for a rebuildable incremental
-  search index; files remain canonical
-- `trading/research/.index/artifact-catalog-v2.json` for a rebuildable
-  cross-artifact catalog over research, reports, decisions, forecasts, and
-  evaluation records; source files and ledgers remain canonical
+- `trading/research/.index/research-object-catalog-v3.sqlite3` for the current
+  rebuildable structured and FTS research-object projection
+- `trading/research/.index/research-index.json` and
+  `trading/research/.index/artifact-catalog-v2.json` for one-release
+  compatibility exports emitted from the same projection rules; files remain
+  canonical
 - `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json`
   for the frozen model-upgrade evaluation lab
 - `*.run-card.json` beside research artifacts, reports, decision packages, or
@@ -111,6 +124,13 @@ Research markdown frontmatter should preserve:
   lineage for the run
 - `input_artifact_ids` and `input_artifact_hashes`: exact run-local lineage for
   every upstream artifact actually consumed
+- `calculation_run_ids`: exact current-workflow CalculationRun records that
+  support a conclusion. A reused result records both the current reuse Run and
+  its original successful Run rather than silently citing only the cached
+  origin
+- `calculation_run_hashes` and calculation reuse-origin bindings are
+  service-derived and sealed into the authenticated artifact receipt; callers
+  provide Run ids only
 - `producer_role`, `artifact_schema_version`, and `knowledge_cutoff`:
   producer/schema/provenance fields checked by the artifact gate
 - `follow_up_requests`: optional structured artifact-driven follow-up proposals
@@ -223,6 +243,135 @@ Research quality focuses on source/as-of discipline, retrieved-at metadata,
 stale-data warnings, versioning, and invalidation rather than long-lived
 embedding memory.
 
+## Immutable Dataset Layer
+
+A Source Snapshot is the canonical record of what a provider returned and when
+it became knowable. A Dataset is a deliberate promotion of reusable tabular or
+time-series evidence from one or more verified snapshots or parent Datasets.
+Do not create both objects merely to duplicate a small, non-tabular response;
+keep that evidence in the Source Snapshot JSON payload instead.
+
+`record_dataset_snapshot` accepts one basename-only CSV, JSONL, or Parquet file
+already staged in the role's private scratch directory. The service requires an
+explicit typed column contract and source lineage, then validates the file as a
+single-link regular file, rejects path traversal, symlinks, hard links,
+oversized inputs, schema mismatch, non-finite JSON values, and invalid point-in-
+time ordering. The service, not the agent, derives the Dataset id, payload hash,
+manifest hash, recorded timestamps, and creator. Repeating the same semantic
+input is idempotent; an existing id can never be overwritten with different
+content.
+
+Canonical table payloads use the package-pinned PyArrow writer with UTC
+timestamps, stable column ordering, no implicit dataframe index, and ZSTD
+compression. The payload filename is its SHA-256. The JSON manifest records:
+
+- exact Source Snapshot ids and hashes, provider and provider query;
+- `as_of`, observed/published/known-at, vintage, knowledge cutoff, timezone,
+  `period_start`/`period_end`, and frequency posture;
+- instrument ids and symbols;
+- ordered column name, type, nullability, unit, and currency metadata;
+- point-in-time `universe_membership_policy`/membership plus adjustment,
+  corporate-action, and delisting policy;
+- row count, byte size, null counts, duplicate count, quality warnings, and the
+  exact Parquet/PyArrow identity;
+- parent Dataset lineage and transformation-code hash when applicable; and
+- data classification, redistribution notes, and retention policy.
+
+The normal retention policy is `permanent_local`. Dataset payloads stay in the
+workspace but the managed `.gitignore` excludes
+`trading/research/datasets/objects/`; manifests and withdrawal events remain
+reviewable and versionable. Agents have no delete tool. Only an explicit user
+purge for a license or legal reason may append a withdrawal event and remove an
+otherwise-unreferenced payload blob. Shared blobs remain while another active
+manifest still references them, and a missing or withdrawn payload remains
+visible as unavailable rather than making the historical manifest disappear.
+
+Portfolio, account, position, order, approval, Investor Context, and other
+sensitive central-ledger state are not copied into Dataset manifests or
+payloads. A private calculation binds only the service-issued, DB-canonical
+ledger snapshot id and hash. Preparation and recording both revalidate that
+binding against the current central ledger. Its materialized values stay
+run-scoped in scratch and must not be copied into Dataset, script, artifact, or
+calculation metadata.
+
+## Progressive Dataset Retrieval
+
+Agents retrieve reusable data in increasing-cost layers:
+
+1. `search_datasets` returns at most 20 L0 cards by default and 200 when
+   explicitly requested. A card contains identity, title/summary, tags,
+   source/cutoff posture, symbols, status, warnings, and payload availability;
+   it never contains table rows or a long schema.
+2. `get_dataset_manifest` returns metadata and lineage without reading the
+   payload. Use it to verify source, vintage, units, policy, and suitability for
+   the current cutoff.
+3. `profile_dataset` reads only the requested columns, returns structured
+   statistics, and includes no more than 20 sample rows. Text cells in the
+   bounded sample are truncated after 512 characters.
+4. `materialize_dataset_slice` accepts typed columns, time bounds,
+   instrument/symbol filters, and an output basename. It never accepts arbitrary
+   SQL. The default hard ceiling is 1,000,000 rows or 256 MiB; a broader request
+   fails with guidance to narrow the selector.
+
+A materialized slice is a scratch-local Parquet file. The tool response returns
+only its materialization id, Dataset id, typed selector, row count, and content
+hash. The slice is not a second durable Dataset unless an eligible analysis role
+deliberately records it with complete lineage. This card-to-manifest/profile-to-
+slice flow keeps raw rows out of Head Manager and downstream context until a
+role has a concrete analytical need.
+
+The service writes an immutable HMAC-authenticated materialization proof beside
+the slice. Calculation preparation accepts a Dataset slice only when that proof,
+materialization id, current manifest/payload hashes, file identity, and full
+recursive Source Snapshot/parent-Dataset lineage still agree. Recording repeats
+those checks and rejects a slice whose Dataset was withdrawn, payload changed,
+or lineage became unavailable after preparation.
+
+## Calculation Memory
+
+Conclusion-relevant numerical work is an immutable pair: a CalculationSpec
+prepared before execution and a CalculationRun recorded from the runner's
+result envelope. The workflow is:
+
+1. Search Dataset and Calculation cards before fetching rows or computing.
+2. Materialize only the Dataset slice or private ledger input required by the
+   role-owned question.
+3. Stage one scratch-local Python script.
+4. Call `prepare_calculation` with the calculation kind/version, script,
+   declared inputs, canonical parameters, cutoff, and typed output schema.
+5. If no exact prior success exists, run the unchanged generated command
+   `./tcx-calc <script.py>` or `.\tcx-calc.cmd <script.py>` on native Windows.
+6. Call `record_calculation_run` with the prepared identity and bounded runner
+   envelope. Declared tabular/time-series outputs are recorded as derived
+   Datasets with parent/transformation lineage. Bind the returned Run id into
+   any conclusion that uses it.
+
+Preparation hashes the code, Dataset slices and private inputs, canonical
+parameters and output schema, Python and package lock, OS and architecture, and
+numerical-library/BLAS-LAPACK posture. Only a successful Run with the complete
+same fingerprint is reusable. An exact hit still creates a current-workflow
+`status: reused` Run linked to the original successful Run so provenance is
+local to the current analysis. A one-row, one-parameter, cutoff, code, schema,
+runtime, platform, or numerical-backend change is a cache miss. Similar
+fingerprints may be displayed as comparison candidates but are never
+automatically substituted.
+
+Prepared execution uses a service-authored runner sidecar. It permits only the
+declared scratch-local input files, the declared output basenames, the pinned
+runtime, stdlib, and required system libraries. The runner supplies one
+`tcx_emit_result()` call. Its envelope permits typed metrics with units,
+currency, and precision, plus diagnostics, assumptions, warnings, and declared
+output files. NaN, Infinity, pickle, joblib, executable serialization,
+undeclared file access, and undeclared output are rejected. Success and failure
+both retain bounded stdout/stderr byte counts and hashes; only success is
+eligible for reuse.
+
+Direct `tcx-calc` without a prepared sidecar remains an exploratory
+compatibility mode. It is useful for investigation, but its output cannot
+support an accepted artifact and is never entered into Calculation Memory.
+Likewise, only calculations that affect a conclusion must be recorded; scratch
+exploration is intentionally disposable.
+
 ## MCP And CLI Research Tools
 
 Codex and subagents should use service-layer tools when available:
@@ -234,6 +383,11 @@ Codex and subagents should use service-layer tools when available:
 - `append_research_artifact_version`
 - `export_research_artifact_md`
 - `record_source_snapshot`
+- `search_datasets`, `get_dataset_manifest`, and `profile_dataset`
+- `record_dataset_snapshot` and `materialize_dataset_slice`
+- `search_calculations`, `get_calculation_run`, and
+  `compare_calculation_runs`
+- `prepare_calculation` and `record_calculation_run`
 - `rebuild_research_index`
 - `list_artifact_catalog`, `search_artifact_catalog`, and
   `rebuild_artifact_catalog`
@@ -440,27 +594,40 @@ immutable prior copies under
 latest pointer. Callers that race against a newer version receive a conflict
 instead of silently overwriting it.
 
-List and search maintain an incremental workspace index keyed by path, mtime,
-size, and content hash under `trading/research/.index/`. Unchanged files reuse
-their cached metadata/body search text; changed, removed, or newly added files
-refresh safely under a lock. `rebuild_research_index` discards and recreates the
-index. The index is never authoritative and can always be reconstructed from
-research markdown.
+List and search maintain a rebuildable v3 SQLite catalog at
+`trading/research/.index/research-object-catalog-v3.sqlite3`. It unifies
+existing artifacts and Source Snapshots with Dataset manifests/withdrawals and
+Calculation specs/runs. Structured tables hold object cards, relations,
+Dataset-column metadata, Calculation metrics, and file-projection state. FTS5
+indexes only titles, summaries, warnings, and tags; it never indexes or embeds
+numeric Dataset rows. When Python's SQLite lacks FTS5, all structured filters
+continue to work and text search falls back to bounded `LIKE`; `tcx doctor`
+reports that degraded search posture as a warning.
 
-The v2 artifact catalog is a parallel, rebuildable projection at
-`trading/research/.index/artifact-catalog-v2.json`. It incrementally catalogs
-Markdown, JSON, and the verified current forecast-ledger records under the
-research, report, decision, forecast, and evaluation roots. It does not replace
-`research-index.json`, rewrite an existing artifact, or turn a file projection
-into execution or policy authority. Catalog search supports lexical relevance
-plus artifact type, universe, symbol, workflow, readiness, handoff,
-compatibility, and point-in-time cutoff filters. A cutoff search uses the
-artifact type's explicit temporal field (`knowledge_cutoff` for research,
-decisions, and forecasts; `known_at` for source and outcome records) and
+Calculation cards project their input and derived Dataset relations plus bounded
+instrument/symbol metadata from those manifests. A role can therefore find a
+calculation by its calculation type/metric or by the related instrument without
+loading the CalculationSpec, Dataset manifest, or payload rows.
+
+Projection state is keyed by canonical source path, mtime, size, source hash,
+and projection hash, so an ordinary refresh reads and reprojects only changed,
+new, or removed files. A failed SQLite integrity check, schema mismatch, or
+explicit rebuild removes only the derived database and recreates it from
+canonical workspace files. The catalog never becomes evidence, policy, or
+execution authority.
+
+For one compatibility release, the same projector rules continue emitting
+`research-index.json` and `artifact-catalog-v2.json` with their existing public
+CLI/API/MCP response shapes. These JSON files are compatibility exports rather
+than parallel search truth. Catalog search retains lexical relevance plus
+artifact type, universe, symbol, workflow, readiness, handoff, compatibility,
+and point-in-time cutoff filters. A cutoff search uses the object's explicit
+temporal field (`knowledge_cutoff` for research, decisions, forecasts,
+Datasets, and Calculations; `known_at` for source and outcome records) and
 excludes records whose qualifying field is missing, malformed, or later than
 the requested cutoff instead of silently treating them as historical evidence.
 
-New service-created artifacts keep their existing strict type-specific writer
+New service-created artifacts and research objects keep their existing strict type-specific writer
 contracts and normally project as `full`. Pre-existing files are indexed lazily:
 records missing canonical identity metadata project as `legacy_partial` with a
 stable path-derived catalog id, while malformed records project as `invalid`
@@ -543,7 +710,10 @@ Every successful run-bound MCP write also creates a service receipt under the
 sealed run directory. The receipt binds the workspace id, run-record hash,
 artifact id/path/version, body and full-file hashes, authenticated producer,
 exact input ids, hashes, and versions, and sealed Brain, Strategy, and Investor
-Context lineage. Its integrity value is an HMAC made with a service-owned key under the
+Context lineage. When present, it also binds exact CalculationRun ids and
+service-derived hashes plus the reuse Run-to-origin mapping. Cutoff and workflow
+binding are revalidated before the artifact is published. Its integrity value
+is an HMAC made with a service-owned key under the
 global TradingCodex state directory, outside the workspace; a caller cannot
 turn matching frontmatter or a recomputed plain hash into a service receipt.
 The key is created once on the first authenticated write and is not part of the
@@ -630,6 +800,11 @@ files. That is expected because research handoff state is workspace-native.
 | Evidence Run Cards | `*.run-card.json` beside the related artifact under `trading/research/`, `trading/reports/`, or `trading/decisions/` |
 | Validation Cards | `*.validation-card.json` beside the related artifact under `trading/research/`, `trading/reports/`, or `trading/decisions/` |
 | Forecast ledger records | `trading/forecasts/*.jsonl` |
+| Dataset manifests | `trading/research/datasets/manifests/*.json` |
+| Dataset payload objects | `trading/research/datasets/objects/<payload-sha256>.parquet` |
+| Dataset withdrawal events | `trading/research/datasets/withdrawals/*.json` |
+| Calculation specifications | `trading/research/calculations/specs/*.json` |
+| Calculation runs | `trading/research/calculations/runs/*.json` |
 | Research specifications | `trading/research/specs/*.json` |
 | Replay manifests | `trading/research/replay-manifests/*.json` |
 | Experiment runs | `trading/research/experiments/*.json` |
@@ -637,6 +812,7 @@ files. That is expected because research handoff state is workspace-native.
 | Model-upgrade evaluation artifacts | `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json` |
 | Rebuildable research index | `trading/research/.index/research-index.json` |
 | Rebuildable cross-artifact catalog | `trading/research/.index/artifact-catalog-v2.json` |
+| Rebuildable research-object catalog | `trading/research/.index/research-object-catalog-v3.sqlite3` |
 | Order tickets | central DB `OrderTicket` records |
 | Postmortems | `trading/reports/postmortem/*.postmortem_report.json` |
 | Lesson event ledger and chain heads | `.tradingcodex/mainagent/improve.jsonl`, `.tradingcodex/mainagent/lesson-chain-heads.json` |
@@ -682,6 +858,11 @@ Investment reports, role handoffs, and final syntheses share a quality floor.
 | `ready-for-draft` | Portfolio and risk context support draft order-ticket creation, subject to schema and policy checks. |
 | `blocked` | Policy, data quality, role boundary, adapter support, or user instruction blocks the workflow. |
 
+Valuation artifacts without a real current-price or market-as-of anchor must
+include `not-decision-ready` as an exact readiness token. Free-form absence
+placeholders such as `N/A`, `Unknown`, or `Not provided` do not satisfy the
+market-anchor field; an actual anchor remains valid with other readiness text.
+
 ## File Behavior
 
 Research file writes should be deterministic enough for review:
@@ -699,6 +880,9 @@ Research file writes should be deterministic enough for review:
 - include the exact run binding and consumed input-artifact hashes for every
   run-bound artifact; include service-derived Brain id/version/digest when the
   run selected one
+- include exact current-workflow `calculation_run_ids` for every numerical
+  result used in a conclusion; an exact reuse preserves both the reuse Run and
+  original successful Run lineage
 - avoid raw secrets
 - use stable paths for role-owned reports
 - save head-manager final synthesis reports as

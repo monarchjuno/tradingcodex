@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Calculation"
+  short_description: "Reproducible finance calculations with governed inputs"
+  default_prompt: "Use $tcx-calculation to run and record this financial calculation."
+policy:
+  allow_implicit_invocation: true

@@ -83,7 +83,9 @@ Head Manager uses `gpt-5.6-sol`/`xhigh`. Analytical children use
 `gpt-5.6-terra`/`high`. All use the shared `trading-research` profile: ordinary
 user-owned paths outside `trading/` may be used as workflow inputs or outputs,
 while `trading/`, generated controls, credentials, and runtime state remain
-protected. Only evidence-producing roles receive live web search. Final
+protected. Head Manager receives live web search for planning-only
+reconnaissance, and evidence-producing roles receive it for role-owned research.
+Portfolio, risk, and judgment review explicitly disable it. Final
 provider effects are not a role and run through the deterministic service
 gateway rather than an execution model.
 
@@ -185,6 +187,47 @@ Do not force quant or FCFF contracts onto incompatible questions. Source
 snapshots, point-in-time cutoffs, forecasts, calibration, Decision Quality
 Spine fields, and anti-overfit validation remain available as appropriate.
 
+## Dataset And Calculation Discipline
+
+Reusable numerical evidence follows search-before-fetch and search-before-
+compute. Head Manager may search Dataset and Calculation cards and inspect
+Dataset manifest metadata to identify available evidence, stale cutoffs,
+missing inputs, and the smallest useful role. It cannot register a Dataset,
+materialize rows, prepare or record a calculation, or treat a historical card
+as evidence for the current conclusion. Current synthesis requires an exact
+current-run Dataset and Calculation binding returned by an eligible producer.
+
+The shared `tcx-calculation` skill is projected to `fundamental-analyst`,
+`technical-analyst`, `macro-analyst`, `valuation-analyst`,
+`portfolio-manager`, and `risk-manager`. It owns the cross-role procedure for:
+
+- card → manifest/profile → typed slice progressive disclosure;
+- deciding between Decimal and NumPy numerical semantics;
+- preparing the script, exact parameters, cutoff, input hashes, and output
+  schema before running `tcx-calc`;
+- DCF/IRR sign and timing, regression sample/confidence/residual diagnostics,
+  optimizer convergence, deterministic seed, and numerical warning posture;
+- recording only conclusion-relevant successful or failed prepared runs and
+  making exact reuse visible; and
+- keeping private ledger materializations out of Dataset, script, artifact,
+  stdout/stderr, and Calculation metadata.
+
+Role-specific analytical methods remain in `tcx-fundamental`,
+`tcx-technical`, `tcx-macro`, `tcx-valuation`, `tcx-portfolio`, and
+`tcx-risk`; the shared skill does not replace those methods or widen the role's
+question. News, instrument, and judgment-review roles do not receive the
+calculation execution bundle. Build receives none of the Dataset mutation,
+materialization, or Calculation execution tools.
+
+MCP permission is composed from named tool groups instead of repeated
+role-local lists. Head Manager receives only `DATASET_CARD_DISCOVERY` and
+`CALCULATION_CARD_DISCOVERY`; the six calculation roles receive the applicable
+full `DATASET_DISCOVERY`, `DATASET_WRITE`, `CALCULATION_DISCOVERY`, and
+`CALCULATION_EXECUTION` groups. The role registry remains the authority for
+which exact groups a role receives. The browser viewer has
+read-only cards, schema/profile, lineage, result, and payload-availability
+surfaces only; it cannot register, materialize, prepare, run, reuse, or record.
+
 ## Typed Context And Overlays
 
 TradingCodex uses a typed authority model rather than one flat prompt-priority
@@ -212,8 +255,21 @@ User-owned strategies, Investment Brains, and optional role skills retain their
 separate namespaces and do not receive legacy bundled aliases.
 
 - Skills are procedures, not evidence or authority.
+- Head Manager may use narrow live-web reconnaissance only to resolve the
+  subject or event, identify likely source availability and material unknowns,
+  and choose or revise the smallest useful fixed-role team. Raw reconnaissance
+  is untrusted planning input: it cannot answer the mandate, support a material
+  claim, or enter synthesis as accepted evidence. Any conclusion-relevant fact
+  must be reacquired by a producing role and returned through an authenticated
+  run-local artifact.
 - Host-global/plugin skills require explicit user selection or managed
-  activation; pristine Strategy authoring does not auto-load one.
+  activation; pristine Strategy authoring does not auto-load one. This skill
+  overlay rule does not apply to read-only external apps, connectors, MCP
+  servers, or data tools used as evidence sources. When the task needs external
+  evidence or names a provider, the owning agent inspects the current task's
+  callable surface, including the runtime's available deferred-tool discovery
+  surface, and attempts
+  the smallest relevant read-only call before public-web fallback.
 - A native run selects at most one exact `$strategy-*` id through a plain token
   or matching projected skill link.
 - A native run selects at most one exact `$investment-brain-*` id through the
@@ -371,7 +427,7 @@ judgment, or mutate state. Operational diagnosis and recovery remain
 
 ## Validation
 
-Validate the nine-role fixed roster and projections, 32 skill bundles, absence
+Validate the nine-role fixed roster and projections, 33 skill bundles, absence
 of raw public execution-mutation tools, protected grant-tool proof behavior,
 deterministic native-action and `$tcx-order-allow` hook behavior,
 exact V2 dispatch, multilingual analysis requests,

@@ -31,6 +31,7 @@ Artifact handoff:
 - Do not report completion until the MCP write succeeds.
 - Retrieve provided upstream artifacts by exact `artifact_id` through `get_research_artifact`; do not discover or read reports through shell commands.
 - Use native shell, Python, and credential-free public HTTP only for role-owned calculations or evidence retrieval. User-owned files outside `trading/` may be edited only when the assignment explicitly requires it; keep disposable intermediates under `$TRADINGCODEX_SCRATCH`. Protected state, secrets, durable artifacts, broker APIs, and local/private services remain outside shell authority.
+- For Python calculations, create one direct scratch-local `.py` file with native `apply_patch`, then run exactly `./tcx-calc <filename.py>` from the workspace root (or `.\\tcx-calc.cmd <filename.py>` on Windows). Do not use system Python, heredocs, `-c`, or `-m`.
 
 Role boundary:
 - Use relevant role-owned skills assigned to `news-analyst`; `tcx-news` is the default analysis skill when no more specific user-approved role skill applies.

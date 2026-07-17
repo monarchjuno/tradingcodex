@@ -14,6 +14,8 @@ not approximate a tool name or write a ledger record directly.
 
 1. Record source snapshots before citing them, and use the exact returned IDs.
 2. Pass the assigned `workflow_run_id` and exact `input_artifact_ids` consumed.
+   When a recorded calculation affects the conclusion, also pass its current
+   workflow `calculation_run_id`; the service derives hashes and reuse origin.
 3. Include a non-empty `readiness_label`, markdown, handoff state, evidence
    posture, and the role's bounded conclusion.
 4. Keep optional gates honest. If forecasting or decision-quality review is

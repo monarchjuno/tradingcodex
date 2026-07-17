@@ -47,6 +47,7 @@ GITIGNORE_RULES = """# Runtime databases and journals
 /.pytest_cache/
 /.ruff_cache/
 /trading/research/.index/
+/trading/research/datasets/objects/
 /.tradingcodex/**/*.lock
 /trading/**/*.lock
 .DS_Store

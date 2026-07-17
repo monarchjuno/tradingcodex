@@ -23,7 +23,9 @@ The template source tree may be refactored for maintainability, but generated
 output paths are the v1 release contract. Module ids, module dependency
 resolution, and rendered paths such as `.codex/config.toml`, `.agents/skills/*`,
 `.tradingcodex/*`, `trading/*`, and `./tcx` must remain stable unless docs and
-tests intentionally change the generated workspace contract.
+tests intentionally change the generated workspace contract. The generated
+`tcx-calc` and `tcx-calc.cmd` names are likewise stable; the cache key behind
+them is content-addressed and may change when the locked runtime changes.
 
 Template bodies should remain ordinary source files under
 `workspace_templates/modules/*/files` whenever the generated artifact is meant
@@ -43,6 +45,7 @@ The generated workspace is ready for:
 - `./tcx investor-context status`
 - MCP ledger inspection
 - research-memory commands
+- prepared and exploratory `tcx-calc` workflows
 - local React viewer/Admin service access
 - Codex-native role prompts and skills
 
@@ -159,8 +162,9 @@ The managed `.gitignore` block excludes local/private state by default:
 - process, session, and service-status state, including
   `.tradingcodex/mainagent/session-start.json`;
 - transient audit streams;
-- Python/tool caches, rebuildable research and artifact-catalog indexes, and
-  native lock files;
+- Python/tool caches, rebuildable research and artifact-catalog indexes,
+  content-addressed Dataset payloads under
+  `trading/research/datasets/objects/`, and native lock files;
 - raw secrets, credentials, local environment files, keys, and certificates;
   and
 - the private workspace Investor Context plus its per-run sealed snapshot.
@@ -256,21 +260,25 @@ Generated workspaces contain:
   `agents` tool namespace; every task uses a fresh custom role, a compact
   assignment envelope, and `fork_turns="none"`; `followup_task` and generic
   role emulation are forbidden
-- role-scoped web search: root `.codex/config.toml` sets
-  `web_search="disabled"`; only the fundamental, technical, news, macro,
-  instrument, and valuation custom-agent TOML files override it with
-  `web_search="live"`. Codex applies the spawned custom-agent config to that
-  child, so evidence collection stays in producing roles while Head Manager and
-  downstream portfolio/risk/judgment roles remain unable to
-  pre-research through live web search
+- role-scoped web search: root `.codex/config.toml` sets `web_search="live"`
+  so Head Manager can perform narrow planning reconnaissance before choosing or
+  revising the team. Those results are untrusted planning leads, never accepted
+  investment evidence, and every material fact must be reacquired by a producing
+  role through an authenticated run-local artifact. The six evidence-producing
+  custom agents also use live search; portfolio, risk, and judgment-review TOML
+  files explicitly set `web_search="disabled"`
 - fail-closed spawn hook: `PreToolUse` permits `spawn_agent` only for an exact
   registered `agent_type`, `fork_turns="none"`, an underscore-only task name,
   and a valid lightweight analysis run id in the compact message; no semantic
   plan or server task is consulted
 - native Research permission runtime: `head-manager` and every fixed role
-  inherit `trading-research`; ordinary shell/Python and credential-free public
-  HTTP are available, user-owned paths outside `trading/` are readable and
-  writable, and disposable intermediates stay under `$TRADINGCODEX_SCRATCH`.
+  inherit `trading-research`; ordinary shell and credential-free public HTTP
+  are available, user-owned paths outside `trading/` are readable and writable,
+  and disposable intermediates stay under `$TRADINGCODEX_SCRATCH`. Fixed roles
+  stage one direct scratch-local `.py` file with native `apply_patch` and run it
+  only through `./tcx-calc <filename.py>` or native Windows
+  `.\tcx-calc.cmd <filename.py>`; system Python, heredocs, `-c`, `-m`, paths,
+  and extra arguments are outside that contract.
   The `trading/` tree, control files, TradingCodex runtime/DB, protected
   artifacts, credentials, local/private destinations, and Unix sockets remain
   protected. Durable workflow, role-report, and synthesis writes go through
@@ -385,12 +393,13 @@ Generated workspaces contain:
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents as a managed overlay, without permitting them to replace core role, quality, policy, approval, or execution boundaries
 - an immutable core/extension footer projected after project-local additional
   instructions for both `head-manager` and fixed roles
-- disabled root web search in `.codex/config.toml` plus live web search only in
-  the six evidence-producing custom-agent TOML files; this preserves a pristine
-  public-source baseline without letting Head Manager research around the
-  dispatch gate, and source/as-of and evidence rules still apply
+- planning-only root live web search in `.codex/config.toml`, with durable Head
+  Manager and `tcx-workflow` instructions that prohibit using reconnaissance to
+  answer the mandate or support synthesis claims. Live evidence search remains
+  enabled for the six producing roles, while portfolio, risk, and judgment
+  review explicitly disable it
 - workspace customization preferences under `.tradingcodex/user/customization.json`, merged over `preferences/customization.json` in the canonical platform home; these files store UX/config metadata and never raw credentials
-- thirty-one bundled repo skills across project-scope mainagent skills and
+- thirty-three bundled repo skills across project-scope mainagent skills and
   subagent skill directories, each with `SKILL.md` frontmatter for document
   metadata and UI metadata when projected
 - one compact bundled namespace: every core skill id is `tcx-` plus one suffix
@@ -474,9 +483,10 @@ Generated workspaces contain:
   copies are not generated
 - append-only forecast ledger directory at `trading/forecasts/`
 - immutable point-in-time research directories for specs, replay manifests,
-  experiments, causal analyses, blind judgment priors/reviews, and a
-  rebuildable research and cross-artifact catalog indexes under
-  `trading/research/`
+  experiments, causal analyses, blind judgment priors/reviews, Dataset
+  manifests/payloads/withdrawals, Calculation specs/runs, and the rebuildable
+  SQLite+FTS v3 research-object catalog plus temporary legacy JSON exports
+  under `trading/research/`
 - research-only model-evaluation directories under `trading/evaluations/` for
   frozen corpora, control/candidate runs, blind reviews, and comparisons
 
@@ -489,6 +499,19 @@ host plugins. Those host capabilities are outside the TradingCodex pristine
 baseline and must enter a workflow only through explicit user opt-in for that
 current workflow or a managed activation path that preserves role, quality,
 policy, approval, and execution boundaries.
+
+That explicit overlay rule applies to external skill procedures, not to
+read-only app, connector, MCP, or data tools used as evidence. A role whose
+assignment needs external data or preserves a user-named provider first checks
+the current task's callable tool surface and uses the runtime's available
+deferred-tool discovery surface when needed. It attempts the narrowest
+relevant read-only call before a public web fallback. Sanitized capability
+inventory is configuration evidence only:
+installed/enabled state neither proves nor disproves that a tool was loaded
+into the current task. A capability added or changed after task start may
+require a new task or full Codex restart. Generated workspace configuration
+does not override Codex's `features.apps` setting; user, organization, and
+host policy continue to decide whether installed apps are exposed.
 
 Workspace projection and role-local skill lists reduce accidental mixing, but
 they are not by themselves proof of hard runtime isolation from every
@@ -550,6 +573,10 @@ configuration. TradingCodex preserves their non-reserved project entries and
 directories during update, and Codex exposes them to root and fixed-role agents
 through normal configuration inheritance. TradingCodex owns only its reserved
 entries and does not install, review, classify, or recommend user capabilities.
+The read-only inventory covers canonical repository and user `.agents/skills`
+locations plus compatible direct skills below `CODEX_HOME/skills`; plugin
+component records use only top-level app, MCP-server, and hook identifiers and
+never return component bodies or launch settings.
 
 ## Attach-First UX
 
@@ -635,6 +662,38 @@ through the native Windows batch shim. On update it prefers
 run `.\tcx.cmd` in PowerShell; native Windows validation never treats the Bash
 shim as executable evidence.
 
+Calculation does not reuse that launcher or its package-bearing interpreter.
+Attach/update provisions one `finance-*` calculation runtime v2 in a separate,
+content-addressed platform cache and renders `tcx-calc` plus `tcx-calc.cmd`.
+The wheel-only, per-artifact hash resource pins the complete 12-package direct
+and transitive runtime around
+`numpy==2.3.5`, `pandas==2.3.3`, `scipy==1.16.3`,
+`statsmodels==0.14.6`, `numpy-financial==1.0.0`, and
+`pyarrow==25.0.0`; source builds and agent-initiated `pip`/`uv` installation
+are forbidden. A platform without a locked Python 3.11–3.14 wheel fails attach
+clearly instead of compiling a dependency.
+
+The launcher accepts one basename-only script already staged in the exact
+workspace scratch, sanitizes environment first, starts Python with `-I -B -S`,
+and then adds only the verified runtime site-packages path. It clears
+service/DB/credential environment variables, maps home and temp to scratch,
+bounds CPU, wall time, file count, file size, and normal text output, and
+rejects links and oversized source. It never imports or starts Django, MCP, the
+service, or the ledger. The runner also denies process creation and replacement,
+shell/system execution, sockets and network access, package bootstrap, and
+dangerous dynamic-library loading. This is a constrained calculation surface
+inside the existing Codex OS sandbox, not a new Python security sandbox or a
+Django-owned Python environment.
+
+Without a service-authored sidecar, `tcx-calc` is exploratory compatibility
+mode and cannot support an accepted research conclusion. Prepared mode binds
+the script, declared input/output basenames, runtime lock, typed result schema,
+cutoff, and CalculationSpec fingerprint. The runner permits only declared
+scratch input/output plus runtime, stdlib, and required system-library reads,
+and writes a bounded success or failure envelope for
+`record_calculation_run`. `tcx doctor` verifies the launcher hash, runtime
+manifest and lock hashes, exact package versions, and imports.
+
 The POSIX shim resolves its canonical workspace root but does not `cd` back to
 the same absolute path when it is already running there. This keeps the normal
 workspace-root contract while avoiding a redundant path re-entry that native
@@ -705,9 +764,11 @@ discovered locator into provenance. Ordinary PyPI
 
 Inside a generated workspace, normal `head-manager` and fixed-role analysis
 threads inherit the `trading-research` permission profile. They can use normal
-shell, Python, data tools, and credential-free public HTTP, read ordinary
+shell, data tools, and credential-free public HTTP, read ordinary
 workspace inputs, and write user-owned files outside `trading/`; disposable
-intermediates belong under `$TRADINGCODEX_SCRATCH`. They cannot modify
+intermediates belong under `$TRADINGCODEX_SCRATCH`. Fixed-role Python
+calculations use only the generated scratch-local `tcx-calc` contract. They
+cannot modify
 `trading/`, generated control files, or the TradingCodex home, DB, attached
 runtime, protected artifact paths, credential files, local/private
 destinations, or Unix sockets. Authenticated service/MCP tools own durable
@@ -764,8 +825,12 @@ cache-backed path is writable as `$TRADINGCODEX_SCRATCH` and is projected as
 `TMPDIR`/`TEMP`/`TMP`; the broader temp roots are denied. The scratch root lives
 under the platform cache tree (`~/Library/Caches/TradingCodex` on macOS,
 `$XDG_CACHE_HOME/tradingcodex` or `~/.cache/tradingcodex` on Linux, and
-`%LOCALAPPDATA%\TradingCodex` on Windows), not inside the workspace and not in
+`%LOCALAPPDATA%\TradingCodexScratch` on Windows), not inside the workspace and not in
 the broad OS temporary tree.
+The calculation runtime uses a separate sibling cache
+(`TradingCodexCalculation`/`tradingcodex-calculation`) and is explicitly
+read-only in Research and denied in Build. Neither cache overlaps the service
+home, DB, workspace, Codex home, or the other cache.
 Credential-bearing home paths such as Codex auth state, SSH/cloud/CLI config,
 keyrings, credential files, and shell histories are explicitly denied. The
 narrow read-only `~/.codex/packages/standalone` exception permits the installed
@@ -804,12 +869,12 @@ blocked. Its limited-public
 network permits credential-free HTTP(S) GET/HEAD and public HTTPS Git retrieval
 while blocking authenticated requests, bodies/uploads, local/private targets,
 non-HTTP(S) transports, package installation, fetch-to-execute pipelines,
-remote mutation, and broker access. Native `web_search` remains disabled.
-The generated `PreToolUse` matcher covers every tool name, then policy remains
-a no-op for ordinary Research tools while an active Build grant rejects native
-browser, web, HTTP, fetch, and navigation tools,
-so retrieval cannot reuse authenticated browser state; Research browser
-behavior is unchanged.
+remote mutation, and broker access. Root `web_search="live"` supports only
+Research workflow planning; the generated `PreToolUse` matcher covers every
+tool name, and an active Build grant rejects native web search, browser, web,
+HTTP, fetch, and navigation tools, so retrieval cannot reuse authenticated
+browser state. Policy otherwise remains a no-op for ordinary Research tools;
+Research browser behavior is unchanged.
 The Build profile uses the proxy's full HTTP transport mode because Git Smart
 HTTP needs a small POST exchange even for read-only clone/fetch/ls-remote.
 That does not open general POST access: the Build hook admits only public
@@ -902,13 +967,20 @@ generated bindings are refreshed.
 
 TradingCodex owns only the `tradingcodex` MCP entry in project config. Other
 MCP, plugin, and skill entries are user-owned Codex configuration and survive
-update. Root web search stays disabled. The six evidence-producing custom agents may use
-their role-local live web override and available native Codex capabilities to gather public
-filings, disclosures, news, web sources, and market-data references while the
-filesystem remains read-only. TradingCodex does not classify or block those
-user-installed capabilities. Codex sandbox, approval, and organization
+update. Root live web search is limited by durable instructions to
+planning-only reconnaissance; raw results cannot support accepted evidence or
+synthesis claims. The six evidence-producing custom agents may use their
+role-local live web setting and available native Codex capabilities to gather
+public filings, disclosures, news, web sources, and market-data references
+while the filesystem remains read-only. TradingCodex does not classify or
+block those user-installed capabilities. Codex sandbox, approval, and organization
 requirements still apply, while TradingCodex service policy continues to protect
 its own principals, grants, order proofs, protected state, and execution path.
+Current-task callable tools, not the System inventory or the TradingCodex MCP
+allowlist alone, determine whether an external data call can be made. Agents
+must try the narrow read-only tool before reporting a capability or data field
+unavailable and must state separately whether configuration was discovered and
+whether the current task exposed or successfully called the tool.
 Broker APIs are attached through provider-driven TradingCodex connector profiles
 using canonical MCP tools such as `list_broker_adapter_providers`,
 `render_broker_connector_scaffold`, `register_broker_connector`,
@@ -1412,6 +1484,10 @@ or broker tools.
 Codex-native bootstrap verification:
 
 - `./tcx doctor` checks generated project MCP server shape and role allowlists.
+- `./tcx doctor` also checks the calculation launcher hash, `finance-*` runtime
+  v2 manifest and lock hashes, all 12 exact package versions/imports, and emits
+  a warning rather than disabling structured catalog search when SQLite lacks
+  FTS5.
 - `./tcx update --no-doctor` verifies the generated update path without running
   the full doctor twice in installer smoke tests.
 - `./tcx mcp stdio` `tools/list` verifies the TradingCodex MCP bridge and tool annotations.

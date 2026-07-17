@@ -73,6 +73,27 @@
       "type": "object",
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
     },
+    "calculation_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "calculation_run_hashes": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+    },
+    "calculation_reuse_origins": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["original_run_id", "original_run_sha256"],
+        "properties": {
+          "original_run_id": { "type": "string", "minLength": 1 },
+          "original_run_sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    },
     "workflow_run_id": { "type": "string", "minLength": 1 },
     "producer_role": { "type": "string", "minLength": 1 },
     "artifact_schema_version": { "const": 1 },

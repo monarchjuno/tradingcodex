@@ -1,12 +1,24 @@
 from __future__ import annotations
 
-import json
 import math
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from tradingcodex_service.application.common import atomic_write_text, exclusive_file_lock, file_hash, now_iso, safe_workspace_path, sanitize_id, stable_hash
+from tradingcodex_service.application.common import (
+    exclusive_file_lock,
+    file_hash,
+    now_iso,
+    safe_workspace_path,
+    sanitize_id,
+)
+from tradingcodex_service.application.research_objects import (
+    legacy_content_hash as stable_hash,
+    read_regular_json,
+    research_object_path,
+    store_immutable_hashed_json,
+    verify_hashed_json,
+)
 from tradingcodex_service.application.runtime import workspace_context_payload
 from tradingcodex_service.application.source_snapshots import validate_source_snapshot
 
@@ -558,45 +570,35 @@ def _store_immutable(
     label: str,
     artifact_id: str,
 ) -> tuple[dict[str, Any], str]:
-    with exclusive_file_lock(path):
-        if path.exists():
-            existing = _verified_artifact(path, hash_field, label)
-            if existing.get(hash_field) == artifact[hash_field]:
-                return existing, "existing"
-            ignored = {hash_field, "system_recorded_at"}
-            existing_semantics = {key: value for key, value in existing.items() if key not in ignored}
-            requested_semantics = {key: value for key, value in artifact.items() if key not in ignored}
-            if stable_hash(existing_semantics) == stable_hash(requested_semantics):
-                return existing, "existing"
-            raise ValueError(f"{label} is immutable and already exists: {artifact_id}")
-        atomic_write_text(path, json.dumps(artifact, indent=2, ensure_ascii=False, sort_keys=True, allow_nan=False) + "\n")
-    return artifact, "recorded"
+    return store_immutable_hashed_json(
+        path,
+        artifact,
+        hash_field=hash_field,
+        label=label,
+        object_id=artifact_id,
+        hash_function=stable_hash,
+    )
 
 
 def _artifact_path(root: Path, allowed_root: Path, artifact_id: str) -> Path:
-    return safe_workspace_path(root, allowed_root / f"{sanitize_id(artifact_id)}.json", allowed_roots=(allowed_root,))
+    return research_object_path(root, allowed_root, artifact_id)
 
 
 def _read_object(path: Path) -> dict[str, Any]:
-    try:
-        value = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise ValueError(f"invalid research artifact: {path}") from exc
-    if not isinstance(value, dict):
-        raise ValueError(f"research artifact must be an object: {path}")
+    value = read_regular_json(path, label=f"research artifact {path.stem}")
     if value.get("schema_version") != 1:
         raise ValueError(f"research artifact uses an unsupported schema: {path}")
     return value
 
 
 def _verified_artifact(path: Path, hash_field: str, label: str) -> dict[str, Any]:
-    artifact = _read_object(path)
-    expected = _hash_text(artifact, hash_field)
-    payload = dict(artifact)
-    payload.pop(hash_field, None)
-    if stable_hash(payload) != expected:
-        raise ValueError(f"{label} hash mismatch: {path.stem}")
-    return artifact
+    return verify_hashed_json(
+        path,
+        hash_field=hash_field,
+        label=label,
+        hash_function=stable_hash,
+        schema_version=1,
+    )
 
 
 def _result(root: Path, path: Path, artifact: dict[str, Any], status: str) -> dict[str, Any]:

@@ -70,6 +70,35 @@ Unit tests should cover:
 - v2 artifact catalog lazy projection across current and legacy Markdown/JSON/
   forecast records, immutable-source preservation, cutoff fail-closed search,
   invalid-record quarantine, and incremental change/removal refresh
+- Dataset canonicalization produces stable PyArrow/ZSTD Parquet bytes, content
+  ids, and manifests; validates exact schema/types/units/currency, UTC/cutoff
+  chronology, Source Snapshot hashes, lineage, duplicate/null quality warnings,
+  non-finite values, basename/path containment, regular single-link input,
+  symlink/hardlink rejection, missing payloads, idempotency, and immutable-id
+  collision failure
+- Dataset withdrawal is append-only, requires explicit license/legal posture,
+  preserves a shared payload blob while another active manifest references it,
+  and leaves withdrawn/missing payload status visible
+- the v3 research-object catalog projects 10,000-object fixtures without
+  opening Dataset payloads, uses structured indexes and FTS5 when available,
+  falls back to bounded `LIKE` without losing filters, incrementally refreshes
+  only changed files, rebuilds after corruption, excludes post-cutoff objects,
+  and emits JSON-compatible legacy exports
+- Dataset context bounds enforce 20 default/200 maximum cards, no payload/body
+  in search, no payload read during manifest lookup, at most 20 profile rows,
+  typed slice selectors with no SQL, and the 1,000,000-row/256-MiB
+  materialization ceiling
+- calculation runtime v2 verifies the complete 12-package direct/transitive
+  lock and every platform-wheel artifact hash, all package versions/imports,
+  sanitized environment and temp, absence of secrets/Django/service imports,
+  resource/output bounds, direct-runtime and package-install denial,
+  undeclared input/output rejection, and typed finite result envelopes without
+  pickle/joblib or executable serialization
+- CalculationSpec/Run tests cover exact fingerprint hits, one-row/parameter/
+  cutoff/code/schema/runtime/platform changes as misses, current-run reuse
+  lineage to the original successful Run, failed-run non-reuse, requested-run/
+  metric-only comparison, and private ledger input values absent from Dataset,
+  script, artifact, stdout/stderr, and durable metadata
 - central DB path resolution through `TRADINGCODEX_HOME` and `TRADINGCODEX_DB_NAME`
 - workspace identity/provenance recording without workspace-local DB partitioning
 - duplicate research ids fail closed within a workspace unless an explicit append/version path is used
@@ -128,6 +157,14 @@ API/Admin tests should cover:
 - agent/skill file projection tests cover proposal files, generated manifest, and blocked risky assignments without writing skill DB or AuditEvent state
 - `tcx mcp stdio` handles JSON-RPC `initialize`, `tools/list`, and `tools/call`
 - MCP research tools store and retrieve workspace markdown/source-snapshot JSON through the service layer without writing research DB rows, audit rows, or tool-call ledger rows
+- MCP Dataset/Calculation tools call the shared application services, keep
+  payload rows out of card/manifest responses, and preserve file-native objects
+  outside research DB and call-ledger rows
+- role permission tests give Head Manager only Dataset card/manifest and
+  Calculation-card discovery; the six calculation roles receive their bounded
+  discovery/write/execution groups; Build, news, instrument, judgment review,
+  and browser mutation paths remain denied, with viewer write-shaped requests
+  returning `405`
 - non-research MCP tool calls create DB ledger entries with request/result hashes
 - generated `./tcx mcp ledger` can inspect the central DB tool-call ledger
 - stdio bridge returns valid MCP messages and writes no non-MCP stdout
@@ -181,11 +218,12 @@ Smoke coverage should verify:
 - generated workspace contains `.tradingcodex/workspace.json`
 - generated workspace contains `.tradingcodex/generated/component-index.json`
 - generated workspace contains no `package.json` or Node MCP/runtime files
-- generated workspace contains nine fixed subagents and 31 protected bundled
+- generated workspace contains nine fixed subagents and 33 protected bundled
   repo skills, including all three explicit-only native execution bundles and
-  no retired execution role or skill
-- generated `.codex/config.toml` enables live web search for pristine public
-  research without treating a host finance skill as a dependency
+  the shared `tcx-calculation` bundle, with no retired execution role or skill
+- generated `.codex/config.toml` enables planning-only live web search for Head
+  Manager and role-owned live research for the six evidence producers without
+  treating a host finance skill as a dependency
 - generated `.codex/config.toml` explicitly enables MultiAgent V2, reports it
   enabled through `codex features list`, uses seven session threads, and omits
   the incompatible V1 `agents.max_threads` key
@@ -213,6 +251,13 @@ rejection, symlink/case identity, DB override, spaces/backslashes/drive paths,
 typed config rendering, both launchers, native lock/atomic behavior, process
 flags and fixed read-only Codex inventory subprocess handling.
 
+Calculation runtime release coverage must additionally resolve the complete
+hash-locked wheel set for Python 3.11, 3.12, 3.13, and 3.14 on supported
+macOS, Linux, and native Windows x86-64 targets. Every target verifies the
+runtime manifest, launcher hash, exact package imports, one prepared envelope,
+and one exploratory compatibility run. Missing wheels must fail attach before
+workspace mutation; validation must never permit a source build as fallback.
+
 After building a wheel, run:
 
 ```bash
@@ -220,11 +265,14 @@ python tests/platform_wheel_smoke.py --wheel-dir dist
 python tests/release_upgrade_smoke.py --wheel-dir dist --from-version 1.0.2
 ```
 
-GitHub Actions keeps the complete Python/Django suite on Ubuntu and runs that
-same clean-wheel helper on native macOS and Windows. The helper uses
+GitHub Actions keeps the complete Python/Django suite on Ubuntu/Python 3.11 and
+then runs that same clean-wheel helper for Python 3.11-3.14 on x86-64 Linux,
+Intel macOS, and native Windows. Release publication depends on the full matrix.
+The helper uses
 `tempfile`, a space-containing wheel path and workspace, parses root plus all
 role TOML and generated YAML/JSON, runs `tcx` on POSIX or `tcx.cmd` on Windows,
-executes doctor/DB/hook/MCP/capability-inventory smokes, and proves local service
+executes doctor/DB/hook/MCP/capability-inventory smokes, records one prepared
+calculation plus exact reuse, runs exploratory `tcx-calc`, and proves local service
 ensure/status/stop on the release-default loopback port, or the next available
 non-ephemeral product-range port. It also loads `/` and the packaged
 content-hashed JavaScript and CSS under
@@ -305,10 +353,13 @@ Verify at least:
   but not sync, approval, submit, cancel, mapping mutation, or order-ticket
   mutation tools
 - stdio emits no non-MCP logs to stdout
-- `list_codex_capabilities` merges MCP, standalone skill, and installed plugin
-  metadata by scope while preserving disabled state and duplicate names
-- inventory handles malformed plugin manifests, missing Codex CLI, invalid
-  JSON, and timeouts as bounded `partial` or `unavailable` results
+- `list_codex_capabilities` merges MCP, canonical and compatible
+  `CODEX_HOME/skills` standalone skills, and installed plugin metadata by scope
+  while preserving disabled state and duplicate names; plugin app, MCP-server,
+  and hook records use only their top-level component identifiers
+- inventory handles malformed plugin manifests or component files, missing
+  Codex CLI, invalid JSON, and timeouts as bounded `partial` or `unavailable`
+  results
 - inventory output contains no commands, arguments, URL details, environment
   values, headers, tokens, credential paths, raw config, skill bodies, or hook code
 - the final MCP schema and Admin contain only TradingCodex-owned
@@ -449,8 +500,19 @@ Scenarios should include:
   cross-scope commands fail, and Plan/subagent contexts remain blocked
 - user-installed Codex capabilities remain callable through native Codex and
   cannot mint TradingCodex principals, grants, reserved namespace entries, or
-  order proof; an unapproved or changed
+  order proof; a prompt naming a read-only test provider inspects current-task
+  tools, uses the runtime's available deferred-tool discovery surface when
+  needed, succeeds through the narrow
+  provider tool before public-web fallback, and distinguishes installed/enabled
+  inventory from current-task callability when that tool is intentionally
+  absent; an unapproved or changed
   workspace provider is never imported by provider listing or connector status
+- generated root config sets `web_search="live"`; a native Head Manager smoke
+  uses web search to derive role-owned questions for a current-context workflow,
+  labels the result planning-only, and does not present raw search as accepted
+  evidence. The six evidence-producing role configs remain live, portfolio,
+  risk, and judgment review explicitly remain disabled, and an active Build
+  turn still blocks native web/browser/network tools through PreToolUse
 - throughout every active Build turn/profile, native `apply_patch` is the edit
   surface and the hook admits only public GET/HEAD, enumerated read-only HTTPS
   Git, limited workspace `pwd`/`cat`/`ls`, inert provider-source
@@ -555,7 +617,7 @@ Scenarios should include:
   or corrupt workflow state
 - completed role artifacts are reused when quality gates pass
 - Head Manager and every fixed role inherit the actual `trading-research`
-  profile, general shell/Python, credential-free public retrieval, and ordinary
+  profile, general shell, credential-free public retrieval, and ordinary
   user-owned file writes outside `trading/` work, protected
   `trading/`/control/runtime/DB/credential/local-network access fails, final role
   reports use authenticated MCP only, and the service derives
@@ -568,6 +630,21 @@ Scenarios should include:
   platform cache tree, projects the same path through `TMPDIR`/`TEMP`/`TMP`,
   and creates a real non-symlink `provider-sources` staging directory while the
   broad OS temporary roots remain denied
+- generated `tcx-calc`/`tcx-calc.cmd` run deterministic arithmetic, DCF/IRR,
+  statsmodels regression, and SciPy optimization diagnostics from one direct
+  scratch-local `.py` basename through the pinned runtime v2; exact NumPy,
+  pandas, SciPy, statsmodels, numpy-financial, and PyArrow versions import,
+  while secrets/service/DB environment values and Django/TradingCodex imports
+  are absent, temp resolves to scratch, and paths, links, heredocs, `-c`, `-m`,
+  extra arguments, direct runtime execution, package installation, excessive
+  output, and Build/Plan authority fail closed
+- native Dataset/Calculation E2E records Binance/plugin price evidence as a
+  Source Snapshot and Dataset, materializes a technical-indicator slice,
+  records the Calculation and accepted artifact, reuses only the exact same
+  fingerprint on rerun, and creates a new Run after one row, parameter, or
+  cutoff changes
+- portfolio/risk native E2E proves private ledger materialization values never
+  appear in Dataset, script, artifact, Calculation metadata, or tool output
 - Research-profile native smoke proves ordinary user-owned workspace writes,
   dedicated scratch writes, and a credential-free public fetch work while
   `trading/` writes, generated control-file writes, `.env`, TradingCodex

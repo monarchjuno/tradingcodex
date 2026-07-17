@@ -31,8 +31,9 @@ and generated workspaces do not run a Node server or npm.
 
 The SPA keeps three stable hash sections:
 
-- **Library** (`#/library`) browses workspace research, reports, sources, forecasts, and other
-  accepted artifacts with sanitized previews and source/as-of posture.
+- **Library** (`#/library`) browses workspace research, reports, sources,
+  Dataset and Calculation cards, forecasts, and other accepted artifacts with
+  sanitized previews, lineage, payload availability, and source/as-of posture.
 - **Skills** (`#/skills`) inspects built-in, optional, and strategy projections
   plus sanitized guidance. It cannot invoke or modify them.
 - **System** (`#/system`) shows workspace, internal paper-account scope,
@@ -87,9 +88,15 @@ and service gates.
 
 The Django product web is a separate read-only viewer. It selects only a
 registered, currently valid attached workspace and returns a canonical snapshot
-plus sanitized skill and artifact detail. It does not invoke `codex exec`,
-preview prompts, start or resume runs, expose raw reasoning or tool payloads, or
-mutate skill, strategy, policy, order, broker, or execution state.
+plus sanitized skill, artifact, Dataset, and Calculation detail. Dataset views
+show cards, manifest/schema/profile metadata, lineage, and payload availability;
+Calculation views show cards, metrics, diagnostics, warnings, and reuse lineage.
+The viewer never returns an unbounded Dataset payload or private
+materialization; Dataset detail may include the same maximum-20-row bounded
+profile sample as the canonical profile service. It
+does not invoke `codex exec`, preview prompts, start or resume runs, expose raw
+reasoning or tool payloads, or mutate skill, strategy, Dataset, Calculation,
+policy, order, broker, or execution state.
 
 `$tcx-dashboard` is the native Codex entrypoint for opening this viewer. It
 opens the selected viewer destination in the Codex in-app browser by default and
@@ -103,8 +110,16 @@ than launching through the shell or silently switching browser surfaces.
 
 - `GET /api/viewer/` returns the selected workspace snapshot as
   `{generated_at, sections}`; each section is `{ok, data}` or `{ok, error}`.
+  The snapshot includes bounded `datasets` and `calculations` card sections.
 - `GET /api/viewer/skills/{skill_id}` and
   `GET /api/viewer/artifacts/{artifact_id}` return sanitized detail.
+- `GET /api/viewer/datasets/{dataset_id}` returns manifest, schema/profile,
+  lineage, quality warnings, withdrawal posture, and payload availability.
+- `GET /api/viewer/calculations/{calculation_run_id}` returns verified typed
+  metrics, diagnostics/warnings, fingerprint, and exact reuse lineage.
+- Dataset and Calculation cards/details are read-only Library projections. No
+  viewer route registers data, materializes a slice, prepares a calculation,
+  runs `tcx-calc`, creates a reuse record, or records a Run.
 - The root SPA remains available when a query contains an invalid workspace id
   so the API error can render in the viewer; the API never silently falls back.
 - The viewer exposes Library, Skills, and System only. Its left rail is the
@@ -145,7 +160,8 @@ Risky changes use product web, CLI, API, or MCP service-layer flows such as:
 proposal -> validation -> approval -> apply -> audit
 ```
 
-Agent, skill, strategy, research artifacts, and source snapshots
+Agent, skill, strategy, research artifacts, Source Snapshots, Datasets, and
+CalculationSpec/Run records
 are intentionally file-native rather than Admin DB surfaces. Optional skill
 CRUD, strategy skill creation, and research handoff edits happen over workspace
 files; product web shows workspace research files.
@@ -175,6 +191,8 @@ exception:
   optional skills are snapshot sections rather than a second frontend load path.
 - `GET /api/viewer/skills/{skill_id}`
 - `GET /api/viewer/artifacts/{artifact_id}`
+- `GET /api/viewer/datasets/{dataset_id}`
+- `GET /api/viewer/calculations/{calculation_run_id}`
 - `GET /api/harness/status`
 - `GET /api/harness/components`
 - `GET /api/harness/components/{component_id}`
@@ -410,6 +428,16 @@ Minimum MCP tools:
 - `append_research_artifact_version`
 - `export_research_artifact_md`
 - `record_source_snapshot`
+- `search_datasets`
+- `get_dataset_manifest`
+- `profile_dataset`
+- `materialize_dataset_slice`
+- `record_dataset_snapshot`
+- `prepare_calculation`
+- `record_calculation_run`
+- `search_calculations`
+- `get_calculation_run`
+- `compare_calculation_runs`
 - `create_research_spec`
 - `get_research_spec`
 - `list_research_specs`
@@ -442,6 +470,23 @@ Every MCP tool definition includes stable name, description, input schema,
 category, risk level, role allowlist, approval requirement, audit requirement,
 and standard MCP hints for read-only, destructive, idempotent, and open-world
 behavior. `tools/list` returns this metadata as tool annotations.
+Dataset and Calculation visibility is role-composed. Head Manager receives
+only `search_datasets`, `get_dataset_manifest`, and `search_calculations` for
+planning. The six calculation roles—fundamental, technical, macro, valuation,
+portfolio, and risk—also receive Dataset profile/record/materialize and
+Calculation get/compare/prepare/record as applicable. News, instrument,
+judgment review, Build, and the viewer do not gain mutation or execution
+authority through these tools.
+
+Dataset search returns L0 cards only: 20 by default, at most 200, with no rows
+or expanded schema. Manifest lookup does not read the payload. Profile is
+bounded to 20 sample rows. Materialization accepts typed selectors rather than
+SQL and returns a scratch reference plus hash, never table rows in the tool
+context. Prepared Calculation execution accepts only service-authored sidecar
+identity and declared scratch-local input/output basenames. Search returns
+cards; get returns one verified Run; compare aggregates only explicitly
+requested runs and metrics on the server. Recording a declared tabular or
+time-series output also registers its derived Dataset lineage.
 For `record_source_snapshot`, normal agent/API requests omit service-owned
 `snapshot_id`, `retrieved_at`, and `recorded_at`. TradingCodex stamps receipt
 and storage time and returns a bounded ID. `known_at` is caller-supplied only
@@ -496,6 +541,25 @@ display only kind, id, label, scope, origin, enabled/availability, and parent
 plugin. Missing CLI data, timeout, or damaged manifests produce a partial
 inventory with bounded warnings. The surface is read-only and contains no
 management commands or recommendations.
+
+Repository and user skills come from Codex's `.agents/skills` discovery roots;
+TradingCodex also inventories direct compatibility skills below
+`CODEX_HOME/skills` as `user-legacy` without reading their bodies. For plugin
+component files, the inventory reads only top-level app, MCP-server, and hook
+identifiers, so an app bundle is shown by its component name rather than a
+generic `app` label. Nested configuration, commands, URLs, environment values,
+credentials, prompt bodies, skill bodies, and hook code are never returned.
+
+This inventory is not a current-task `tools/list`. An `available` record means
+the configuration was discovered and enabled when inventoried; it does not
+prove the app or MCP tool was loaded into an already-running task. Conversely,
+an external tool exposed to the current task can be callable even when the
+sanitized inventory is partial. Head Manager and evidence roles therefore
+inspect current callable tools, use the runtime's available deferred-tool
+discovery surface, and
+attempt the smallest relevant read-only call before declaring a provider or
+data field unavailable. If a plugin, app, skill, or MCP server changed after
+task start, use a new task or restart Codex before diagnosing installation.
 
 ## Role-Specific MCP Exposure
 

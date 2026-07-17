@@ -237,6 +237,7 @@ class ResearchArtifactRequest(Schema):
     next_action: str = ""
     blocked_actions: list[Any] | None = None
     source_snapshot_ids: list[str] | None = None
+    calculation_run_ids: list[str] = Field(default_factory=list, max_length=50)
     evidence_lane: Literal["historical_replay", "historical_holdout", "live_forward"] | None = None
     research_spec_id: str = ""
     replay_manifest_id: str = ""

@@ -85,7 +85,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.1.1"
+    assert TRADINGCODEX_VERSION == "1.1.2"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]
@@ -647,8 +647,23 @@ def test_release_publish_is_tag_bound_and_reuses_one_verified_build() -> None:
     assert "parse_wheel_filename" in distribution["run"]
     assert "actual_artifacts != expected_artifacts" in distribution["run"]
     assert "unexpected distribution files" in distribution["run"]
-    assert set(jobs) == {"build", "publish-pypi"}
-    assert jobs["publish-pypi"]["needs"] == "build"
+    assert set(jobs) == {"build", "calculation-runtime-matrix", "publish-pypi"}
+    runtime_matrix = jobs["calculation-runtime-matrix"]
+    assert runtime_matrix["needs"] == "build"
+    assert runtime_matrix["strategy"]["fail-fast"] is False
+    assert runtime_matrix["strategy"]["matrix"] == {
+        "os": ["ubuntu-latest", "macos-15-intel", "windows-latest"],
+        "python": ["3.11", "3.12", "3.13", "3.14"],
+    }
+    assert any(
+        "download-artifact" in step.get("uses", "")
+        for step in runtime_matrix["steps"]
+    )
+    assert any(
+        "platform_wheel_smoke.py" in step.get("run", "")
+        for step in runtime_matrix["steps"]
+    )
+    assert jobs["publish-pypi"]["needs"] == ["build", "calculation-runtime-matrix"]
     assert any(
         "platform_wheel_smoke.py" in step.get("run", "")
         for step in jobs["build"]["steps"]
@@ -662,16 +677,26 @@ def test_release_publish_is_tag_bound_and_reuses_one_verified_build() -> None:
     assert not any("python -m build" in step.get("run", "") for step in jobs["publish-pypi"]["steps"])
 
 
-def test_github_actions_keep_the_normal_and_pages_paths_to_one_job_each() -> None:
+def test_normal_github_uploads_do_not_build_or_deploy_release_artifacts() -> None:
     ci = yaml.safe_load((ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8"))
     pages = yaml.safe_load(
         (ROOT / ".github/workflows/deploy-user-guide.yml").read_text(encoding="utf-8")
     )
     assert set(ci["jobs"]) == {"quality"}
     ci_steps = "\n".join(str(step.get("run", "")) for step in ci["jobs"]["quality"]["steps"])
-    assert "release_upgrade_smoke.py --wheel-dir dist --from-version 1.0.2" in ci_steps
-    assert "--from-version 1.0.0" not in ci_steps
-    assert "--from-version 1.0.1" not in ci_steps
+    ci_uses = "\n".join(str(step.get("uses", "")) for step in ci["jobs"]["quality"]["steps"])
+    assert "python -m build" not in ci_steps
+    assert "platform_wheel_smoke.py" not in ci_steps
+    assert "release_upgrade_smoke.py" not in ci_steps
+    assert "upload-artifact" not in ci_uses
+    assert "download-artifact" not in ci_uses
+    ci_trigger = ci.get("on") or ci.get(True)
+    ignored = set(ci_trigger["push"]["paths-ignore"])
+    assert {"guidebook/**", "docs/**", "openwiki/**", "assets/**", "*.md"} <= ignored
+    assert set(ci_trigger["pull_request"]["paths-ignore"]) == ignored
+
+    pages_trigger = pages.get("on") or pages.get(True)
+    assert pages_trigger == {"workflow_dispatch": None}
     assert set(pages["jobs"]) == {"deploy"}
-    assert len(ci["jobs"]["quality"]["steps"]) <= 7
+    assert len(ci["jobs"]["quality"]["steps"]) <= 6
     assert len(pages["jobs"]["deploy"]["steps"]) == 4

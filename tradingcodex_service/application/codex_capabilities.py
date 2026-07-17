@@ -164,8 +164,23 @@ def _plugin_components(
         component_path = _manifest_path(plugin_root, manifest.get(field))
         if component_path is None:
             continue
-        label = component_path.stem.lstrip(".") or kind
-        records.append(_capability(kind, f"{plugin_id}:{kind}", label, "plugin", "plugin", enabled, plugin_id))
+        component_names = _plugin_component_names(component_path, field, plugin_id, warnings)
+        if component_names:
+            for name in component_names:
+                records.append(
+                    _capability(
+                        kind,
+                        f"{plugin_id}:{kind}:{name}",
+                        name,
+                        "plugin",
+                        "plugin",
+                        enabled,
+                        plugin_id,
+                    )
+                )
+        else:
+            label = component_path.stem.lstrip(".") or kind
+            records.append(_capability(kind, f"{plugin_id}:{kind}", label, "plugin", "plugin", enabled, plugin_id))
     hooks_dir = plugin_root / "hooks"
     if hooks_dir.is_dir():
         hook_files = sorted(path for path in hooks_dir.iterdir() if path.is_file())
@@ -184,6 +199,27 @@ def _plugin_components(
     return records
 
 
+def _plugin_component_names(
+    component_path: Path,
+    field: str,
+    plugin_id: str,
+    warnings: list[str],
+) -> list[str]:
+    if not component_path.is_file():
+        return []
+    try:
+        payload = json.loads(component_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        warnings.append(f"Installed plugin {field} metadata is unavailable for {plugin_id}")
+        return []
+    if not isinstance(payload, dict):
+        return []
+    components = payload.get(field)
+    if not isinstance(components, dict):
+        return []
+    return sorted(str(name).strip() for name in components if str(name).strip())
+
+
 def _manifest_path(plugin_root: Path, value: Any) -> Path | None:
     if not isinstance(value, str) or not value.strip():
         return None
@@ -197,9 +233,11 @@ def _manifest_path(plugin_root: Path, value: Any) -> Path | None:
 
 def _standalone_skill_capabilities(root: Path, warnings: list[str]) -> list[dict[str, Any]]:
     home = Path(os.environ.get("HOME") or Path.home()).expanduser()
+    codex_home = Path(os.environ.get("CODEX_HOME") or home / ".codex").expanduser()
     locations = [
         ("repo", root / ".agents" / "skills"),
         ("user", home / ".agents" / "skills"),
+        ("user-legacy", codex_home / "skills"),
         ("admin", Path("/etc/codex/skills")),
     ]
     enabled_by_path = _skill_enabled_state(root, warnings)

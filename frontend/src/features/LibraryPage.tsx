@@ -42,12 +42,14 @@ export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact
     setDetail({});
     setDetailError("");
     setDetailLoading(true);
-    void requestJSON<unknown>(`/api/viewer/artifacts/${encodeURIComponent(selectedId)}/`, { signal: controller.signal })
+    const selectedResource = artifacts.find((artifact) => artifact.id === selectedId);
+    if (!selectedResource) return () => controller.abort();
+    void requestJSON<unknown>(selectedResource.detailPath, { signal: controller.signal })
       .then((payload) => setDetail(asRecord(payload)))
       .catch((reason) => { if (!controller.signal.aborted) setDetailError(apiErrorText(reason)); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [selectedId]);
+  }, [artifacts, selectedId]);
 
   const choose = (artifact: Artifact) => {
     setSelectedId(artifact.id);
@@ -59,7 +61,7 @@ export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact
   };
 
   return <section className="page library-page" aria-labelledby="library-title">
-    <PageHeader eyebrow="Research library" title="Evidence you can inspect." titleId="library-title" description="Read the conclusion, source timing, uncertainty, and missing evidence before relying on a result." action={<span className="page-count">{artifacts.length}<small>artifacts</small></span>} />
+    <PageHeader eyebrow="Research library" title="Evidence you can inspect." titleId="library-title" description="Read artifacts, immutable Dataset lineage, and reproducible Calculation Runs without starting or changing a workflow." action={<span className="page-count">{artifacts.length}<small>objects</small></span>} />
     {error && <ErrorNotice>{error}</ErrorNotice>}
     {viewState === "loading" ? <LoadingState label="Loading workspace research…" /> : viewState === "error" ? null : viewState === "empty" ? <EmptyState title="No research artifacts yet">Run analysis from native Codex. Accepted research will appear here.</EmptyState> : <>
       <div className="library-toolbar"><label><span className="sr-only">Search research</span><input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search titles, summaries, and types" /></label><label><span className="sr-only">Filter by artifact type</span><select value={type} onChange={(event) => setType(event.target.value)}><option value="all">All research types</option>{types.map((value) => <option key={value} value={value}>{titleCase(value)}</option>)}</select></label></div>
@@ -78,6 +80,12 @@ export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact
 }
 
 function ArtifactReader({ artifact, detail, loading, error }: { artifact: Artifact; detail: Record<string, unknown>; loading: boolean; error: string }) {
+  if (artifact.resourceKind === "dataset") {
+    return <DatasetReader artifact={artifact} detail={detail} loading={loading} error={error} />;
+  }
+  if (artifact.resourceKind === "calculation") {
+    return <CalculationReader artifact={artifact} detail={detail} loading={loading} error={error} />;
+  }
   const data = { ...artifact.raw, ...detail };
   const html = asText(asRecord(detail.preview).html);
   const contrary = asStringList(data.contrary_evidence);
@@ -101,5 +109,44 @@ function ArtifactReader({ artifact, detail, loading, error }: { artifact: Artifa
     {loading ? <LoadingState label="Loading the sanitized research report…" /> : html ? <section className="full-report"><SectionHeader eyebrow="Verified artifact" title="Full research" /><div className="rendered-content" dangerouslySetInnerHTML={{ __html: html }} /></section> : <p className="muted">A full sanitized preview is not available for this artifact.</p>}
     {blocked.length > 0 && <details className="boundary-disclosure"><summary>Outside this analysis</summary><FieldList values={blocked} /></details>}
     <details className="technical-disclosure artifact-provenance"><summary>Artifact provenance</summary><dl><div><dt>Artifact ID</dt><dd><code>{artifact.id}</code></dd></div><div><dt>Workflow run</dt><dd><code>{asText(data.workflow_run_id, "Not stated")}</code></dd></div><div><dt>Version</dt><dd>{asText(data.version, "Not stated")}</dd></div><div><dt>Content digest</dt><dd><code>{asText(data.content_hash, "Not stated")}</code></dd></div><div><dt>Source snapshots</dt><dd>{snapshots.length}</dd></div><div><dt>Input artifacts</dt><dd>{inputs.length}</dd></div></dl>{asStringList(data.source_trust_notes).length > 0 && <FieldList values={asStringList(data.source_trust_notes)} />}</details>
+  </>;
+}
+
+function DatasetReader({ artifact, detail, loading, error }: { artifact: Artifact; detail: Record<string, unknown>; loading: boolean; error: string }) {
+  const manifest = asRecord(detail.dataset);
+  const payload = asRecord(manifest.payload);
+  const lineage = asRecord(manifest.lineage);
+  const profile = asRecord(detail.profile);
+  const quality = asRecord(manifest.quality);
+  const columns = Array.isArray(manifest.columns) ? manifest.columns.map(asRecord) : [];
+  const statistics = Array.isArray(profile.columns) ? profile.columns.map(asRecord) : [];
+  const sourceIds = asStringList(manifest.source_snapshot_ids);
+  const parents = asStringList(lineage.parent_dataset_ids);
+  return <>
+    <header className="reader-header"><div className="reader-kicker"><span>Immutable Dataset</span><StatusPill value={detail.withdrawn === true ? "withdrawn" : detail.payload_available === true ? "available" : "missing"} /></div><h2>{artifact.title}</h2><p className="reader-summary">{asText(manifest.description, artifact.summary)}</p></header>
+    {error && <ErrorNotice>{error}</ErrorNotice>}
+    {loading ? <LoadingState label="Loading Dataset lineage and profile…" /> : <>
+      <dl className="reader-facts"><div><dt>Provider</dt><dd>{asText(manifest.provider, "Not stated")}</dd></div><div><dt>Rows</dt><dd>{asText(payload.row_count, "Not available")}</dd></div><div><dt>Knowledge cutoff</dt><dd>{asText(manifest.knowledge_cutoff, "Not stated")}</dd></div></dl>
+      <section className="reader-evidence"><SectionHeader eyebrow="Schema and profile" title="Bounded Dataset view" /><div className="evidence-grid">{columns.map((column) => { const stats = statistics.find((item) => asText(item.name) === asText(column.name)) || {}; return <div key={asText(column.name)}><h3>{asText(column.name)}</h3><p>{asText(column.type)}{column.unit ? ` · ${asText(column.unit)}` : ""}{column.currency ? ` · ${asText(column.currency)}` : ""}</p><p>Nulls {asText(stats.null_count, "not profiled")}{stats.min !== undefined ? ` · min ${asText(stats.min)}` : ""}{stats.max !== undefined ? ` · max ${asText(stats.max)}` : ""}</p></div>; })}</div></section>
+      <details className="technical-disclosure artifact-provenance" open><summary>Dataset lineage</summary><dl><div><dt>Dataset ID</dt><dd><code>{artifact.id}</code></dd></div><div><dt>Payload digest</dt><dd><code>{asText(payload.sha256, "Not available")}</code></dd></div><div><dt>Source snapshots</dt><dd>{sourceIds.length}</dd></div><div><dt>Parent datasets</dt><dd>{parents.length}</dd></div></dl>{[...sourceIds, ...parents].length > 0 && <FieldList values={[...sourceIds, ...parents]} />}</details>
+      {asStringList(quality.warnings).length > 0 && <div className="evidence-gap"><h3>Quality warnings</h3><FieldList values={asStringList(quality.warnings)} /></div>}
+    </>}
+  </>;
+}
+
+function CalculationReader({ artifact, detail, loading, error }: { artifact: Artifact; detail: Record<string, unknown>; loading: boolean; error: string }) {
+  const run = asRecord(detail.run);
+  const spec = asRecord(detail.spec);
+  const metrics = Array.isArray(run.metrics) ? run.metrics.map(asRecord) : [];
+  const warnings = asStringList(run.warnings);
+  return <>
+    <header className="reader-header"><div className="reader-kicker"><span>Calculation Run</span><StatusPill value={asText(run.status, artifact.readiness)} /></div><h2>{titleCase(asText(spec.calculation_type, artifact.title))}</h2><p className="reader-summary">Version {asText(spec.calculation_version, "not stated")} · exact fingerprint and runtime identity recorded.</p></header>
+    {error && <ErrorNotice>{error}</ErrorNotice>}
+    {loading ? <LoadingState label="Loading verified Calculation Run…" /> : <>
+      <dl className="reader-facts"><div><dt>Workflow run</dt><dd><code>{asText(run.workflow_run_id, "Not stated")}</code></dd></div><div><dt>Knowledge cutoff</dt><dd>{asText(spec.knowledge_cutoff, "Not stated")}</dd></div><div><dt>Reuse origin</dt><dd><code>{asText(run.original_run_id, "Original execution")}</code></dd></div></dl>
+      <section className="reader-evidence"><SectionHeader eyebrow="Typed result" title="Recorded metrics" /><div className="evidence-grid">{metrics.map((metric) => <div key={asText(metric.name)}><h3>{titleCase(asText(metric.name))}</h3><p>{asText(metric.value, "Not available")}{metric.unit ? ` ${asText(metric.unit)}` : ""}{metric.currency ? ` ${asText(metric.currency)}` : ""}</p></div>)}</div></section>
+      {warnings.length > 0 && <div className="evidence-gap"><h3>Warnings</h3><FieldList values={warnings} /></div>}
+      <details className="technical-disclosure artifact-provenance" open><summary>Calculation provenance</summary><dl><div><dt>Run ID</dt><dd><code>{artifact.id}</code></dd></div><div><dt>Spec ID</dt><dd><code>{asText(run.calculation_spec_id, "Not stated")}</code></dd></div><div><dt>Fingerprint</dt><dd><code>{asText(run.fingerprint, "Not stated")}</code></dd></div><div><dt>Run digest</dt><dd><code>{asText(run.run_sha256, "Not stated")}</code></dd></div></dl></details>
+    </>}
   </>;
 }

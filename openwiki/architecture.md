@@ -20,9 +20,13 @@ and runtime subsystem, not a synonym for the whole product.
 | --- | --- | --- |
 | Codex control plane | `head-manager`, nine fixed subagent TOMLs, skills, prompts, hooks, project MCP config, and exact root-native action interception | `workspace_templates/modules/*/files` |
 | Django service plane | policy, orders, approvals, portfolio, audit, broker/integration state, API, MCP, read-only React asset serving, Admin | `tradingcodex_service/application/`, `apps/` |
-| Workspace system plane | generated config, research markdown, source snapshots, indexes, `tcx`/`tcx.cmd` launchers | generated files from `workspace_templates/` |
+| Workspace system plane | generated config, research markdown, Source Snapshots, immutable Dataset/Calculation objects, rebuildable indexes, `tcx`/`tcx.cmd` and `tcx-calc` launchers | generated files from `workspace_templates/` plus canonical workspace research files |
 
 Control-plane files request or guide work. Service-plane code decides and records durable outcomes. Workspace files make Codex-native state reviewable.
+The content-addressed, wheel-locked `finance-*` calculation runtime v2 is a
+control-plane execution dependency, not another authority plane. Django
+prepares/records Calculation metadata; the separate runner only processes
+declared scratch files and emits a bounded envelope.
 
 ## Source Ownership
 
@@ -49,6 +53,7 @@ Control-plane files request or guide work. Service-plane code decides and record
 | `tradingcodex_service/application/workspace_git.py` | Generated-workspace Git membership, privacy-first ignore contract, and diagnostics without automatic repository actions. |
 | `tradingcodex_service/application/investor_context.py` | Optional workspace-local suitability context, saved application default, and strict file validation. |
 | `tradingcodex_service/application/research_specs.py`, `forecasting.py` | Frozen point-in-time research, method profiles, experiment validation, and forecast lifecycles. |
+| `tradingcodex_service/application/research_objects.py`, `datasets.py`, `calculations.py`, `research_object_catalog.py` | Shared immutable-object primitives, canonical Parquet Dataset memory, prepared CalculationSpec/Run memory, and the rebuildable SQLite+FTS v3 projection. |
 | `tradingcodex_service/application/investment_analysis.py`, `evaluation_lab.py` | Method-bound causal valuation plus pristine and corpus-declared model-evaluation profiles. |
 
 ## State Model
@@ -68,7 +73,8 @@ Central DB state includes policy decisions, order tickets, approvals, execution 
 
 Workspace-file state includes `.codex/`, `.agents/skills/*`,
 `.tradingcodex/subagents/skills/*`, `.tradingcodex/generated/*.json`, lightweight
-analysis run records, Codex/subagent events, `trading/research/*.md`, source snapshots,
+analysis run records, Codex/subagent events, `trading/research/*.md`, Source
+Snapshots, Dataset manifests/payloads/withdrawals, Calculation specs/runs,
 ResearchSpecs, replay manifests, experiment runs, causal analyses, forecast
 events, and model-evaluation artifacts. Immutable hashes and replay bindings
 make these research/control files reviewable; they do not become execution
@@ -99,7 +105,8 @@ Observed model families:
 - harness: workspace provenance
 - audit: append-only audit events
 
-Research artifacts are intentionally file-native and do not have a Django research model surface.
+Research artifacts, Source Snapshots, Datasets, and Calculation records are
+intentionally file-native and do not have a Django research model surface.
 
 ## Design Constraints
 

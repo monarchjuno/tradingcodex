@@ -10,6 +10,7 @@
       "agent.head_manager",
       "codex.hooks",
       "codex.rules",
+      "calculation.stdlib_runtime",
       "doctor.run"
     ]
   },

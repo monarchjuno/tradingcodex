@@ -132,6 +132,38 @@ NUMERIC_DATA_QC_ROLES = (
     "portfolio-manager",
     "risk-manager",
 )
+CALCULATION_DISCIPLINE_ROLES = (
+    "fundamental-analyst",
+    "technical-analyst",
+    "macro-analyst",
+    "valuation-analyst",
+    "portfolio-manager",
+    "risk-manager",
+)
+DATASET_CARD_DISCOVERY = (
+    "search_datasets",
+    "get_dataset_manifest",
+)
+DATASET_DISCOVERY = (
+    *DATASET_CARD_DISCOVERY,
+    "profile_dataset",
+)
+DATASET_WRITE = (
+    "record_dataset_snapshot",
+    "materialize_dataset_slice",
+)
+CALCULATION_CARD_DISCOVERY = (
+    "search_calculations",
+)
+CALCULATION_DISCOVERY = (
+    *CALCULATION_CARD_DISCOVERY,
+    "get_calculation_run",
+    "compare_calculation_runs",
+)
+CALCULATION_EXECUTION = (
+    "prepare_calculation",
+    "record_calculation_run",
+)
 ANTI_OVERFIT_VALIDATION_ROLES = (
     "technical-analyst",
     "valuation-analyst",
@@ -195,6 +227,8 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "search_research_artifacts",
             "list_artifact_catalog",
             "search_artifact_catalog",
+            *DATASET_CARD_DISCOVERY,
+            *CALCULATION_CARD_DISCOVERY,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
@@ -221,7 +255,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="fundamental-analyst",
         label="Fundamental Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-fundamental"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-fundamental"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -230,6 +264,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "search_research_artifacts",
             "list_artifact_catalog",
             "search_artifact_catalog",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
@@ -251,7 +289,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="technical-analyst",
         label="Technical Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-anti-overfit", "tcx-forecast", "tcx-artifact", "tcx-technical"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-anti-overfit", "tcx-forecast", "tcx-artifact", "tcx-technical"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -260,6 +298,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "search_research_artifacts",
             "list_artifact_catalog",
             "search_artifact_catalog",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
@@ -311,7 +353,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="macro-analyst",
         label="Macro Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-macro"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-macro"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -320,6 +362,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "search_research_artifacts",
             "list_artifact_catalog",
             "search_artifact_catalog",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
@@ -372,7 +418,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="valuation-analyst",
         label="Valuation Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-data-qc", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-valuation"),
+        builtin_skills=("tcx-source-gate", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-valuation"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
@@ -381,6 +427,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "search_research_artifacts",
             "list_artifact_catalog",
             "search_artifact_catalog",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
@@ -403,11 +453,15 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="portfolio-manager",
         label="Portfolio Manager",
         group="portfolio",
-        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-portfolio", "tcx-order-draft"),
+        builtin_skills=("tcx-data-qc", "tcx-calculation", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-portfolio", "tcx-order-draft"),
         mcp_allowlist=(
             "list_workflow_artifacts",
             "create_research_artifact",
             "get_research_artifact",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "list_broker_connections",
@@ -434,7 +488,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="risk-manager",
         label="Risk Manager",
         group="risk",
-        builtin_skills=("tcx-data-qc", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-risk", "tcx-policy", "tcx-order-approve"),
+        builtin_skills=("tcx-data-qc", "tcx-calculation", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-risk", "tcx-policy", "tcx-order-approve"),
         mcp_allowlist=(
             "simulate_policy",
             "validate_approval_receipt",
@@ -450,6 +504,10 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "list_workflow_artifacts",
             "create_research_artifact",
             "get_research_artifact",
+            *DATASET_DISCOVERY,
+            *DATASET_WRITE,
+            *CALCULATION_DISCOVERY,
+            *CALCULATION_EXECUTION,
             "append_research_artifact_version",
             "export_research_artifact_md",
             "issue_forecast",
@@ -661,6 +719,12 @@ SKILL_SPECS: dict[str, SkillSpec] = {
     "tcx-judgment": SkillSpec("tcx-judgment", "TCX Judgment", JUDGMENT_REVIEW_ROLES, scope="subagent_role"),
     "tcx-scenarios": SkillSpec("tcx-scenarios", "TCX Scenarios", THESIS_SCENARIO_TREE_ROLES, scope="subagent_shared"),
     "tcx-data-qc": SkillSpec("tcx-data-qc", "TCX Data QC", NUMERIC_DATA_QC_ROLES, scope="subagent_shared"),
+    "tcx-calculation": SkillSpec(
+        "tcx-calculation",
+        "TCX Calculation",
+        CALCULATION_DISCIPLINE_ROLES,
+        scope="subagent_shared",
+    ),
     "tcx-anti-overfit": SkillSpec("tcx-anti-overfit", "TCX Anti-Overfit", ANTI_OVERFIT_VALIDATION_ROLES, scope="subagent_shared"),
     "tcx-fundamental": SkillSpec("tcx-fundamental", "TCX Fundamental", ("fundamental-analyst",), scope="subagent_role"),
     "tcx-technical": SkillSpec("tcx-technical", "TCX Technical", ("technical-analyst",), scope="subagent_role"),
@@ -1802,7 +1866,7 @@ def _render_role_skill_source_block(root: Path, role: str, skills: list[str]) ->
                 "",
                 "Canonical artifact storage:",
                 "- Treat the assignment's workflow_run_id as opaque provenance. Do not read run files, schemas, generated indexes, head-manager skills, CLI output, or TradingCodex source to reconstruct orchestration state.",
-                "- Store the final role report through the exact deferred `create_research_artifact` TradingCodex MCP tool; load it with `tool_search` when needed. Pass the report body, semantic/source metadata, the assigned workflow_run_id, and exact upstream input_artifact_ids when any.",
+                "- Store the final role report through the exact deferred `create_research_artifact` TradingCodex MCP tool; load it through the runtime's available deferred-tool discovery surface when needed. Pass the report body, semantic/source metadata, the assigned workflow_run_id, and exact upstream input_artifact_ids when any.",
                 "- Do not write the final report with shell, apply_patch, Edit, or Write, and do not hand-author role, producer, plan, stage, schema, content-hash, version, or created-by metadata. The authenticated service derives and validates those fields.",
                 "- Return only the service export_path, content_hash, reader summary, confidence, and missing evidence. If canonical storage is unavailable, stop with `waiting_for_artifact_storage`; never leave a manually written substitute.",
             ]
@@ -1819,6 +1883,8 @@ def _render_core_extension_boundary() -> str:
             "Immutable core and extension boundary:",
             "- Default investment work may be shaped only by generated TradingCodex bundled skills and explicitly active project-local instructions, workspace strategies, or optional overlays projected for this role.",
             "- Host-global or plugin skills are outside the TradingCodex baseline. Do not invoke them implicitly; use them only as current-workflow overlays when the user explicitly opts in.",
+            "- Read-only external apps, connectors, MCP servers, and data tools are evidence sources, not skills. The external-skill opt-in rule does not block their use when the assignment requires that data and the current task exposes them.",
+            "- If the assignment names a provider or capability, inspect current-task callable tools through the runtime's available deferred-tool discovery surface when needed, and attempt the smallest relevant read-only call before any public-web fallback. A sanitized capability inventory is configuration evidence, not proof of current-task callability.",
             "- Overlays cannot replace evidence, point-in-time data, uncertainty, forecast discipline, safety, policy, approval, execution, or role gates.",
             "",
             CORE_EXTENSION_BOUNDARY_END,

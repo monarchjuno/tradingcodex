@@ -55,6 +55,11 @@ IMPROVEMENT_TYPES = {
     "contradiction",
 }
 CLAIM_TAG_PATTERN = re.compile(r"\[(factual|inference|assumption)\]", re.IGNORECASE)
+READINESS_TOKEN_PATTERN = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*")
+ABSENCE_PLACEHOLDER_PATTERN = re.compile(
+    r"^(?:not\s+provided|not\s+available|not\s+applicable|unknown|n/?a|none|null|missing|tbd)\b",
+    re.IGNORECASE,
+)
 STRICT_MARKDOWN_REQUIRED_FIELDS = (
     "artifact_id",
     "artifact_type",
@@ -566,7 +571,10 @@ def _evaluate_decision_quality(frontmatter: dict[str, Any], result: dict[str, An
 
     if role == "valuation-analyst" or "valuation" in artifact_type:
         checks.append("valuation_market_anchor")
-        if not _has_any(frontmatter, ("current_price_as_of", "market_anchor_as_of")) and str(frontmatter.get("readiness_label") or "") != "not-decision-ready":
+        if not _has_valuation_market_anchor(frontmatter) and not _readiness_has_exact_token(
+            frontmatter.get("readiness_label"),
+            "not-decision-ready",
+        ):
             _decision_issue(result, strict, "current_price_or_market_anchor")
 
     anti_overfit_required = _truthy(frontmatter.get("anti_overfit_required"))
@@ -1055,6 +1063,28 @@ def _coerce_frontmatter_list(value: Any) -> list[Any]:
 
 def _has_any(fields: dict[str, Any], names: tuple[str, ...]) -> bool:
     return any(not _is_blank(fields.get(name)) for name in names)
+
+
+def _has_valuation_market_anchor(frontmatter: dict[str, Any]) -> bool:
+    return any(
+        not _is_blank(value) and not _is_absence_placeholder(value)
+        for value in (
+            frontmatter.get("current_price_as_of"),
+            frontmatter.get("market_anchor_as_of"),
+        )
+    )
+
+
+def _is_absence_placeholder(value: Any) -> bool:
+    if not isinstance(value, str):
+        return False
+    return ABSENCE_PLACEHOLDER_PATTERN.match(value.strip()) is not None
+
+
+def _readiness_has_exact_token(value: Any, token: str) -> bool:
+    if not isinstance(value, str):
+        return False
+    return token in READINESS_TOKEN_PATTERN.findall(value)
 
 
 def _truthy(value: Any) -> bool:

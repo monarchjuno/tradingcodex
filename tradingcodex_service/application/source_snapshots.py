@@ -7,8 +7,8 @@ from typing import Any
 from tradingcodex_service.application.common import (
     safe_filename_component,
     sanitize_id,
-    stable_hash,
 )
+from tradingcodex_service.application.research_objects import legacy_content_hash
 
 SOURCE_SNAPSHOT_SCHEMA_VERSION = 1
 SOURCE_SNAPSHOT_FIELDS = frozenset({
@@ -115,7 +115,7 @@ def validate_source_snapshot(
 
     payload = snapshot["payload"]
     payload_hash = snapshot["payload_hash"]
-    if payload_hash != stable_hash(payload):
+    if payload_hash != legacy_content_hash(payload):
         raise ValueError(f"{label} payload hash mismatch")
 
     snapshot_hash = snapshot["snapshot_hash"]
@@ -124,7 +124,7 @@ def validate_source_snapshot(
         for key, value in snapshot.items()
         if key not in {"snapshot_id", "snapshot_hash"}
     }
-    if snapshot_hash != stable_hash(snapshot_seed):
+    if snapshot_hash != legacy_content_hash(snapshot_seed):
         raise ValueError(f"{label} hash mismatch")
 
     timestamps = {
@@ -157,7 +157,9 @@ def source_snapshot_id(snapshot: dict[str, Any]) -> str:
     )
     # The identifier is content-addressed but is not recursively part of its
     # own digest. All other envelope fields, including snapshot_hash, are bound.
-    digest = stable_hash({key: value for key, value in snapshot.items() if key != "snapshot_id"})[:12]
+    digest = legacy_content_hash(
+        {key: value for key, value in snapshot.items() if key != "snapshot_id"}
+    )[:12]
     prefix = safe_filename_component(base or "source-snapshot", max_length=115)
     return f"{prefix}-{digest}"
 

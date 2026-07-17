@@ -1,0 +1,13 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "$#" -ne 1 ]; then
+  echo "usage: ./tcx-calc <scratch-script.py>" >&2
+  exit 2
+fi
+
+exec {{TRADINGCODEX_CALCULATION_PYTHON_SHELL}} -I -B -S \
+  {{TRADINGCODEX_CALCULATION_RUNNER_SHELL}} \
+  --workspace {{TRADINGCODEX_WORKSPACE_ROOT_SHELL}} \
+  --scratch {{TRADINGCODEX_SCRATCH_PATH_SHELL}} \
+  -- "$1"

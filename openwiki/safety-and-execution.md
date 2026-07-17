@@ -70,7 +70,7 @@ and the saved runtime prompt never invokes `tcx-automate` recursively.
 The in-memory mandate signature is field-integrity defense, not same-user OS
 attestation. Native project config explicitly enables hooks, disables unified
 execution and interactive action features, and defaults to the custom
-`trading-research` profile. General shell/Python and credential-free public
+`trading-research` profile. General shell and credential-free public
 HTTP plus user-owned file changes outside `trading/` are available, while the
 profile keeps `trading/` read-only and denies generated control files, the
 TradingCodex home/DB/runtime, protected workspace state, credentials,
@@ -81,11 +81,18 @@ shell temp directory, and enables Codex's network proxy for
 the public-only command network policy. Only the installed standalone Codex
 runtime is reopened read-only beneath the otherwise denied Codex home so native
 file tools work without exposing auth/config/session state. The shell environment excludes
-secret, token, and broker variables. The hook matches legacy `Bash` and current
+secret, token, and broker variables. Python calculation is limited to one
+direct scratch-local `.py` basename through the generated wheel-locked
+`tcx-calc` runtime v2. It sanitizes the environment before adding only the
+verified finance site-packages path and applies resource bounds without
+initializing Django, MCP, the service, or DB. Prepared mode additionally limits
+reads/writes to declared scratch basenames and emits a typed bounded envelope;
+direct sidecar-free mode is exploratory only. Python itself is not claimed as
+a sandbox. The hook matches legacy `Bash` and current
 `exec_command`/`write_stdin` events and retains semantic blocks for interactive
 sessions, credentials, state mutation, publication, and order effects. This
-OS-level authority separation, rather than an interpreter ban, prevents
-model-launched Python from reading or bypassing a mandate.
+OS-level authority separation plus that narrow launcher contract prevents
+calculation code from reading or bypassing a mandate.
 
 Codex loads the project config, TradingCodex MCP server, and hooks only after
 the attached workspace is trusted. If it is untrusted or managed policy forces
@@ -171,6 +178,15 @@ terms, cost, credentials, and side effects remain the user/provider's
 responsibility. The sanitized inventory is read-only and never returns launch
 details, secrets, raw config, skill bodies, or hook code.
 
+External skill procedures remain explicit workflow overlays. Read-only app,
+connector, MCP, and data tools are evidence sources instead: when relevant, the
+owning agent inspects the current task's callable surface, uses the runtime's
+available deferred-tool discovery surface when needed, and attempts the narrow
+call before public-web
+fallback. Inventory is configuration evidence, not current-task callability
+proof. A capability changed after task start may need a new task or Codex
+restart.
+
 External capabilities cannot mint TradingCodex principals or grants, write the
 reserved namespace, inject service proof, or bypass protected workspace and
 ledger state. Order and execution guarantees apply only to effects that enter
@@ -217,7 +233,8 @@ interpreters, helper scripts, test runners, build systems, shell composition,
 and model-authored POST are blocked, while credential-free public
 HTTP(S)/HTTPS Git retrieval remains available. Native browser/web/network
 tools are blocked during Build so retrieval cannot reuse browser credentials;
-Research browser behavior is unchanged. The profile also denies the
+Research permits Head Manager planning-only web reconnaissance, but its raw
+results remain untrusted and cannot support synthesis claims. The profile also denies the
 TradingCodex home/DB/mutable runtime state, credentials, audit, approval,
 order state, authenticated/local-private network access, package installation,
 publication, and broker calls. Public provider source remains inert under

@@ -104,9 +104,10 @@ protocol-owned identity/status paths, reserved namespaces, and marked blocks:
   `.tradingcodex/user/*`, `.agents/skills/strategy-*`, optional role skills,
   `investment-brains/*` authoring sources, and installed Brain state; lifecycle
   services validate it and update preserves it while rebuilding projections
-- research, report, forecast, decision, evaluation, lesson, and run-provenance
-  files are workspace artifacts; generated `.gitkeep` siblings do not make
-  their parent directories release-owned
+- research, report, forecast, decision, evaluation, Dataset manifest/payload/
+  withdrawal, Calculation spec/run, lesson, and run-provenance files are
+  workspace artifacts; generated `.gitkeep` siblings do not make their parent
+  directories release-owned
 - runtime DB, authority, secrets, credentials, and private local state stay
   external or ignored; ordinary non-reserved user files remain untouched
 
@@ -119,7 +120,7 @@ TradingCodex privacy block is managed.
 Generated workspaces should contain:
 
 - the release-managed files described above
-- nine fixed role TOMLs, no `execution-operator`, and 32 bundled skills,
+- nine fixed role TOMLs, no `execution-operator`, and 33 bundled skills,
   including root explicit-only `tcx-order-allow`, `tcx-order-submit`, and
   `tcx-order-cancel`
 - a `.gitignore` whose TradingCodex local/private-state block is managed without
@@ -130,8 +131,9 @@ Clean generated workspaces must not contain `package.json`, Node MCP runtime fil
 
 Git is local history, not a publication action. Attach/update never stage,
 commit, create a branch reference or remote, push, or open a pull request.
-Runtime DB/session/status/audit/cache/secret files and private Investor Context
-are ignored by default. Brain and Strategy skills, research, decisions,
+Runtime DB/session/status/audit/cache/secret files, private Investor Context,
+and `trading/research/datasets/objects/` payload blobs are ignored by default.
+Dataset manifests and withdrawals, Calculation records, Brain and Strategy skills, research, decisions,
 postmortems, lesson state, and non-private run provenance remain eligible.
 `TRADINGCODEX_HOME` must be outside the workspace. Attach, runtime resolution,
 and doctor fail closed for an internal home; use a platform, sibling, or OS
@@ -140,9 +142,18 @@ temporary home rather than a Git ignore workaround.
 for the attached workspace path.
 
 `head-manager` and every fixed role inherit `trading-research` during analysis.
-Ordinary shell/Python, credential-free public HTTP, and the dedicated
+Ordinary shell, credential-free public HTTP, and the dedicated
 `$TRADINGCODEX_SCRATCH` path are
-available. The profile extends the built-in native `:workspace` profile, then
+available. Fixed roles stage one direct scratch-local `.py` file with
+`apply_patch` and invoke only `tcx-calc`/`tcx-calc.cmd`; system Python,
+heredocs, paths, `-c`, `-m`, and compound commands are not the calculation
+contract. Runtime v2 is wheel-locked around NumPy, pandas, SciPy, statsmodels,
+numpy-financial, and PyArrow, and content-addressed in a cache separate from
+Django, MCP, service home/DB, workspace, scratch, and Codex home. Research
+can read it while Build explicitly cannot; Codex's OS sandbox remains the
+security boundary. A service sidecar turns prepared execution into an immutable
+CalculationSpec/Run; direct sidecar-free execution remains exploratory. The
+profile extends the built-in native `:workspace` profile, then
 uses more-specific rules to keep `trading/`, Git metadata, launchers, and
 generated control files read-only or denied. User-owned paths outside
 `trading/` are therefore available for workflow inputs and outputs without a
@@ -259,7 +270,7 @@ runs need `trading-build`, and Brain/Strategy management uses
 Prefer an isolated worktree or workspace and retain a reviewable diff for
 scheduled changes.
 
-All 32 bundled skill ids use the reserved compact `tcx-` namespace with one
+All 33 bundled skill ids use the reserved compact `tcx-` namespace with one
 suffix word when possible and never more than two. Generated folder,
 frontmatter, registry, UI metadata, and projection ids must match. User-owned
 `strategy-*`, `investment-brain-*`, and optional role skills are separate
@@ -284,10 +295,11 @@ Pre-use and permission hooks match legacy and current shell tool names, reject
 and order effects, while passing general computation and public retrieval to
 the active native profile. Workdirs stay in the workspace or its dedicated scratch path.
 
-Root config sets `web_search="disabled"`. Only the fundamental, technical,
-news, macro, instrument, and valuation custom-agent TOML files override it with
-`web_search="live"`; Codex applies that role config to the spawned child. Other
-roles and Head Manager do not perform live web research.
+Root config sets `web_search="live"` for narrow Head Manager workflow-planning
+reconnaissance. Raw results remain untrusted planning leads and cannot support
+synthesis; material facts must be reacquired through producing-role artifacts.
+The six evidence-producing custom agents also use live search. Portfolio, risk,
+and judgment review explicitly set `web_search="disabled"`.
 
 The source repository's React/TypeScript/Vite tooling does not alter this rule.
 Compiled viewer assets ship in the Python package; attach/update never copy
@@ -299,6 +311,13 @@ Codex, not `tcx`. Codex exposes them natively to root and fixed-role agents;
 role TOML overrides only the TradingCodex MCP entry and projected `tcx-*`
 skills. TradingCodex neither recommends nor classifies user capabilities and
 offers only a sanitized read-only inventory.
+External skills remain explicit overlays, but read-only app, connector, MCP,
+and data tools are evidence sources. Head Manager and evidence roles inspect
+the current task's callable tools through the runtime's available deferred-tool
+discovery surface and try the
+narrow provider call before fallback. The inventory includes top-level plugin
+component ids and compatible `CODEX_HOME/skills` entries, but remains
+configuration evidence rather than current-task callability proof.
 The built-in TradingCodex MCP defaults safe enabled tools to Codex `approve`;
 raw submit, cancel, and broker-status-refresh mutations are absent from every
 config and from public `tools/list`. Root Head Manager alone lists
@@ -333,8 +352,9 @@ same-name host-global collisions without importing host skill bodies.
 collision detection, not proof that the host Codex runtime cannot discover a
 differently named global or plugin skill.
 
-Generated project config keeps root web search disabled while the six evidence
-custom agents provide the pristine public-research baseline. Project-local additional instructions and managed skills are
+Generated project config enables planning-only root web search while the six
+evidence custom agents provide the authenticated public-research baseline.
+Project-local additional instructions and managed skills are
 overlays; projection places an immutable core/extension footer after additional
 instructions so they cannot redefine the documented kernel contract.
 
@@ -360,7 +380,13 @@ is preserved; attach does not create it before a confirmed investor-context
 update.
 `.tradingcodex/cli.py` is the common Python
 launcher behind POSIX `./tcx` and Windows `tcx.cmd`; hooks select the native
-shim. The POSIX shim skips redundant absolute-path re-entry when already at its
+shim. A separate generated `tcx-calc`/`tcx-calc.cmd` pair runs only a
+basename-only scratch script with `-I -B -S`, sanitized environment and temp,
+verified locked site-packages, link/source/output/resource bounds, and no
+Django or TradingCodex package. Attach/update provisions its content-addressed
+wheel-only runtime before workspace mutation; unsupported wheel targets fail
+without a source build. The
+POSIX shim skips redundant absolute-path re-entry when already at its
 canonical root so a temp-root disposable workspace remains usable through the
 more-specific native workspace permission. Generator values use format-specific TOML/YAML/JSON/shell/CMD literals.
 Module lock records canonical `tradingcodex_home`, `home_source`, DB path, and

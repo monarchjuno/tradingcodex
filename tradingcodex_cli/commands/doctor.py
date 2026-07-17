@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -45,6 +46,12 @@ from tradingcodex_cli.commands.utils import (
     text_check,
 )
 from tradingcodex_cli.generator import (
+    CALCULATION_RUNTIME_LOCK,
+    CALCULATION_RUNTIME_MANIFEST_NAME,
+    CALCULATION_RUNTIME_REQUIREMENTS,
+    CALCULATION_RUNNER_SOURCE,
+    _load_calculation_runtime_lock,
+    _validate_calculation_runtime,
     generated_python_path_is_ephemeral,
     workspace_scratch_permission_aliases,
 )
@@ -233,6 +240,16 @@ def _launcher_checks(root: Path) -> list[dict[str, Any]]:
     windows_launcher = root / "tcx.cmd"
     active = windows_launcher if os.name == "nt" else unix_launcher
     active_ok = active.is_file() and (os.name == "nt" or os.access(active, os.X_OK))
+    unix_calculation_launcher = root / "tcx-calc"
+    windows_calculation_launcher = root / "tcx-calc.cmd"
+    active_calculation = windows_calculation_launcher if os.name == "nt" else unix_calculation_launcher
+    active_calculation_ok = active_calculation.is_file() and (
+        os.name == "nt" or os.access(active_calculation, os.X_OK)
+    )
+    calculation_hashes_ok, calculation_hashes_detail = _generated_file_hash_check(
+        root,
+        ("tcx-calc", "tcx-calc.cmd"),
+    )
     return [
         {
             "layer": "guidance",
@@ -243,12 +260,69 @@ def _launcher_checks(root: Path) -> list[dict[str, Any]]:
         },
         {
             "layer": "guidance",
+            "name": "separate calculation launcher",
+            "ok": active_calculation_ok,
+            "codexNative": True,
+            "detail": str(active_calculation),
+        },
+        {
+            "layer": "guidance",
+            "name": "cross-platform calculation launcher pair",
+            "ok": unix_calculation_launcher.is_file() and windows_calculation_launcher.is_file(),
+            "codexNative": True,
+            "detail": (
+                "tcx-calc + tcx-calc.cmd"
+                if unix_calculation_launcher.is_file() and windows_calculation_launcher.is_file()
+                else "missing tcx-calc or tcx-calc.cmd"
+            ),
+        },
+        {
+            "layer": "guidance",
+            "name": "calculation launcher hashes",
+            "ok": calculation_hashes_ok,
+            "codexNative": True,
+            "detail": calculation_hashes_detail,
+        },
+        {
+            "layer": "guidance",
             "name": "cross-platform launcher pair",
             "ok": unix_launcher.is_file() and windows_launcher.is_file(),
             "codexNative": True,
             "detail": "tcx + tcx.cmd" if unix_launcher.is_file() and windows_launcher.is_file() else "missing tcx or tcx.cmd",
         },
     ]
+
+
+def _generated_file_hash_check(
+    root: Path,
+    relative_paths: tuple[str, ...],
+) -> tuple[bool, str]:
+    lock_path = root / ".tradingcodex" / "generated" / "module-lock.json"
+    try:
+        lock = json.loads(lock_path.read_text(encoding="utf-8"))
+        generated_files = lock.get("generated_files")
+        if not isinstance(generated_files, dict):
+            raise ValueError("generated_files is missing")
+        mismatches = []
+        for relative_path in relative_paths:
+            path = root / relative_path
+            record = generated_files.get(relative_path)
+            expected = str(record.get("sha256") or "") if isinstance(record, dict) else ""
+            if (
+                re.fullmatch(r"[0-9a-f]{64}", expected) is None
+                or not path.is_file()
+                or path.is_symlink()
+            ):
+                mismatches.append(relative_path)
+                continue
+            actual = hashlib.sha256(path.read_bytes()).hexdigest()
+            if actual != expected:
+                mismatches.append(relative_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        return False, f"unable to verify generated launcher hashes: {exc}"
+    if mismatches:
+        return False, f"generated launcher hash mismatch: {', '.join(mismatches)}"
+    return True, "tcx-calc and tcx-calc.cmd match the generated module lock"
 
 
 def _model_policy_checks(root: Path) -> list[dict[str, Any]]:
@@ -809,6 +883,37 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     )
     active_codex_proxy = str(Path(active_codex_home) / "proxy")
     active_codex_standalone = str(Path(active_codex_home) / "packages" / "standalone")
+    calculation_roots = [
+        path
+        for path, permission in research_filesystem.items()
+        if isinstance(path, str)
+        and "calculation" in path.casefold()
+        and permission == "read"
+    ]
+    calculation_root = calculation_roots[0] if len(calculation_roots) == 1 else ""
+    calculation_runtime_ok = bool(calculation_root)
+    if calculation_runtime_ok:
+        calculation_path = Path(calculation_root)
+        calculation_python = calculation_path / (
+            "Scripts/python.exe" if os.name == "nt" else "bin/python"
+        )
+        calculation_runner = calculation_path / "calculation_runner.py"
+        calculation_manifest = calculation_path / CALCULATION_RUNTIME_MANIFEST_NAME
+        try:
+            lock_bytes = CALCULATION_RUNTIME_LOCK.read_bytes()
+            requirements_bytes = CALCULATION_RUNTIME_REQUIREMENTS.read_bytes()
+            _validate_calculation_runtime(
+                calculation_path,
+                calculation_python,
+                calculation_runner,
+                calculation_manifest,
+                CALCULATION_RUNNER_SOURCE.read_bytes(),
+                lock_bytes,
+                requirements_bytes,
+                _load_calculation_runtime_lock(lock_bytes),
+            )
+        except (OSError, ValueError):
+            calculation_runtime_ok = False
     split_profile_ok = bool(scratch) and all(
         (
             project_config_data.get("default_permissions") == "trading-research",
@@ -839,6 +944,10 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
             research_workspace.get("AGENTS.md") == "read",
             research_workspace.get("tcx") == "read",
             research_workspace.get("tcx.cmd") == "read",
+            research_workspace.get("tcx-calc") == "read",
+            research_workspace.get("tcx-calc.cmd") == "read",
+            calculation_runtime_ok,
+            research_filesystem.get(calculation_root) == "read",
             research_workspace.get("trading") == "read",
             research_workspace.get("trading/research") == "deny",
             research_network.get("enabled") is True,
@@ -870,6 +979,9 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
             build_workspace.get(".codex") == "deny",
             build_workspace.get(".tradingcodex/cli.py") == "read",
             build_workspace.get(".tradingcodex/workspace.json") == "read",
+            build_workspace.get("tcx-calc") == "read",
+            build_workspace.get("tcx-calc.cmd") == "read",
+            build_filesystem.get(calculation_root) == "deny",
             build_workspace.get("trading/research") == "deny",
             build_network.get("enabled") is True,
             build_network.get("mode") == "full",
@@ -991,6 +1103,38 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(text_check(root, "improvement", "brain skill uses direct managed turn", ".agents/skills/tcx-brain/SKILL.md", "do not wrap it in `$tcx-build`", False))
     checks.append(text_check(root, "improvement", "strategy skill uses direct managed turn", ".agents/skills/tcx-strategy/SKILL.md", "do not wrap it in `$tcx-build`", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))
+    try:
+        from tradingcodex_service.application.research_object_catalog import (
+            research_object_catalog_status,
+        )
+
+        catalog_status = research_object_catalog_status(root)
+    except Exception as exc:
+        checks.append(
+            {
+                "layer": "improvement",
+                "name": "research object catalog v3",
+                "ok": False,
+                "codexNative": False,
+                "detail": str(exc),
+            }
+        )
+    else:
+        fts_enabled = catalog_status.get("fts_enabled") is True
+        checks.append(
+            {
+                "layer": "improvement",
+                "name": "research object catalog v3",
+                "ok": True,
+                "warn": not fts_enabled,
+                "codexNative": False,
+                "detail": (
+                    "SQLite structured index and FTS5 are available"
+                    if fts_enabled
+                    else "SQLite structured index is available; FTS5 is unavailable, so lexical search uses bounded LIKE fallback"
+                ),
+            }
+        )
     return checks
 
 

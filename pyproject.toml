@@ -34,6 +34,7 @@ dependencies = [
   "nh3>=0.3,<0.4",
   "packaging>=24",
   "pydantic>=2",
+  "pyarrow==25.0.0",
   "PyYAML>=6",
   "whitenoise>=6.12,<7"
 ]
@@ -62,6 +63,7 @@ version = {attr = "tradingcodex_service.version.TRADINGCODEX_VERSION"}
 include = ["tradingcodex_cli*", "tradingcodex_service*", "apps*", "workspace_templates*"]
 
 [tool.setuptools.package-data]
+tradingcodex_cli = ["calculation-runtime-lock.json", "calculation-runtime-requirements.txt"]
 tradingcodex_service = ["static/**/*"]
 workspace_templates = ["**/*", "**/.*", "**/.*/**/*"]
 

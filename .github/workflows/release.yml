@@ -136,9 +136,50 @@ jobs:
           path: dist/
           if-no-files-found: error
 
+  calculation-runtime-matrix:
+    name: Release runtime (${{ matrix.os }}, Python ${{ matrix.python }})
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-15-intel
+          - windows-latest
+        python:
+          - "3.11"
+          - "3.12"
+          - "3.13"
+          - "3.14"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install runtime provisioner
+        run: python -m pip install --upgrade pip uv
+
+      - name: Download the exact distributions
+        uses: actions/download-artifact@v8
+        with:
+          name: tradingcodex-${{ inputs.release_version }}
+          path: dist/
+
+      - name: Run native wheel, doctor, exploratory, and prepared calculation smoke
+        run: python tests/platform_wheel_smoke.py --wheel-dir dist
+
   publish-pypi:
     name: Publish v${{ inputs.release_version }} to PyPI
-    needs: build
+    needs:
+      - build
+      - calculation-runtime-matrix
     if: inputs.publish_pypi == 'true'
     runs-on: ubuntu-latest
     environment:

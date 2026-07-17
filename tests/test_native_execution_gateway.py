@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from dataclasses import FrozenInstanceError, replace
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from tradingcodex_service.application.execution_gateway import (
     project_native_execution_result,
     reserved_native_execution_token,
 )
+from tradingcodex_service.application.analysis_runs import begin_analysis_run
 from tradingcodex_service.application.orders import cancel_submitted_order, submit_approved_order
 from tradingcodex_service.application.runtime import ensure_runtime_database
 
@@ -509,6 +511,7 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
 
     assert matcher == ".*"
     assert config["features"]["hooks"] is True
+    assert "apps" not in config["features"]
     assert config["features"]["unified_exec"] is False
     assert config["features"]["unified_exec_zsh_fork"] is False
     assert config["features"]["computer_use"] is False
@@ -518,7 +521,20 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
     assert config["features"]["browser_use_full_cdp_access"] is False
     assert config["features"]["network_proxy"] is True
     assert config["default_permissions"] == "trading-research"
-    assert config["web_search"] == "disabled"
+    assert config["web_search"] == "live"
+    for role in (
+        "fundamental-analyst",
+        "instrument-analyst",
+        "macro-analyst",
+        "news-analyst",
+        "technical-analyst",
+        "valuation-analyst",
+    ):
+        role_config = tomllib.loads((workspace / f".codex/agents/{role}.toml").read_text(encoding="utf-8"))
+        assert role_config["web_search"] == "live"
+    for role in ("portfolio-manager", "risk-manager", "judgment-reviewer"):
+        role_config = tomllib.loads((workspace / f".codex/agents/{role}.toml").read_text(encoding="utf-8"))
+        assert role_config["web_search"] == "disabled"
     assert "sandbox_mode" not in config
     research = config["permissions"]["trading-research"]
     build = config["permissions"]["trading-build"]
@@ -531,6 +547,8 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
     assert research["filesystem"][":workspace_roots"]["AGENTS.md"] == "read"
     assert research["filesystem"][":workspace_roots"]["tcx"] == "read"
     assert research["filesystem"][":workspace_roots"]["tcx.cmd"] == "read"
+    assert research["filesystem"][":workspace_roots"]["tcx-calc"] == "read"
+    assert research["filesystem"][":workspace_roots"]["tcx-calc.cmd"] == "read"
     assert research["filesystem"][":workspace_roots"]["trading"] == "read"
     assert research["filesystem"][":workspace_roots"]["trading/research"] == "deny"
     assert ".codex/proxy" not in research["filesystem"][":workspace_roots"]
@@ -557,6 +575,15 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
     assert research["filesystem"][mcp["command"]] == "deny"
     assert build["filesystem"][str(Path(mcp["command"]).absolute().parent.parent)] == "read"
     assert build["filesystem"][mcp["command"]] == "read"
+    calculation_roots = [
+        path
+        for path, permission in research["filesystem"].items()
+        if isinstance(path, str)
+        and "calculation" in path.casefold()
+        and permission == "read"
+    ]
+    assert len(calculation_roots) == 1
+    assert build["filesystem"][calculation_roots[0]] == "deny"
     shell_environment = config["shell_environment_policy"]
     scratch = shell_environment["set"]["TRADINGCODEX_SCRATCH"]
     null_device = os.devnull
@@ -605,3 +632,166 @@ def test_generated_hook_covers_current_exec_tool_names_and_disables_unified_exec
     }.issubset(shell_environment["include_only"])
     assert "TRADINGCODEX_HOME" not in shell_environment["include_only"]
     assert "*TOKEN*" in shell_environment["exclude"]
+
+
+def test_generated_calculation_launcher_uses_only_scratch_and_sanitized_environment(
+    workspace: Path,
+) -> None:
+    config = tomllib.loads((workspace / ".codex/config.toml").read_text(encoding="utf-8"))
+    scratch = Path(config["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"])
+    script = scratch / "launcher-smoke.py"
+    script.write_text(
+        """from decimal import Decimal
+import importlib.util
+import os
+import numpy
+import numpy_financial
+import pandas
+import pyarrow
+import scipy
+import statsmodels
+print(Decimal('100') * (Decimal('1.1') ** 2))
+print(','.join((numpy.__version__, pandas.__version__, scipy.__version__, statsmodels.__version__, numpy_financial.__version__, pyarrow.__version__)))
+print(importlib.util.find_spec('django'))
+print(importlib.util.find_spec('tradingcodex_service'))
+print(os.environ.get('TRADINGCODEX_DB_NAME'))
+print(os.environ.get('BROKER_API_SECRET'))
+print(os.environ['TMPDIR'])
+""",
+        encoding="utf-8",
+    )
+    environment = {
+        **os.environ,
+        "BROKER_API_SECRET": "do-not-leak",
+        "TRADINGCODEX_DB_NAME": "do-not-leak-db",
+    }
+    if os.name == "nt":
+        argv = [
+            os.environ.get("COMSPEC", "cmd.exe"),
+            "/d",
+            "/s",
+            "/c",
+            subprocess.list2cmdline([str(workspace / "tcx-calc.cmd"), script.name]),
+        ]
+    else:
+        argv = [str(workspace / "tcx-calc"), script.name]
+
+    result = subprocess.run(
+        argv,
+        cwd=workspace,
+        env=environment,
+        stdin=subprocess.DEVNULL,
+        text=True,
+        capture_output=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == [
+        "121.00",
+        "2.3.5,2.3.3,1.16.3,0.14.6,1.0.0,25.0.0",
+        "None",
+        "None",
+        "None",
+        "None",
+        str(scratch),
+    ]
+    assert "do-not-leak" not in result.stdout + result.stderr
+
+
+@pytest.mark.parametrize(
+    ("command", "allowed"),
+    [
+        ("./tcx-calc calc.py", True),
+        ("tcx-calc.cmd calc.py", True),
+        (".\\tcx-calc.cmd calc.py", True),
+        ("./tcx-calc ../calc.py", False),
+        ("./tcx-calc -c", False),
+        ("./tcx-calc calc.py extra", False),
+        ("./tcx-calc calc.py | tee result", False),
+    ],
+)
+def test_calculation_hook_accepts_only_exact_fixed_role_command(
+    workspace: Path,
+    command: str,
+    allowed: bool,
+) -> None:
+    run_id = "analysis-calculation-hook"
+    begin_analysis_run(workspace, "calculate deterministic metrics", run_id=run_id)
+    payload = {
+        "tool_name": "exec_command",
+        "tool_input": {"cmd": command, "workdir": str(workspace)},
+        "agent_type": "technical-analyst",
+        "workflow_run_id": run_id,
+        "permission_mode": "trading-research",
+    }
+    result = subprocess.run(
+        [sys.executable, str(workspace / ".codex/hooks/tradingcodex_hook.py"), "pre-tool-use"],
+        cwd=workspace,
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        timeout=30,
+        check=True,
+    )
+    response = json.loads(result.stdout) if result.stdout.strip() else None
+
+    if allowed:
+        assert response is None
+    else:
+        assert response["decision"] == "block"
+
+
+def test_calculation_hook_accepts_native_default_workspace_workdir(workspace: Path) -> None:
+    run_id = "analysis-calculation-default-cwd"
+    begin_analysis_run(workspace, "calculate with default cwd", run_id=run_id)
+    payload = {
+        "tool_name": "exec_command",
+        "tool_input": {"cmd": "./tcx-calc calc.py"},
+        "agent_type": "technical-analyst",
+        "workflow_run_id": run_id,
+        "permission_mode": "trading-research",
+    }
+    result = subprocess.run(
+        [sys.executable, str(workspace / ".codex/hooks/tradingcodex_hook.py"), "pre-tool-use"],
+        cwd=workspace,
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        timeout=30,
+        check=True,
+    )
+
+    assert result.stdout.strip() == ""
+
+
+@pytest.mark.parametrize("role", ["news-analyst", "instrument-analyst", "judgment-reviewer"])
+def test_calculation_hook_denies_fixed_roles_without_calculation_discipline(
+    workspace: Path,
+    role: str,
+) -> None:
+    run_id = f"analysis-calculation-denied-{role}"
+    begin_analysis_run(workspace, "attempt calculation outside the numeric roles", run_id=run_id)
+    payload = {
+        "tool_name": "exec_command",
+        "tool_input": {"cmd": "./tcx-calc calc.py", "workdir": str(workspace)},
+        "agent_type": role,
+        "workflow_run_id": run_id,
+        "permission_mode": "trading-research",
+    }
+    result = subprocess.run(
+        [sys.executable, str(workspace / ".codex/hooks/tradingcodex_hook.py"), "pre-tool-use"],
+        cwd=workspace,
+        input=json.dumps(payload),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        timeout=30,
+        check=True,
+    )
+
+    response = json.loads(result.stdout)
+    assert response["decision"] == "block"
+    assert "calculation-enabled" in response["reason"]

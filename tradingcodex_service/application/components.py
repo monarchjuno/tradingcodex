@@ -271,6 +271,66 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
         validation=("pytest", "research-memory smoke checks"),
     ),
     HarnessComponent(
+        id="dataset-calculation-memory",
+        label="Dataset And Calculation Memory",
+        summary=(
+            "Stores immutable content-addressed datasets and conclusion-relevant calculation runs, "
+            "projects them into a rebuildable SQLite/FTS catalog, and reuses only exact successful fingerprints."
+        ),
+        status="core",
+        tags=(
+            "guardrail.information_barrier",
+            "improvement.research_memory",
+            "improvement.context_efficiency",
+            "improvement.validation_feedback",
+        ),
+        surfaces={
+            "skills": ("tcx-calculation",),
+            "services": (
+                "research_objects",
+                "research_object_catalog",
+                "datasets",
+                "calculations",
+            ),
+            "mcp_tools": (
+                "search_datasets",
+                "get_dataset_manifest",
+                "profile_dataset",
+                "materialize_dataset_slice",
+                "record_dataset_snapshot",
+                "prepare_calculation",
+                "record_calculation_run",
+                "search_calculations",
+                "get_calculation_run",
+                "compare_calculation_runs",
+            ),
+            "files": (
+                "trading/research/datasets/manifests/*.json",
+                "trading/research/datasets/objects/*.parquet",
+                "trading/research/datasets/withdrawals/*.json",
+                "trading/research/calculations/specs/*.json",
+                "trading/research/calculations/runs/*.json",
+                "trading/research/.index/research-object-catalog-v3.sqlite3",
+            ),
+            "runtime": ("tcx-calc finance runtime v2",),
+            "frontend": ("Library dataset and calculation details",),
+            "tests": ("datasets", "research-object-catalog", "calculation-memory", "calculation-runner"),
+        },
+        depends_on=("research-memory", "context-efficiency-contract"),
+        owned_capabilities=(
+            "dataset.immutable_memory",
+            "dataset.progressive_disclosure",
+            "calculation.reproducible_runtime",
+            "calculation.exact_reuse",
+        ),
+        validation=(
+            "pytest",
+            "generated workspace contract",
+            "calculation runtime doctor",
+            "Codex-native calculation smoke",
+        ),
+    ),
+    HarnessComponent(
         id="investment-research-kernel",
         label="Investment Research Kernel",
         summary="Provides the pristine evidence, point-in-time replay, method-profile, causal calculation, forecasting, calibration, and model-evaluation contracts without depending on user or host-global skills.",

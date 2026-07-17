@@ -19,12 +19,16 @@ PROVIDER_SOURCES_ROOT = SCRATCH_ROOT / "provider-sources"
 GENERATED_PYTHON = {{TRADINGCODEX_PYTHON_PYTHON}}
 GENERATED_PYTHON_COMMAND = GENERATED_PYTHON.replace("\\", "/")
 GENERATED_GIT_COMMAND = {{TRADINGCODEX_GIT_COMMAND_PYTHON}}
+CALCULATION_RUNTIME_ROOT = Path({{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_PYTHON}}).resolve()
 TRADINGCODEX_HOME_ROOT = Path({{TRADINGCODEX_HOME_PYTHON}}).resolve()
 CODEX_HOME_ROOT = Path({{CODEX_HOME_PATH_PYTHON}}).resolve()
 MAX_STAGED_GIT_CONFIG_BYTES = 128 * 1024
 os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", str(ROOT))
 
-from tradingcodex_service.application.agents import EXPECTED_SUBAGENTS  # noqa: E402
+from tradingcodex_service.application.agents import (  # noqa: E402
+    CALCULATION_DISCIPLINE_ROLES,
+    EXPECTED_SUBAGENTS,
+)
 from tradingcodex_service.application.analysis_runs import (  # noqa: E402
     explicit_investment_brain_invocation,
     new_analysis_run_id,
@@ -99,7 +103,7 @@ PROTECTED_BUILD_EDIT_PATH = re.compile(
     r"^(?:\.git(?:/|$)|\.gitignore$|\.env(?:\.|$)|\.envrc$|\.netrc$|\.npmrc$|\.pypirc$|"
     r"\.ssh(?:/|$)|\.aws(?:/|$)|"
     r"\.tradingcodex(?:/|$)|\.codex(?:/|$)|\.agents(?:/|$)|"
-    r"AGENTS\.md$|tcx(?:\.cmd)?$|"
+    r"AGENTS\.md$|tcx(?:-calc)?(?:\.cmd)?$|"
     r"trading/(?:audit|approvals|orders)(?:/|$)|"
     r"tradingcodex_cli(?:/|$)|tradingcodex_service(?:/|$)|workspace_templates(?:/|$))",
     re.I,
@@ -1381,6 +1385,14 @@ def payload_has_build_authority(payload: dict) -> bool:
         return False
 
 
+def path_is_in_dedicated_scratch(path: Path) -> bool:
+    try:
+        path.resolve(strict=False).relative_to(SCRATCH_ROOT)
+    except (OSError, RuntimeError, ValueError):
+        return False
+    return True
+
+
 def local_tool_authority_scope(payload: dict) -> str:
     tool_name = payload_tool_name(payload)
     edit_name = normalized_edit_tool_name(tool_name)
@@ -1395,6 +1407,9 @@ def local_tool_authority_scope(payload: dict) -> str:
             try:
                 supplied = Path(raw_path)
                 resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (workspace_root / supplied).resolve(strict=False)
+                if path_is_in_dedicated_scratch(resolved):
+                    scopes.add("ordinary")
+                    continue
                 relative = resolved.relative_to(workspace_root).as_posix()
             except (OSError, RuntimeError, ValueError):
                 return "build"
@@ -1545,8 +1560,10 @@ def local_edit_path_reason(tool_name: str, tool_input: dict) -> str:
         if any(part in {"", ".", ".."} for part in supplied.parts):
             return "TradingCodex file edits must target a canonical workspace path"
         try:
-            lexical_relative = supplied.relative_to(workspace_root) if supplied.is_absolute() else supplied
             resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (workspace_root / supplied).resolve(strict=False)
+            if path_is_in_dedicated_scratch(resolved):
+                continue
+            lexical_relative = supplied.relative_to(workspace_root) if supplied.is_absolute() else supplied
             relative = resolved.relative_to(workspace_root)
         except (OSError, RuntimeError, ValueError):
             return "TradingCodex file edits must remain inside the generated workspace"
@@ -1596,6 +1613,14 @@ def handle_local_build_tool(event: str, payload: dict) -> None:
         return
     agent_type = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
     if agent_type:
+        append_hook_audit({
+            "event": event,
+            "workflow_run_id": resolve_workflow_run_id(payload),
+            "tool_name": payload_tool_name(payload),
+            "decision": "block",
+            "reason_code": "subagent_managed_workspace_tool",
+            "redacted": True,
+        })
         print(json.dumps({
             "decision": "block",
             "reason": "TradingCodex managed workspace tools are available only to the root Head Manager",
@@ -3885,6 +3910,10 @@ def native_tool_block_reason(payload: dict) -> str:
         return "TradingCodex native analysis does not permit interactive shell sessions"
     command = str(tool_input.get("command") or tool_input.get("cmd") or "") if isinstance(tool_input, dict) else ""
     if shell_name:
+        normalized_command_path = command.replace("\\", "/")
+        normalized_calculation_root = str(CALCULATION_RUNTIME_ROOT).replace("\\", "/")
+        if normalized_calculation_root and normalized_calculation_root in normalized_command_path:
+            return "TradingCodex calculation runtime internals are not a direct agent execution surface"
         if (
             managed_non_brain_skill_read_allowed(command)
             or projected_role_skill_read_allowed(payload, command)
@@ -3893,6 +3922,13 @@ def native_tool_block_reason(payload: dict) -> str:
             return ""
         if not command.strip():
             return "TradingCodex shell execution requires a non-empty command"
+        calculation_reason = calculation_shell_command_reason(
+            payload,
+            command,
+            str(tool_input.get("workdir") or ""),
+        )
+        if calculation_reason is not None:
+            return calculation_reason
         fetch_reason = public_fetch_command_reason(command, str(tool_input.get("workdir") or ""))
         if fetch_reason is not None:
             return fetch_reason
@@ -3926,6 +3962,39 @@ def native_tool_block_reason(payload: dict) -> str:
         if any(root in lowered for root in protected_artifact_roots) and any(marker in compact for marker in write_markers):
             return "TradingCodex role and synthesis artifacts must be stored through authenticated TradingCodex MCP tools"
     return ""
+
+
+def calculation_shell_command_reason(
+    payload: dict,
+    command: str,
+    workdir: str,
+) -> str | None:
+    normalized = str(command or "").strip()
+    if re.fullmatch(r"(?:cat|ls|stat)\s+(?:\./)?tcx-calc(?:\.cmd)?", normalized, re.I):
+        return None
+    if not re.search(r"(?<![\w.-])(?:\./|\.\\)?tcx-calc(?:\.cmd)?(?:\s|$)", normalized, re.I):
+        return None
+    role = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
+    if role not in CALCULATION_DISCIPLINE_ROLES:
+        return "TradingCodex calculations are available only to an exact calculation-enabled analysis role"
+    if payload_permission_mode(payload) in {"plan", "planning", "trading-build"} or payload_has_build_authority(payload):
+        return "TradingCodex calculations are unavailable in Plan or Build authority"
+    try:
+        if workdir and Path(workdir).resolve(strict=False) != ROOT.resolve():
+            return "TradingCodex calculations must run from the generated workspace root"
+    except (OSError, RuntimeError, ValueError):
+        return "TradingCodex calculation workdir is invalid"
+    run_id = resolve_workflow_run_id(payload)
+    if not run_id or not read_analysis_run(ROOT, run_id):
+        return "TradingCodex calculations require an active analysis workflow run"
+    if re.fullmatch(r"\./tcx-calc [A-Za-z0-9][A-Za-z0-9_.-]{0,120}\.py", normalized):
+        return ""
+    if re.fullmatch(r"(?:\.\\)?tcx-calc\.cmd [A-Za-z0-9][A-Za-z0-9_.-]{0,120}\.py", normalized, re.I):
+        return ""
+    return (
+        "TradingCodex calculation commands accept exactly one direct scratch-local .py "
+        "filename through the platform-native tcx-calc launcher"
+    )
 
 
 def append_hook_audit(record: dict) -> bool:

@@ -83,9 +83,10 @@ Brain and Strategy grants cannot authorize one another.
 
 Head Manager coordinates nine fixed roles: fundamental, technical, news, macro,
 instrument, valuation, portfolio, risk, and judgment review. There is no
-execution subagent. The first six evidence roles have live web search; Head
-Manager and the remaining roles consume authenticated artifacts or service
-state.
+execution subagent. Head Manager may use narrow live search to construct or
+revise the workflow, but those results are untrusted planning leads rather than
+accepted evidence. The first six evidence roles have live search for evidence
+production; portfolio, risk, and judgment review explicitly disable it.
 
 Every spawn must use exact `agent_type`, compact underscore-only `task_name`,
 compact message, and `fork_turns="none"`. Each revision or follow-up is a fresh
@@ -107,7 +108,7 @@ the `agents` namespace, and omit the incompatible V1 `agents.max_threads` key.
 
 ## Skill Namespace
 
-The 32 bundled skills all use `tcx-` plus one suffix word when possible and at
+The 33 bundled skills all use `tcx-` plus one suffix word when possible and at
 most two words. Folder, frontmatter, registry, projection, UI metadata, and `$`
 invocation ids are identical; legacy core aliases are not projected. `tcx-` is
 reserved for bundled skills. User-owned `strategy-*`, `investment-brain-*`,
@@ -117,9 +118,31 @@ and optional role skills keep separate namespaces.
 roles. Edit its source under `workspace_templates/modules/repo-skills/` together
 with MCP schemas and artifact/forecast validators when nested tool contracts
 change.
+`tcx-calculation` is the shared reproducible-computation procedure for
+fundamental, technical, macro, valuation, portfolio, and risk. It requires
+Dataset/Calculation search before compute, progressive card → manifest/profile
+→ slice retrieval, explicit Decimal-versus-NumPy semantics, point-in-time
+input lineage, prepared sidecars, typed finite outputs, diagnostics, and exact
+reuse. Role-specific methods stay in each role skill. Head Manager sees only
+Dataset card/manifest and Calculation-card discovery; it cannot profile rows,
+materialize, register, prepare, or record. Build and the viewer have no
+mutation or execution path.
 Pristine Strategy authoring uses the bundled required-section contract and
 does not auto-load a host-global authoring skill; external skills remain
 explicit user-selected extensions.
+That rule does not block read-only app, connector, MCP, or data tools used as
+evidence. Preserve a user-named provider in the role brief, inspect
+current-task callable tools through the runtime's available deferred-tool
+discovery surface when needed, and
+attempt the smallest relevant call before public-web fallback. Treat the
+sanitized capability inventory as discovered configuration only.
+
+Before selecting or revising a role wave, Head Manager may search the live web
+only to resolve the subject or event, likely source landscape, material
+unknowns, and smallest useful team. It passes derived role-owned questions and
+source leads, not raw web claims. Every fact that could affect the investment
+conclusion must be reacquired and authenticated by the producing role before
+synthesis.
 
 `tcx-dashboard` is the read-only viewer entrypoint projected only to Head
 Manager. It opens the viewer in the Codex in-app browser by default and uses an
@@ -205,7 +228,7 @@ kernel.
 
 ## Validation
 
-Regenerate a clean workspace. Verify nine fixed roles and all 32 skills,
+Regenerate a clean workspace. Verify nine fixed roles and all 33 skills,
 including the three native execution bundles, with no retired execution
 role/skill. MCP `tools/list` must omit raw submit/cancel/refresh mutations,
 expose `use_order_turn_grant` only to Head Manager, and omit obsolete

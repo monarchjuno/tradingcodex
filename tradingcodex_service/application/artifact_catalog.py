@@ -20,7 +20,7 @@ from tradingcodex_service.application.runtime import workspace_context_payload
 
 ARTIFACT_CATALOG_PATH = Path("trading/research/.index/artifact-catalog-v2.json")
 ARTIFACT_CATALOG_SCHEMA_VERSION = 2
-ARTIFACT_CATALOG_PROJECTOR_VERSION = 1
+ARTIFACT_CATALOG_PROJECTOR_VERSION = 2
 ARTIFACT_CATALOG_ROOTS = (
     Path("trading/research"),
     Path("trading/reports"),
@@ -38,6 +38,10 @@ _IDENTITY_FIELDS = (
     "decision_id",
     "forecast_id",
     "snapshot_id",
+    "dataset_id",
+    "withdrawal_id",
+    "calculation_spec_id",
+    "calculation_run_id",
     "spec_id",
     "manifest_id",
     "run_id",
@@ -80,6 +84,10 @@ _SEARCHABLE_STRUCTURED_FIELDS = frozenset(
         "failed_assumption",
         "future_warning_pattern",
         "provider",
+        "description",
+        "tags",
+        "quality_warnings",
+        "retention_policy",
         "source_category",
         "source_locator",
         "coverage_note",
@@ -100,6 +108,10 @@ _SEARCHABLE_STRUCTURED_FIELDS = frozenset(
 )
 _PRIMARY_ID_BY_TYPE = {
     "source_snapshot": "snapshot_id",
+    "dataset_manifest": "dataset_id",
+    "dataset_withdrawal": "withdrawal_id",
+    "calculation_spec": "calculation_spec_id",
+    "calculation_run": "calculation_run_id",
     "research_spec": "spec_id",
     "replay_manifest": "manifest_id",
     "experiment_run": "run_id",
@@ -628,6 +640,14 @@ def _infer_structured_type(relative: str) -> str:
         return "postmortem_report"
     if relative.startswith("trading/research/source-snapshots/"):
         return "source_snapshot"
+    if relative.startswith("trading/research/datasets/manifests/"):
+        return "dataset_manifest"
+    if relative.startswith("trading/research/datasets/withdrawals/"):
+        return "dataset_withdrawal"
+    if relative.startswith("trading/research/calculations/specs/"):
+        return "calculation_spec"
+    if relative.startswith("trading/research/calculations/runs/"):
+        return "calculation_run"
     if relative.startswith("trading/research/specs/"):
         return "research_spec"
     if relative.startswith("trading/research/replay-manifests/"):
@@ -668,16 +688,39 @@ def _relation_ids(metadata: dict[str, Any], own_id: str) -> list[str]:
         "source_snapshot_ids",
         "evidence_ids",
         "forecast_ids",
+        "parent_dataset_ids",
+        "input_dataset_ids",
+        "derived_dataset_ids",
+        "calculation_run_ids",
     ):
         raw = metadata.get(field)
         if isinstance(raw, list):
             values.extend(str(item).strip() for item in raw if str(item).strip())
+    raw_inputs = metadata.get("inputs")
+    if isinstance(raw_inputs, list):
+        values.extend(
+            str(item.get("dataset_id") or "").strip()
+            for item in raw_inputs
+            if isinstance(item, dict) and str(item.get("dataset_id") or "").strip()
+        )
+    lineage = metadata.get("lineage")
+    if isinstance(lineage, dict):
+        parent_ids = lineage.get("parent_dataset_ids")
+        if isinstance(parent_ids, list):
+            values.extend(
+                str(item).strip() for item in parent_ids if str(item).strip()
+            )
     for field in (
         "research_spec_id",
         "replay_manifest_id",
         "decision_snapshot_id",
         "artifact_id",
         "forecast_id",
+        "dataset_id",
+        "calculation_spec_id",
+        "calculation_run_id",
+        "reused_from_run_id",
+        "original_run_id",
     ):
         value = str(metadata.get(field) or "").strip()
         if value:

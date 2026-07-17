@@ -108,13 +108,20 @@ files are never replaced.
 
 ## Maintainer Prerequisites
 
-Release verification uses Python 3.11 and Node 22. The hosted CI budget runs
-the complete source, frontend, and package gates once on Python 3.11 instead
-of multiplying every push across the supported Python range and native
-platforms. Maintainers run additional supported-version or native-platform
-checks locally or through an explicit temporary/manual workflow when a change
-touches compatibility-sensitive code. Node is a maintainer-only build
-dependency.
+Release verification uses Python 3.11 and Node 22 for the complete source and
+frontend gates. After that single quality job builds the candidate
+distribution, the calculation-runtime matrix reuses the exact wheel on x86-64
+Linux, Intel macOS, and native Windows under Python 3.11, 3.12, 3.13, and 3.14.
+Each matrix job provisions the hash-locked runtime and exercises attach,
+doctor, direct package imports, exploratory compatibility, prepared recording,
+and exact reuse. Node remains a maintainer-only build dependency and is not
+installed by matrix workspaces.
+
+Calculation runtime changes are compatibility-sensitive even when the main
+source suite is unchanged. Before release, resolve and verify every hash-locked
+wheel for the complete 12-package `finance-*` runtime on supported Python
+3.11–3.14 macOS, Linux, and native Windows x86-64 targets. Missing wheels fail
+the target; release validation never permits a source build as fallback.
 
 Configure PyPI Trusted Publishing for:
 
@@ -156,6 +163,9 @@ The wheel smoke installs only the built wheel into a clean virtual environment,
 checks distribution metadata against the runtime version, attaches a workspace,
 validates native launchers and generated configuration, runs hooks and MCP
 stdio, exercises the local service, and loads the packaged SPA and assets.
+It also provisions the content-addressed calculation runtime, verifies its
+manifest/lock/launcher hashes and exact imports, and exercises prepared and
+exploratory `tcx-calc` modes without importing Django from the runner.
 The release-upgrade smoke starts from the published `1.0.2` package, updates
 that attached workspace with the built candidate wheel, and verifies preserved
 workspace and runtime identity, user-owned state, and explicit home, DB, and
@@ -171,11 +181,11 @@ also require the disposable-workspace and Codex-native checks documented in
 ## CI And Release Automation
 
 `.github/workflows/ci.yml` is test-only. One Ubuntu/Python 3.11 job runs the
-frontend build, complete Python suite and framework gates, clean package
-construction, the wheel smoke, and the prior-release update smoke. Guide-only
-pushes skip this workflow because
-the Pages workflow validates and deploys only static guide files. CI never
-publishes.
+frontend determinism check, complete Python suite, and framework gates. It does
+not construct or upload a wheel or source distribution, run release-upgrade or
+native-runtime matrices, or publish anything. Documentation-, guide-, OpenWiki-,
+and asset-only pushes or pull requests skip this workflow. Source-bearing pull
+requests and pushes still receive the normal source-quality checks.
 
 `.github/workflows/release.yml` is manual-only. Every run requires an explicit
 `release_version`. A dry run may build from any selected ref with
@@ -191,11 +201,13 @@ publishes.
 - the built wheel passes the Ubuntu wheel and prior-release update smokes
 - the protected `pypi` environment approves Trusted Publishing
 
-The release workflow has one build/verification job. When publication is
-requested, one protected PyPI job downloads that exact artifact and uploads it;
-no job rebuilds the distribution after verification. Native macOS and Windows
-release smokes are local or explicitly scheduled maintainer gates rather than
-automatic jobs on every release.
+The release workflow has one build/verification job followed by the required
+Python 3.11-3.14 Linux, Intel-macOS, and native-Windows calculation-runtime
+matrix. When publication is requested, one protected PyPI job downloads that
+exact artifact and uploads it; no job rebuilds the distribution after
+verification. These distribution and platform jobs run only after an explicit
+`Manual Release` dispatch, never because a branch, tag, development commit, or
+documentation change was pushed.
 
 ## User Guide Pages
 
@@ -206,10 +218,11 @@ prompts, workspace viewing, reusable skills, and everyday recovery. The detailed
 product rules remain canonical in `README.md`, `installation.md`, and `docs/`;
 the guide links back to those sources rather than replacing them.
 
-`.github/workflows/deploy-user-guide.yml` uses one job to configure, upload,
-and deploy only `guidebook/` to GitHub Pages after a push to `main` that changes
-the guide or its workflow. It can also be run manually. It does not build or
-deploy the Python package, the Django service, or a production Node runtime.
+`.github/workflows/deploy-user-guide.yml` is manual-only. An explicit workflow
+dispatch uses one job to configure, upload, and deploy only `guidebook/` to
+GitHub Pages. A normal branch push or documentation-only change neither deploys
+Pages nor builds or deploys the Python package, Django service, or a production
+Node runtime.
 
 GitHub Pages is configured to use **GitHub Actions** as its publishing source.
 The guide for this repository is published at
@@ -270,7 +283,7 @@ sh "$SOURCE_ROOT/install.sh" \
 On native Windows PowerShell:
 
 ```powershell
-$ReleaseVersion = "1.1.1"
+$ReleaseVersion = "1.1.2"
 $Workspace = Join-Path $env:TEMP "tcx-pypi-$ReleaseVersion"
 New-Item -ItemType Directory -Force $Workspace | Out-Null
 Set-Location $Workspace

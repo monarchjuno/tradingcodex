@@ -44,6 +44,7 @@ from tradingcodex_cli.package_source import (
 )
 from tradingcodex_cli.commands.doctor import (
     _codex_mcp_config_checks,
+    _launcher_checks,
     _required_scratch_permission_paths,
 )
 from tradingcodex_cli.service_autostart import (
@@ -65,6 +66,47 @@ ROOT = Path(__file__).resolve().parents[1]
 def _next_minor_version() -> str:
     current = Version(TRADINGCODEX_VERSION)
     return f"{current.major}.{current.minor + 1}.0"
+
+
+def test_doctor_verifies_calculation_launcher_hashes_against_module_lock(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "workspace"
+    generated = root / ".tradingcodex/generated"
+    generated.mkdir(parents=True)
+    launcher_payloads = {
+        "tcx": b"#!/bin/sh\n",
+        "tcx.cmd": b"@echo off\r\n",
+        "tcx-calc": b"#!/bin/sh\nexit 0\n",
+        "tcx-calc.cmd": b"@echo off\r\nexit /b 0\r\n",
+    }
+    for relative_path, payload in launcher_payloads.items():
+        path = root / relative_path
+        path.write_bytes(payload)
+        if relative_path in {"tcx", "tcx-calc"}:
+            path.chmod(0o755)
+    (generated / "module-lock.json").write_text(
+        json.dumps(
+            {
+                "generated_files": {
+                    relative_path: {
+                        "owner": "template",
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    }
+                    for relative_path, payload in launcher_payloads.items()
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    checks = {check["name"]: check for check in _launcher_checks(root)}
+    assert checks["calculation launcher hashes"]["ok"] is True
+
+    (root / "tcx-calc").write_text("#!/bin/sh\npython calc.py\n", encoding="utf-8")
+    checks = {check["name"]: check for check in _launcher_checks(root)}
+    assert checks["calculation launcher hashes"]["ok"] is False
+    assert "tcx-calc" in checks["calculation launcher hashes"]["detail"]
 
 
 def _workspace_launcher_argv(workspace: Path, *args: str) -> list[str]:
@@ -149,6 +191,25 @@ def test_dry_run_does_not_create_workspace_scratch(
 
     scratch = generator._workspace_scratch_display_path(result["workspace_id"])
     assert not scratch.exists()
+
+
+def test_windows_scratch_and_calculation_cache_do_not_overlap_service_home(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    local_app_data = tmp_path / "LocalAppData"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_app_data))
+    monkeypatch.setattr(generator, "os", SimpleNamespace(name="nt", environ=os.environ))
+
+    scratch = generator._workspace_scratch_display_path("tcxw_windows")
+    calculation = generator._calculation_runtime_cache_root()
+    service_home = local_app_data / "TradingCodex"
+
+    assert scratch == local_app_data / "TradingCodexScratch/scratch-v1/tcxw_windows"
+    assert calculation == local_app_data / "TradingCodexCalculation/runtime-v2"
+    assert not generator._paths_overlap(scratch, service_home)
+    assert not generator._paths_overlap(calculation, service_home)
+    assert not generator._paths_overlap(calculation, scratch)
     assert not scratch.parent.exists()
 
 
@@ -721,7 +782,11 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     monkeypatch.delenv("TRADINGCODEX_DB_NAME", raising=False)
     monkeypatch.setenv("TRADINGCODEX_MCP_PACKAGE_SPEC", package_spec)
     attached_runtime = tmp_path / "Attached Runtime"
-    venv.EnvBuilder(with_pip=False, system_site_packages=True).create(attached_runtime)
+    venv.EnvBuilder(
+        with_pip=False,
+        system_site_packages=True,
+        symlinks=os.name != "nt",
+    ).create(attached_runtime)
     attached_python = attached_runtime / (
         "Scripts/python.exe" if os.name == "nt" else "bin/python"
     )
@@ -733,7 +798,15 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
             check=True,
         ).stdout.strip()
     )
-    (site_packages / "tradingcodex-source.pth").write_text(str(ROOT) + "\n", encoding="utf-8")
+    dependency_paths = [
+        Path(entry).resolve()
+        for entry in sys.path
+        if entry and Path(entry).name == "site-packages" and Path(entry).is_dir()
+    ]
+    (site_packages / "tradingcodex-source.pth").write_text(
+        "\n".join(dict.fromkeys([str(ROOT), *(str(path) for path in dependency_paths)])) + "\n",
+        encoding="utf-8",
+    )
     monkeypatch.setenv("TRADINGCODEX_PYTHON", str(attached_python))
 
     bootstrap_workspace(workspace)
@@ -759,7 +832,7 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     assert research_workspace["trading"] == "read"
     assert research_workspace[".tradingcodex"] == "deny"
     assert ".tradingcodex/cli.py" not in research_workspace
-    assert parsed[0]["web_search"] == "disabled"
+    assert parsed[0]["web_search"] == "live"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/cli.py"] == "read"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/workspace.json"] == "read"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"]["."] == "write"
@@ -966,11 +1039,23 @@ def test_local_source_update_carries_prior_runtime_privately(
         captured.update({"executable": executable, "args": args, "env": env})
         raise RuntimeError("captured package-runner reexec")
 
-    monkeypatch.setattr(module.sys, "argv", [str(generated_cli), "update", ".", "--from", str(source)])
-    monkeypatch.setattr(module.shutil, "which", lambda _name: str(tmp_path / "uv"))
-    monkeypatch.setattr(module.os, "execve", capture_execve)
-    with pytest.raises(RuntimeError, match="captured package-runner reexec"):
-        module._reexec_package_runner()
+    # The generated CLI and generator import the process-wide ``shutil`` module.
+    # Keep this executable-discovery stub scoped to the re-exec assertion so it
+    # cannot leak into calculation-runtime provisioning later in this test.
+    with monkeypatch.context() as generated_monkeypatch:
+        generated_monkeypatch.setattr(
+            module.sys,
+            "argv",
+            [str(generated_cli), "update", ".", "--from", str(source)],
+        )
+        generated_monkeypatch.setattr(
+            module.shutil,
+            "which",
+            lambda _name: str(tmp_path / "uv"),
+        )
+        generated_monkeypatch.setattr(module.os, "execve", capture_execve)
+        with pytest.raises(RuntimeError, match="captured package-runner reexec"):
+            module._reexec_package_runner()
     assert "TRADINGCODEX_PYTHON" not in captured["env"]
     assert captured["env"][PRIOR_RUNTIME_PYTHON_ENV] == prior_python
 
@@ -1588,6 +1673,23 @@ def test_windows_drive_paths_render_as_valid_toml_yaml_json(tmp_path: Path) -> N
         == raw["TRADINGCODEX_WORKSPACE_ROOT"]
         for config in parsed
     )
+    calculation_roles = {
+        "fundamental-analyst",
+        "technical-analyst",
+        "macro-analyst",
+        "valuation-analyst",
+        "portfolio-manager",
+        "risk-manager",
+    }
+    role_configs = {
+        path.stem: tomllib.loads(path.read_text(encoding="utf-8"))
+        for path in sorted((tmp_path / ".codex" / "agents").glob("*.toml"))
+    }
+    assert all(
+        role_configs[role]["mcp_servers"]["tradingcodex"]["env"]["TRADINGCODEX_SCRATCH"]
+        == raw["TRADINGCODEX_SCRATCH_PATH"]
+        for role in calculation_roles
+    )
     assert yaml.safe_load((tmp_path / ".tradingcodex" / "config.yaml").read_text(encoding="utf-8"))["service"]["default_db"] == raw["TRADINGCODEX_DB_PATH"]
     assert json.loads((tmp_path / ".codex" / "hooks.json").read_text(encoding="utf-8"))["hooks"]["Stop"][0]["hooks"][0]["command"] == r".\tcx.cmd __hook stop"
     rendered_agent_text = "\n".join(
@@ -1598,7 +1700,7 @@ def test_windows_drive_paths_render_as_valid_toml_yaml_json(tmp_path: Path) -> N
         ]
     )
     assert r".\tcx.cmd" in rendered_agent_text
-    assert "./tcx" not in rendered_agent_text
+    assert "`./tcx`" not in rendered_agent_text
     hook_text = (tmp_path / ".codex" / "hooks" / "tradingcodex_hook.py").read_text(encoding="utf-8")
     assert json.dumps(raw["TRADINGCODEX_PYTHON"]) in hook_text
     assert '"py_compile_interpreter": GENERATED_PYTHON_COMMAND' in hook_text

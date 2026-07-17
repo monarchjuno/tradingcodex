@@ -21,9 +21,13 @@ Repository expectations:
   actions through service policy.
 - All normal analysis threads, including `head-manager` and fixed roles, inherit
   the project-wide `trading-research` permission profile. It permits ordinary
-  Python, shell, credential-free public-network research, and reviewable edits
-  to user-owned files outside `trading/`. Use `$TRADINGCODEX_SCRATCH` for
-  disposable intermediates. The profile keeps `trading/` read-only, denies
+  shell, credential-free public-network research, and reviewable edits to
+  user-owned files outside `trading/`. Fixed roles assigned `tcx-calculation`
+  must follow it for numeric work: prepare and record conclusion-relevant
+  calculations, keep exploratory runs out of artifact evidence, and use only
+  the exact generated `tcx-calc` launcher contract. The calculation runtime is
+  separate from Django, MCP, the service, and the DB; Codex's OS sandbox
+  remains the security boundary. The profile keeps `trading/` read-only, denies
   protected control files, the TradingCodex runtime/database, credential files,
   local/private network targets, and Unix sockets. Durable workflow, research,
   and synthesis writes under `trading/` go through authenticated TradingCodex

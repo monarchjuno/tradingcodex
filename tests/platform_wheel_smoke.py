@@ -66,6 +66,13 @@ def launcher_argv(workspace: Path, *args: str) -> list[str]:
     return [str(workspace / "tcx"), *args]
 
 
+def calculation_launcher_argv(workspace: Path, script_name: str) -> list[str]:
+    if os.name == "nt":
+        command = subprocess.list2cmdline([str(workspace / "tcx-calc.cmd"), script_name])
+        return [os.environ.get("COMSPEC", "cmd.exe"), "/d", "/s", "/c", command]
+    return [str(workspace / "tcx-calc"), script_name]
+
+
 def free_loopback_port() -> int:
     # Exercise the release-default address first and stay below the default
     # macOS ephemeral range. A bind-to-zero port can be recycled as the source
@@ -188,6 +195,7 @@ def main() -> None:
         assert lock["home_source"] == "platform_default"
         assert lock["tradingcodex_package_spec"] == "local-explicit"
         assert (workspace / "tcx").is_file() and (workspace / "tcx.cmd").is_file()
+        assert (workspace / "tcx-calc").is_file() and (workspace / "tcx-calc.cmd").is_file()
         assert str(wheel) not in (workspace / "tcx").read_text(encoding="utf-8")
         cmd_text = (workspace / "tcx.cmd").read_text(encoding="utf-8")
         assert 'set "TRADINGCODEX_PACKAGE_SPEC="' in cmd_text
@@ -236,6 +244,17 @@ def main() -> None:
         assert research_workspace["AGENTS.md"] == "read"
         assert research_workspace["tcx"] == "read"
         assert research_workspace["tcx.cmd"] == "read"
+        assert research_workspace["tcx-calc"] == "read"
+        assert research_workspace["tcx-calc.cmd"] == "read"
+        calculation_roots = [
+            path
+            for path, permission in research_filesystem.items()
+            if isinstance(path, str)
+            and "calculation" in path.casefold()
+            and permission == "read"
+        ]
+        assert len(calculation_roots) == 1
+        assert build_filesystem[calculation_roots[0]] == "deny"
         assert research_workspace["trading"] == "read"
         assert research_workspace[".tradingcodex"] == "deny"
         assert ".tradingcodex/cli.py" not in research_workspace
@@ -321,7 +340,7 @@ def main() -> None:
         assert build_filesystem["~/.codex/packages/standalone"] == "read"
         assert research_filesystem[str(expected_home)] == "deny"
         assert build_filesystem[str(expected_home)] == "deny"
-        assert configs[0]["web_search"] == "disabled"
+        assert configs[0]["web_search"] == "live"
         assert permissions["trading-research"]["network"]["enabled"] is True
         assert permissions["trading-research"]["network"]["allow_local_binding"] is False
         assert permissions["trading-build"]["network"] == {
@@ -390,6 +409,165 @@ def main() -> None:
         other_cwd = root / "Other Working Directory"
         other_cwd.mkdir()
         run(launcher_argv(workspace, "doctor"), cwd=other_cwd, env=environment)
+        scratch = Path(root_codex_config["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"])
+        calculation_script = scratch / "platform-smoke.py"
+        calculation_script.write_text(
+            """from decimal import Decimal
+import importlib.util
+import os
+import numpy
+import numpy_financial
+import pandas
+import pyarrow
+import scipy
+import statsmodels
+print(Decimal('100') * Decimal('1.1') ** 2)
+print(','.join((numpy.__version__, pandas.__version__, scipy.__version__, statsmodels.__version__, numpy_financial.__version__, pyarrow.__version__)))
+print(importlib.util.find_spec('django'))
+print(importlib.util.find_spec('tradingcodex_service'))
+print(os.environ.get('TRADINGCODEX_DB_NAME'))
+print(os.environ.get('BROKER_API_SECRET'))
+print(os.environ['TMPDIR'])
+""",
+            encoding="utf-8",
+        )
+        calculation = run(
+            calculation_launcher_argv(workspace, calculation_script.name),
+            cwd=workspace,
+            env={**environment, "BROKER_API_SECRET": "must-not-leak"},
+        )
+        assert calculation.stdout.splitlines() == [
+            "121.00",
+            "2.3.5,2.3.3,1.16.3,0.14.6,1.0.0,25.0.0",
+            "None",
+            "None",
+            "None",
+            "None",
+            str(scratch),
+        ]
+        technical_mcp = next(
+            config["mcp_servers"]["tradingcodex"]
+            for config in configs[1:]
+            if config["mcp_servers"]["tradingcodex"]["env"].get(
+                "TRADINGCODEX_MCP_PRINCIPAL"
+            )
+            == "technical-analyst"
+        )
+        runtime_root = Path(
+            technical_mcp["env"]["TRADINGCODEX_CALCULATION_RUNTIME_ROOT"]
+        )
+        runtime_manifest = runtime_root / "runtime-manifest.json"
+        assert runtime_manifest.is_file()
+        prepared_script = scratch / "platform-prepared.py"
+        prepared_script.write_text(
+            """tcx_emit_result({
+    'metrics': [{'name': 'discounted_value', 'value': 100.0, 'value_type': 'number', 'unit': 'USD', 'currency': 'USD', 'precision': 2}],
+    'diagnostics': {'matrix_smoke': True},
+    'assumptions': ['deterministic constant'],
+    'warnings': [],
+    'output_files': [],
+})
+""",
+            encoding="utf-8",
+        )
+        prepare_args = {
+            "calculation_type": "platform_matrix_smoke",
+            "calculation_version": "1",
+            "script_name": prepared_script.name,
+            "workflow_run_id": "platform-wheel-prepared",
+            "knowledge_cutoff": "2025-01-01T00:00:00Z",
+            "principal_id": "technical-analyst",
+            "inputs": [],
+            "parameters": {"constant": 100},
+            "output_schema": {
+                "metrics": [
+                    {
+                        "name": "discounted_value",
+                        "value_type": "number",
+                        "unit": "USD",
+                        "currency": "USD",
+                        "precision": 2,
+                    }
+                ]
+            },
+            "outputs": [],
+        }
+        prepare_code = (
+            "import json,sys; from pathlib import Path; "
+            "from tradingcodex_service.application.calculations import prepare_calculation; "
+            "print(json.dumps(prepare_calculation(Path(sys.argv[1]), json.loads(sys.argv[2]), "
+            "scratch_root=Path(sys.argv[3]), runtime_manifest_path=Path(sys.argv[4]))))"
+        )
+        prepared = json.loads(
+            run(
+                [
+                    str(attached_python),
+                    "-c",
+                    prepare_code,
+                    str(workspace),
+                    json.dumps(prepare_args),
+                    str(scratch),
+                    str(runtime_manifest),
+                ],
+                cwd=workspace,
+                env=environment,
+            ).stdout
+        )
+        assert prepared["status"] == "prepared"
+        run(
+            calculation_launcher_argv(workspace, prepared_script.name),
+            cwd=workspace,
+            env=environment,
+        )
+        record_code = (
+            "import json,sys; from pathlib import Path; "
+            "from tradingcodex_service.application.calculations import record_calculation_run; "
+            "print(json.dumps(record_calculation_run(Path(sys.argv[1]), json.loads(sys.argv[2]), "
+            "scratch_root=Path(sys.argv[3]), runtime_manifest_path=Path(sys.argv[4]))))"
+        )
+        recorded = json.loads(
+            run(
+                [
+                    str(attached_python),
+                    "-c",
+                    record_code,
+                    str(workspace),
+                    json.dumps(
+                        {
+                            "calculation_spec_id": prepared["calculation_spec_id"],
+                            "workflow_run_id": prepare_args["workflow_run_id"],
+                            "result_file": prepared["result_file"],
+                            "principal_id": "technical-analyst",
+                        }
+                    ),
+                    str(scratch),
+                    str(runtime_manifest),
+                ],
+                cwd=workspace,
+                env=environment,
+            ).stdout
+        )
+        assert recorded["artifact"]["status"] == "succeeded"
+        assert recorded["artifact"]["metrics"][0]["value"] == 100.0
+
+        reuse_args = {**prepare_args, "workflow_run_id": "platform-wheel-reuse"}
+        reused = json.loads(
+            run(
+                [
+                    str(attached_python),
+                    "-c",
+                    prepare_code,
+                    str(workspace),
+                    json.dumps(reuse_args),
+                    str(scratch),
+                    str(runtime_manifest),
+                ],
+                cwd=workspace,
+                env=environment,
+            ).stdout
+        )
+        assert reused["status"] == "reused"
+        assert reused["original_run_id"] == recorded["artifact"]["calculation_run_id"]
         db_status = json.loads(run(launcher_argv(workspace, "db", "status"), cwd=other_cwd, env=environment).stdout)
         assert db_status["home"] == str(expected_home)
         assert db_status["home_source"] == "platform_default"

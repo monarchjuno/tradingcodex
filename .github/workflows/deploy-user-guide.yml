@@ -1,12 +1,6 @@
 name: Deploy User Guide
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - guidebook/**
-      - .github/workflows/deploy-user-guide.yml
   workflow_dispatch:
 
 permissions:

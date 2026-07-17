@@ -46,6 +46,13 @@ Viewer API:
   each section is exactly `{ok, data}` or `{ok, error}`.
 - `GET /api/viewer/skills/{skill_id}` and
   `GET /api/viewer/artifacts/{artifact_id}` return sanitized detail.
+- `GET /api/viewer/datasets/{dataset_id}` and
+  `GET /api/viewer/calculations/{calculation_run_id}` return sanitized,
+  verified read-only detail.
+- Library may project read-only Dataset cards, schema/profile/lineage and
+  payload availability plus Calculation cards, metrics, diagnostics, warnings,
+  and reuse lineage. It returns no unbounded payload rows or private inputs;
+  Dataset detail may include the canonical maximum-20-row profile sample.
 - An explicit or session-bound workspace id must resolve to a registered current
   v1 workspace. Invalid selections fail instead of falling back to the default.
 - No viewer POST, PATCH, DELETE, preview, run, follow-up, or subprocess route
@@ -60,9 +67,11 @@ Research and artifact service contract:
 - Each run-bound write receives an HMAC-authenticated service receipt that
   binds the workspace id, run record, regular non-symlink artifact file/body,
   authenticated producer, exact input ids/hashes/versions, and sealed
-  Brain/Strategy/Investor Context lineage. Synthesis, forecasts, and Decision
-  Memory reverify it; caller-authored metadata and plain recomputed hashes are
-  not provenance. The global-state signing key is installation-local:
+  Brain/Strategy/Investor Context lineage. A conclusion-relevant calculation
+  additionally seals service-derived CalculationRun hashes and reuse-origin
+  mapping after workflow/cutoff verification. Synthesis, forecasts, and
+  Decision Memory reverify it; caller-authored metadata and plain recomputed
+  hashes are not provenance. The global-state signing key is installation-local:
   missing/replaced keys and workspace-only clones fail verification and are
   never silently re-keyed or re-signed. Forecasts derive a Markdown origin's
   recorded run id when the caller omits the redundant argument.
@@ -106,6 +115,8 @@ Research is workspace-file-native. Canonical files:
 - `trading/research/*.evidence.md`
 - `trading/reports/<role>/*.md`
 - `trading/research/source-snapshots/*.json`
+- `trading/research/datasets/manifests/*.json`,
+  `datasets/objects/<sha256>.parquet`, and `datasets/withdrawals/*.json`
 - `trading/research/specs/*.json`
 - `trading/research/replay-manifests/*.json`
 - `trading/research/experiments/*.json`
@@ -117,13 +128,23 @@ Research is workspace-file-native. Canonical files:
 - `trading/decisions/*.md` and `trading/decisions/*.decision-snapshot.json`
 - `trading/reports/postmortem/*.postmortem_report.json`
 - `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json`
-- `trading/research/.index/artifact-catalog-v2.json` as a rebuildable
-  cross-artifact projection; source artifacts and ledgers remain canonical
+- `trading/research/calculations/specs/*.json` and
+  `trading/research/calculations/runs/*.json`; prepared sidecars/results remain
+  scratch-local
+- `trading/research/.index/research-object-catalog-v3.sqlite3` as the current
+  rebuildable structured/FTS projection
+- `trading/research/.index/research-index.json` and
+  `artifact-catalog-v2.json` as one-release compatibility exports
 
 Research service calls may index, validate, search, preview, version, and write
 these files, but the markdown, JSON, or JSONL file is the source of truth.
-The parallel v2 catalog lazily projects current and pre-existing files without
-rewriting them. Current type-specific service output is `full`; old records
+The v3 catalog lazily projects current and pre-existing files without rewriting
+them. Structured tables own cards, relations, Dataset columns, Calculation
+metrics, and per-file projection state. FTS5 contains only title, summary,
+warnings, and tags—never numeric rows—and falls back to structured filters plus
+bounded `LIKE` when unavailable. Corruption rebuilds from canonical files;
+legacy JSON response shapes continue from the same projection rules for one
+release. Current type-specific service output is `full`; old records
 missing canonical identity metadata remain `legacy_partial`; malformed records
 are `invalid` and excluded from normal search. Point-in-time catalog search
 uses the type's explicit `knowledge_cutoff` or `known_at` field and fails
@@ -145,6 +166,29 @@ loads numeric inputs only from a hash-verified replay snapshot; paired model
 evaluation remains research-only and cannot promote itself into order or
 execution authority. Research MCP calls intentionally skip DB tool-call ledger
 rows.
+
+Dataset access is progressive: search cards (20 default, 200 maximum), manifest
+metadata without payload reads, profile statistics with at most 20 sample rows,
+then a typed columns/time/instrument/symbol slice capped at 1,000,000 rows or
+256 MiB. Slice results return only a scratch reference and hash. Dataset
+registration accepts one basename-only, regular single-link scratch CSV,
+JSONL, or Parquet file plus explicit schema and Source Snapshot or parent-
+Dataset lineage. Payloads are canonical content-addressed Parquet; manifests
+and append-only withdrawal records remain versionable while payloads are
+managed-Git-ignored. No agent deletion tool exists.
+
+Prepared Calculation binds code, declared Dataset/private inputs, parameters,
+cutoff, output schema, Python/package lock, platform, and numerical backend.
+Only an exact successful fingerprint is reused, and reuse creates a current-
+workflow Run linked to the origin. The separate `tcx-calc` runtime emits one
+typed bounded envelope; direct runs without a service sidecar are exploratory
+and cannot support an accepted artifact. Declared tabular/time-series outputs
+become derived Datasets with parent and transformation lineage. Head Manager receives Dataset card/
+manifest and Calculation-card discovery only. Fundamental, technical, macro,
+valuation, portfolio, and risk receive their bounded profile/write/prepare/
+record groups; Build and the viewer receive no mutation or execution path.
+Private ledger values remain scratch-only and durable records bind only the
+ledger snapshot id/hash.
 
 Wiki pages, temporal or claim graphs, similarity links, and dashboards are
 rebuildable read projections. Historical replay, historical holdout, and live

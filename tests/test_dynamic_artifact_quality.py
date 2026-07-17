@@ -20,6 +20,7 @@ def _write_artifact(
     extra_frontmatter: str = "",
     *,
     role: str = "portfolio-manager",
+    readiness_label: str = "research-ready",
     body: str = "[factual] The artifact exists. [inference] Head Manager owns workflow judgment.\n",
 ) -> str:
     path = root / "trading" / "research" / "dynamic-quality.md"
@@ -33,7 +34,7 @@ def _write_artifact(
         f"role: {role}\n"
         "title: Dynamic quality contract\n"
         "source_as_of: 2026-07-13T00:00:00Z\n"
-        "readiness_label: research-ready\n"
+        f"readiness_label: {readiness_label}\n"
         "context_summary: Evidence summary.\n"
         "reader_summary: Reader summary.\n"
         "next_action: Head Manager decides the next useful step.\n"
@@ -50,6 +51,104 @@ def _write_artifact(
         encoding="utf-8",
     )
     return path.relative_to(root).as_posix()
+
+
+@pytest.mark.parametrize(
+    "readiness_label",
+    (
+        "not-decision-ready",
+        "calculation-only; not-decision-ready",
+        "calculation-only / not-decision-ready / anchor-missing",
+    ),
+)
+def test_calculation_only_valuation_accepts_exact_not_decision_ready_token(
+    tmp_path: Path,
+    readiness_label: str,
+) -> None:
+    artifact_path = _write_artifact(
+        tmp_path,
+        role="valuation-analyst",
+        readiness_label=readiness_label,
+    )
+
+    result = evaluate_decision_quality(tmp_path, artifact_path, strict=True)
+
+    assert result["status"] == "pass"
+    assert "decision_quality.current_price_or_market_anchor" not in result[
+        "required_fields_missing"
+    ]
+
+
+@pytest.mark.parametrize(
+    "readiness_label",
+    (
+        "calculation-only-not-decision-readyish",
+        "calculation-only; not-decision-readiness",
+        "calculation-only",
+    ),
+)
+def test_valuation_does_not_accept_not_decision_ready_as_a_substring(
+    tmp_path: Path,
+    readiness_label: str,
+) -> None:
+    artifact_path = _write_artifact(
+        tmp_path,
+        role="valuation-analyst",
+        readiness_label=readiness_label,
+    )
+
+    result = evaluate_decision_quality(tmp_path, artifact_path, strict=True)
+
+    assert result["status"] == "fail"
+    assert "decision_quality.current_price_or_market_anchor" in result[
+        "required_fields_missing"
+    ]
+
+
+@pytest.mark.parametrize(
+    ("anchor_field", "placeholder"),
+    (
+        ("market_anchor_as_of", "Not provided; calculation-only output."),
+        ("market_anchor_as_of", "N/A"),
+        ("current_price_as_of", "Unknown at calculation time"),
+    ),
+)
+def test_valuation_absence_placeholder_is_not_a_market_anchor(
+    tmp_path: Path,
+    anchor_field: str,
+    placeholder: str,
+) -> None:
+    artifact_path = _write_artifact(
+        tmp_path,
+        f'{anchor_field}: "{placeholder}"\n',
+        role="valuation-analyst",
+        readiness_label="calculation-only",
+    )
+
+    result = evaluate_decision_quality(tmp_path, artifact_path, strict=True)
+
+    assert result["status"] == "fail"
+    assert "decision_quality.current_price_or_market_anchor" in result[
+        "required_fields_missing"
+    ]
+
+
+def test_free_form_valuation_readiness_remains_compatible_with_real_market_anchor(
+    tmp_path: Path,
+) -> None:
+    artifact_path = _write_artifact(
+        tmp_path,
+        "market_anchor_as_of: 2026-07-16T20:00:00Z\n",
+        role="valuation-analyst",
+        readiness_label="calculation-only; internal-review-pending",
+    )
+
+    result = evaluate_decision_quality(tmp_path, artifact_path, strict=True)
+
+    assert result["status"] == "pass"
+    assert "decision_quality.current_price_or_market_anchor" not in result[
+        "required_fields_missing"
+    ]
 
 
 def test_descriptive_workflow_type_does_not_activate_server_quality_lane(tmp_path: Path) -> None:

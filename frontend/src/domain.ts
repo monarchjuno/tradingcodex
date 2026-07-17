@@ -25,6 +25,8 @@ export type Artifact = {
   readiness: string;
   summary: string;
   missingEvidence: string[];
+  resourceKind: "artifact" | "dataset" | "calculation";
+  detailPath: string;
   raw: RecordValue;
 };
 
@@ -87,7 +89,48 @@ export function normalizeArtifact(value: RecordValue, index: number): Artifact {
     readiness: asText(value.readiness_label, asText(value.handoff_state, "waiting")),
     summary: asText(value.reader_summary),
     missingEvidence: asStringList(value.missing_evidence),
+    resourceKind: "artifact",
+    detailPath: `/api/viewer/artifacts/${encodeURIComponent(id)}/`,
     raw: value,
+  };
+}
+
+export function normalizeDataset(value: RecordValue, index: number): Artifact {
+  const id = asText(value.object_id, `dataset-${index + 1}`);
+  const details = asRecord(value.details);
+  return {
+    id,
+    title: asText(value.title, titleCase(id)),
+    type: "dataset",
+    sourceAsOf: asText(value.knowledge_cutoff, asText(value.known_at)),
+    confidence: "profiled",
+    readiness: asText(value.status, "available"),
+    summary: asText(value.summary, "Immutable reusable tabular evidence."),
+    missingEvidence: asStringList(value.warnings),
+    resourceKind: "dataset",
+    detailPath: `/api/viewer/datasets/${encodeURIComponent(id)}/`,
+    raw: { ...value, ...details },
+  };
+}
+
+export function normalizeCalculation(value: RecordValue, index: number): Artifact {
+  const id = asText(value.calculation_run_id, asText(value.object_id, `calculation-${index + 1}`));
+  const details = asRecord(value.details);
+  const originalRunId = asText(value.original_run_id, asText(details.original_run_id));
+  return {
+    id,
+    title: `${titleCase(asText(value.calculation_type, "calculation"))} · ${id}`,
+    type: "calculation run",
+    sourceAsOf: asText(value.knowledge_cutoff),
+    confidence: "reproducible",
+    readiness: asText(value.status, "unknown"),
+    summary: originalRunId
+      ? `Exact reuse of ${originalRunId}.`
+      : "Immutable typed calculation result.",
+    missingEvidence: asStringList(value.warnings),
+    resourceKind: "calculation",
+    detailPath: `/api/viewer/calculations/${encodeURIComponent(id)}/`,
+    raw: { ...value, ...details },
   };
 }
 

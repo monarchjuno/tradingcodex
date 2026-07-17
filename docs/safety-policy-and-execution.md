@@ -103,10 +103,18 @@ The mandate signature protects in-process field integrity; it is not OS-level
 attestation against arbitrary same-user Python. The generated native analysis
 profile explicitly enables lifecycle hooks and disables unified execution and
 interactive app/browser/computer features. Its default `trading-research`
-permission profile allows ordinary shell, Python, command-line data tools, and
+permission profile allows ordinary shell, command-line data tools, and
 credential-free public HTTP plus read/write access to user-owned workspace
 paths outside `trading/`. Disposable intermediates use the generated path
-exposed as `$TRADINGCODEX_SCRATCH`. The profile extends the native read-only
+exposed as `$TRADINGCODEX_SCRATCH`. Deterministic Python work uses only a direct
+scratch-local source file and the exact `tcx-calc` launcher. The launcher runs a
+wheel-locked, isolated-mode finance runtime v2 from a cache that is distinct
+from Django/MCP/service/DB runtime state, sanitizes the environment before
+adding its verified site-packages, rejects links and compound command forms,
+and applies resource bounds. Prepared mode also enforces declared scratch-local
+inputs/outputs and a typed finite result envelope; unprepared execution is
+exploratory only. Python is not treated as a sandbox; the parent Codex OS
+permission profile remains the security boundary. The profile extends the native read-only
 baseline through the built-in `:workspace` permission profile, then applies
 more-specific read or deny rules for `trading/`, control files, Git metadata,
 launchers, temp roots, and sensitive paths. The generated scratch child is
@@ -118,8 +126,8 @@ Unix sockets. A narrow read-only exception for the installed standalone Codex
 runtime supports native file tools without exposing Codex auth, config,
 session, or memory state. The enabled native network proxy enforces the public-only command
 network rules. The shell receives only a small allowlist of non-secret process
-environment variables. This OS-level authority boundary, not a ban on useful
-interpreters, prevents model-launched code from reading grants or reaching the
+environment variables. This OS-level authority boundary and the narrow
+launcher contract prevent calculation code from reading grants or reaching the
 service ledger. `PreToolUse` and `PermissionRequest` retain deterministic
 blocks for interactive `write_stdin`, raw credentials, order effects, runtime
 mutation, global config, and remote publication.
@@ -228,8 +236,11 @@ not general directory-creation authority; nested paths,
 directories remain blocked. Later files require the existing real direct
 parent and omit the flag. The generated `PreToolUse`
 matcher covers every tool name. It leaves ordinary Research browser behavior
-unchanged, while an active Build grant blocks native browser, web, HTTP, fetch,
-and navigation tools so retrieval cannot reuse browser sessions. The hook separately
+unchanged, including Head Manager's planning-only live web reconnaissance.
+Those raw results are untrusted workflow-routing leads and cannot support an
+accepted synthesis claim; conclusion-relevant facts must be reacquired through
+producing-role artifacts. An active Build grant blocks native browser, web,
+HTTP, fetch, and navigation tools so retrieval cannot reuse browser sessions. The hook separately
 supports a fail-closed absolute command proof when native Codex omits shell
 workdir from its hook payload: exact recorded executables, absolute file
 operands, and absolute Git `-C` roots replace any trust in the unseen cwd.

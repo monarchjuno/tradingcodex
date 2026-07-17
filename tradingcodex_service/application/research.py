@@ -343,6 +343,21 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
         "artifact_schema_version": _int_value(_frontmatter_value(args, metadata, source_frontmatter, "artifact_schema_version", 1), default=1),
         "input_artifact_ids": _frontmatter_list(args, metadata, source_frontmatter, "input_artifact_ids"),
         "input_artifact_hashes": _frontmatter_value(args, metadata, source_frontmatter, "input_artifact_hashes", {}),
+        "calculation_run_ids": _frontmatter_list(args, metadata, source_frontmatter, "calculation_run_ids"),
+        "calculation_run_hashes": _frontmatter_value(
+            args,
+            metadata,
+            source_frontmatter,
+            "calculation_run_hashes",
+            {},
+        ),
+        "calculation_reuse_origins": _frontmatter_value(
+            args,
+            metadata,
+            source_frontmatter,
+            "calculation_reuse_origins",
+            {},
+        ),
         "knowledge_cutoff": _frontmatter_value(args, metadata, source_frontmatter, "knowledge_cutoff", existing.get("knowledge_cutoff") if existing else ""),
         "follow_up_requests": _frontmatter_list(args, metadata, source_frontmatter, "follow_up_requests"),
         "improvements": _frontmatter_list(args, metadata, source_frontmatter, "improvements"),
@@ -406,6 +421,50 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
                 "source_snapshot_hashes are service-derived from source_snapshot_ids"
         )
         frontmatter["source_snapshot_hashes"] = snapshot_hashes
+        calculation_run_ids = frontmatter["calculation_run_ids"]
+        if calculation_run_ids:
+            if not str(frontmatter.get("workflow_run_id") or "").strip():
+                raise ValueError("calculation_run_ids require workflow_run_id")
+            if not str(frontmatter.get("knowledge_cutoff") or "").strip():
+                raise ValueError("calculation_run_ids require knowledge_cutoff")
+            from tradingcodex_service.application.calculations import (
+                verify_calculation_run_binding,
+            )
+
+            calculation_bindings = [
+                verify_calculation_run_binding(
+                    root,
+                    run_id,
+                    workflow_run_id=str(frontmatter["workflow_run_id"]),
+                    knowledge_cutoff=str(frontmatter["knowledge_cutoff"]),
+                )
+                for run_id in calculation_run_ids
+            ]
+            calculation_hashes = {
+                item["calculation_run_id"]: item["run_sha256"]
+                for item in calculation_bindings
+            }
+            reuse_origins = {
+                item["calculation_run_id"]: {
+                    "original_run_id": item["original_run_id"],
+                    "original_run_sha256": item["original_run_sha256"],
+                }
+                for item in calculation_bindings
+                if item["original_run_id"]
+            }
+        else:
+            calculation_hashes = {}
+            reuse_origins = {}
+        if frontmatter.get("calculation_run_hashes") not in ({}, calculation_hashes):
+            raise ValueError(
+                "calculation_run_hashes are service-derived from calculation_run_ids"
+            )
+        if frontmatter.get("calculation_reuse_origins") not in ({}, reuse_origins):
+            raise ValueError(
+                "calculation_reuse_origins are service-derived from calculation_run_ids"
+            )
+        frontmatter["calculation_run_hashes"] = calculation_hashes
+        frontmatter["calculation_reuse_origins"] = reuse_origins
         original_stable_bytes = path.read_bytes() if path.is_file() else None
         archive: Path | None = None
         archive_created = False
@@ -594,6 +653,19 @@ def _artifact_binding_payload_from_rendered(
         "input_artifact_hashes": (
             frontmatter.get("input_artifact_hashes")
             if isinstance(frontmatter.get("input_artifact_hashes"), dict)
+            else {}
+        ),
+        "calculation_run_ids": _coerce_list(
+            frontmatter.get("calculation_run_ids")
+        ),
+        "calculation_run_hashes": (
+            frontmatter.get("calculation_run_hashes")
+            if isinstance(frontmatter.get("calculation_run_hashes"), dict)
+            else {}
+        ),
+        "calculation_reuse_origins": (
+            frontmatter.get("calculation_reuse_origins")
+            if isinstance(frontmatter.get("calculation_reuse_origins"), dict)
             else {}
         ),
         "source_snapshot_ids": _coerce_list(
@@ -1028,9 +1100,13 @@ def rebuild_research_index(workspace_root: Path | str) -> dict[str, Any]:
 
 
 def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
-    resolved_root = root.expanduser().resolve(strict=False)
+    from tradingcodex_service.application.artifact_catalog import (
+        _refresh_artifact_catalog,
+    )
+
     index_path = safe_workspace_path(root, RESEARCH_INDEX_PATH, allowed_roots=(Path("trading/research"),))
     lock_target = root / "trading/research/.index/research-index"
+    compatibility_source = _refresh_artifact_catalog(root)
     with exclusive_file_lock(lock_target):
         existing: dict[str, Any] = {}
         if index_path.exists():
@@ -1041,33 +1117,43 @@ def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
             if isinstance(document, dict) and document.get("schema_version") == RESEARCH_INDEX_VERSION:
                 raw_entries = document.get("entries")
                 existing = raw_entries if isinstance(raw_entries, dict) else {}
-        paths: list[Path] = []
-        for rel_root in RESEARCH_FILE_ROOTS:
-            base = root / rel_root
-            if base.exists():
-                for candidate in base.rglob("*.md"):
-                    if (
-                        candidate.name == ".gitkeep"
-                        or any(part in {".versions", ".index", ".drafts"} for part in candidate.parts)
-                        or candidate.name.endswith((".run-card.md", ".validation-card.md"))
-                    ):
-                        continue
-                    try:
-                        safe = safe_workspace_path(root, candidate.relative_to(root), allowed_roots=RESEARCH_FILE_ROOTS)
-                    except ValueError:
-                        continue
-                    if safe.is_file():
-                        paths.append(safe)
+        source_files = compatibility_source.get("files")
+        paths: list[tuple[str, Path, dict[str, Any]]] = []
+        if isinstance(source_files, dict):
+            for relative, raw_record in source_files.items():
+                relative_path = Path(str(relative))
+                if (
+                    relative_path.suffix.lower() != ".md"
+                    or relative_path.name == ".gitkeep"
+                    or relative_path.name.endswith((".run-card.md", ".validation-card.md"))
+                    or any(part in {".versions", ".index", ".drafts"} for part in relative_path.parts)
+                    or not any(relative_path.is_relative_to(base) for base in RESEARCH_FILE_ROOTS)
+                ):
+                    continue
+                try:
+                    safe = safe_workspace_path(
+                        root,
+                        relative_path,
+                        allowed_roots=RESEARCH_FILE_ROOTS,
+                    )
+                except ValueError:
+                    continue
+                if safe.is_file() and not safe.is_symlink():
+                    record = raw_record if isinstance(raw_record, dict) else {}
+                    paths.append((relative_path.as_posix(), safe, record))
         entries: dict[str, dict[str, Any]] = {}
-        changed = set(existing) != {path.relative_to(resolved_root).as_posix() for path in paths}
-        for path in sorted(paths):
-            rel = path.relative_to(resolved_root).as_posix()
+        changed = set(existing) != {relative for relative, _path, _record in paths}
+        for rel, path, source_record in sorted(paths, key=lambda item: item[0]):
             stat = path.stat()
+            mtime_ns = int(source_record.get("mtime_ns") or stat.st_mtime_ns)
+            size = int(source_record.get("size") or stat.st_size)
+            source_hash = str(source_record.get("file_hash") or file_hash(path) or "")
             cached = existing.get(rel) if isinstance(existing.get(rel), dict) else {}
             if (
                 cached.get("status") in {"valid", "invalid"}
-                and cached.get("mtime_ns") == stat.st_mtime_ns
-                and cached.get("size") == stat.st_size
+                and cached.get("mtime_ns") == mtime_ns
+                and cached.get("size") == size
+                and cached.get("file_hash") == source_hash
             ):
                 entries[rel] = cached
                 continue
@@ -1076,9 +1162,9 @@ def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
             except (OSError, UnicodeError, ValueError) as exc:
                 entries[rel] = {
                     "path": rel,
-                    "mtime_ns": stat.st_mtime_ns,
-                    "size": stat.st_size,
-                    "file_hash": file_hash(path),
+                    "mtime_ns": mtime_ns,
+                    "size": size,
+                    "file_hash": source_hash,
                     "status": "invalid",
                     "error": str(exc) or exc.__class__.__name__,
                 }
@@ -1100,9 +1186,9 @@ def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
             )
             entries[rel] = {
                 "path": rel,
-                "mtime_ns": stat.st_mtime_ns,
-                "size": stat.st_size,
-                "file_hash": file_hash(path),
+                "mtime_ns": mtime_ns,
+                "size": size,
+                "file_hash": source_hash,
                 "status": "valid",
                 "payload": stored_payload,
                 "metadata_search_text": metadata_search_text,
@@ -1430,6 +1516,9 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "artifact_schema_version": _int_value(frontmatter.get("artifact_schema_version"), default=1),
         "input_artifact_ids": _coerce_list(frontmatter.get("input_artifact_ids")),
         "input_artifact_hashes": frontmatter.get("input_artifact_hashes") if isinstance(frontmatter.get("input_artifact_hashes"), dict) else {},
+        "calculation_run_ids": _coerce_list(frontmatter.get("calculation_run_ids")),
+        "calculation_run_hashes": frontmatter.get("calculation_run_hashes") if isinstance(frontmatter.get("calculation_run_hashes"), dict) else {},
+        "calculation_reuse_origins": frontmatter.get("calculation_reuse_origins") if isinstance(frontmatter.get("calculation_reuse_origins"), dict) else {},
         "knowledge_cutoff": str(frontmatter.get("knowledge_cutoff") or ""),
         "follow_up_requests": _coerce_list(frontmatter.get("follow_up_requests")),
         "improvements": _coerce_list(frontmatter.get("improvements")),
