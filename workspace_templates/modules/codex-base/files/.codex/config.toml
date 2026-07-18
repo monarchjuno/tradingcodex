@@ -1,4 +1,6 @@
 default_permissions = "trading-research"
+# Model and reasoning settings inherit the user's Codex defaults. TradingCodex
+# does not pin a model because policy and execution authority live in services.
 approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = false, skill_approval = false } }
 approvals_reviewer = "user"
 allow_login_shell = false

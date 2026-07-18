@@ -25,7 +25,6 @@ from tradingcodex_service.version import TRADINGCODEX_VERSION
 from tradingcodex_service.application.agents import (
     AGENT_INDEX_PATH,
     MANIFEST_PATH,
-    MODEL_POLICY_MANIFEST_PATH,
     SKILL_INDEX_PATH,
     project_agent_configuration,
 )
@@ -89,7 +88,6 @@ MODULE_LOCK_GENERATED_FILE_OWNERS = frozenset({"template", "projection"})
 GENERATED_INDEX_PATHS = frozenset({
     AGENT_INDEX_PATH.as_posix(),
     MANIFEST_PATH.as_posix(),
-    MODEL_POLICY_MANIFEST_PATH.as_posix(),
     SKILL_INDEX_PATH.as_posix(),
     ".tradingcodex/generated/capability-index.json",
     ".tradingcodex/generated/component-index.json",

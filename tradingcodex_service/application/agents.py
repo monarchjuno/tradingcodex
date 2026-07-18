@@ -44,66 +44,9 @@ class AgentSpec:
     builtin_skills: tuple[str, ...]
     mcp_allowlist: tuple[str, ...] = ()
     forbidden_skill_tags: tuple[str, ...] = ()
-    model_tier: str = "terra"
-
-
-@dataclass(frozen=True)
-class ModelPolicy:
-    tier: str
-    primary_model: str
-    reasoning_effort: str
-    required_capabilities: tuple[str, ...]
-
-
-MODEL_POLICY_REVISION = "v1-role-policy-v3"
-MODEL_PROMPT_REVISION = "2026-07-gpt56-v1"
 MODEL_TOOL_PROFILE_REVISION = "2026-07-role-allowlists-v1"
 MINIMUM_CODEX_VERSION = "0.144.4"
 REFERENCE_CODEX_VERSION = "0.144.4"
-MODEL_POLICIES = {
-    "orchestrator": ModelPolicy(
-        "orchestrator",
-        "gpt-5.6-sol",
-        "xhigh",
-        ("named_agent_model_selector", "reasoning_effort_xhigh", "tool_calling"),
-    ),
-    "terra": ModelPolicy("terra", "gpt-5.6-terra", "high", ("named_agent_model_selector", "reasoning_effort_high", "tool_calling")),
-    "terra-low": ModelPolicy("terra-low", "gpt-5.6-terra", "low", ("named_agent_model_selector", "reasoning_effort_low", "tool_calling")),
-}
-CODEX_REASONING_EFFORTS = {"minimal", "low", "medium", "high", "xhigh"}
-MODEL_POLICY_MANIFEST_PATH = Path(".tradingcodex/generated/model-policy-manifest.json")
-
-
-def resolve_agent_model_policy(role: str) -> dict[str, Any]:
-    spec = AGENT_SPECS.get(role)
-    if spec is None:
-        raise ValueError(f"unknown role: {role}")
-    policy = MODEL_POLICIES[spec.model_tier]
-    rollout = os.environ.get("TRADINGCODEX_MODEL_ROLLOUT", "active").strip().lower()
-    if rollout != "active":
-        raise ValueError("TRADINGCODEX_MODEL_ROLLOUT rollback is no longer supported")
-    supported_raw = os.environ.get("TRADINGCODEX_CODEX_SUPPORTED_MODELS", "")
-    supported = {item.strip() for item in supported_raw.split(",") if item.strip()}
-    if supported and policy.primary_model not in supported:
-        raise ValueError(f"required Codex model is unavailable: {policy.primary_model}")
-    return {
-        "policy_revision": MODEL_POLICY_REVISION,
-        "runtime_surface": "codex_project_toml",
-        "minimum_codex_version": MINIMUM_CODEX_VERSION,
-        "reference_codex_version": REFERENCE_CODEX_VERSION,
-        "tier": policy.tier,
-        "primary_model": policy.primary_model,
-        "resolved_model": policy.primary_model,
-        "reasoning_effort": policy.reasoning_effort,
-        "required_capabilities": list(policy.required_capabilities),
-        "known_unsupported_settings": ["reasoning.mode", "reasoning.context"],
-        "prompt_revision": MODEL_PROMPT_REVISION,
-        "tool_profile_revision": MODEL_TOOL_PROFILE_REVISION,
-        "support_status": "verified" if supported else "unverified",
-        "capability_source": "TRADINGCODEX_CODEX_SUPPORTED_MODELS" if supported else "runtime-unverified",
-        "evaluation_required_for_release": True,
-        "evaluation_comparison_ref": os.environ.get("TRADINGCODEX_MODEL_EVALUATION_COMPARISON", ""),
-    }
 
 
 RESEARCH_ROLES = (
@@ -257,7 +200,6 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "compare_evaluation_runs",
             "record_audit_event",
         ),
-        model_tier="orchestrator",
     ),
     "fundamental-analyst": AgentSpec(
         role="fundamental-analyst",
@@ -1245,8 +1187,6 @@ def project_agent_configuration(
         raise ValueError(f"Unknown subagent or role: {selected_role}")
 
     state = build_projection_state(root)
-    for role_id in AGENT_SPECS:
-        _project_agent_model_policy(root, role_id)
     if selected_role:
         roles_to_project = [selected_role] if selected_role != "head-manager" else []
     else:
@@ -1426,7 +1366,6 @@ def build_projection_state(root: Path | str) -> dict[str, Any]:
                 "handoff_contract": agent["handoff_contract"],
                 "forbidden_actions": agent["forbidden_actions"],
                 "mcp_allowlist": agent["mcp_allowlist"],
-                "model_policy": agent["model_policy"],
             }
             for role, agent in agents.items()
         },
@@ -1597,24 +1536,9 @@ def _write_projection_indexes(
         "proposal": _proposal_summary(proposal_record) if proposal_record else None,
         "roles": manifest_roles,
     }
-    model_policy_manifest = {
-        "generated_at": generated_at,
-        "source": "tradingcodex_service.application.agents",
-        "policy_revision": MODEL_POLICY_REVISION,
-        "policy_hash": stable_hash({role: agent["model_policy"] for role, agent in state["agents"].items()}),
-        "roles": {
-            role: {
-                **agent["model_policy"],
-                "codex_file": agent["codex_file"],
-                "codex_file_hash": agent["codex_file_hash"],
-            }
-            for role, agent in state["agents"].items()
-        },
-    }
     write_json(root / AGENT_INDEX_PATH, agent_index)
     write_json(root / SKILL_INDEX_PATH, skill_index)
     write_json(root / MANIFEST_PATH, manifest)
-    write_json(root / MODEL_POLICY_MANIFEST_PATH, model_policy_manifest)
 
 
 def _optional_record_payload(root: Path, record: dict[str, Any]) -> dict[str, Any]:
@@ -1723,32 +1647,6 @@ def _project_agent_toml(root: Path, role: str, skills: list[str], additional_ins
     body = _replace_tradingcodex_enabled_tools(body, AGENT_SPECS[role].mcp_allowlist)
     rendered = body + "\n\n" + _render_role_skill_config_blocks(root, role, skills)
     _atomic_write_text(path, rendered.rstrip() + "\n")
-
-
-def _project_agent_model_policy(root: Path, role: str) -> None:
-    path = _agent_config_path(root, role)
-    if not path.exists():
-        return
-    text = path.read_text(encoding="utf-8")
-    updated = _replace_agent_model_policy(text, resolve_agent_model_policy(role))
-    if updated != text:
-        _atomic_write_text(path, updated.rstrip() + "\n")
-
-
-def _replace_agent_model_policy(text: str, policy: dict[str, Any]) -> str:
-    model_line = f'model = {json.dumps(policy["resolved_model"])}'
-    effort = str(policy["reasoning_effort"])
-    if effort not in CODEX_REASONING_EFFORTS:
-        raise ValueError(f"unsupported Codex reasoning effort: {effort}")
-    effort_line = f'model_reasoning_effort = {json.dumps(effort)}'
-    if re.search(r"(?m)^model\s*=.*$", text):
-        text = re.sub(r"(?m)^model\s*=.*$", model_line, text, count=1)
-    else:
-        text = model_line + "\n" + text
-    if re.search(r"(?m)^model_reasoning_effort\s*=.*$", text):
-        return re.sub(r"(?m)^model_reasoning_effort\s*=.*$", effort_line, text, count=1)
-    model_end = text.find("\n", text.find(model_line))
-    return text[: model_end + 1] + effort_line + "\n" + text[model_end + 1 :]
 
 
 def _project_head_manager_mcp_tools(root: Path) -> None:
@@ -2096,7 +1994,6 @@ def _agent_spec_payload(spec: AgentSpec) -> dict[str, Any]:
         "builtin_skills": list(spec.builtin_skills),
         "forbidden_skill_tags": list(spec.forbidden_skill_tags),
         "mcp_allowlist": list(spec.mcp_allowlist),
-        "model_policy": resolve_agent_model_policy(spec.role),
     }
 
 
@@ -2113,7 +2010,6 @@ def _assert_projection_write_targets(root: Path) -> None:
         root / AGENT_INDEX_PATH,
         root / SKILL_INDEX_PATH,
         root / MANIFEST_PATH,
-        root / MODEL_POLICY_MANIFEST_PATH,
     ]
     resolved_root = root.resolve()
     for target in targets:

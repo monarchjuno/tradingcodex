@@ -33,16 +33,6 @@ ARTIFACT_DISCOVERY_TOOLS = frozenset(
     }
 )
 FIXED_ROLE_MODEL_INSTRUCTIONS = "../prompts/base_instructions/fixed-role.md"
-CANONICAL_TOOL_NAMES_QUERY = (
-    'text(ALL_TOOLS.filter(x => x.name.includes("<provider-or-keyword>"))'
-    ".slice(0, 12).map(x => x.name))"
-)
-CANONICAL_TOOL_SCHEMA_LOOKUP = (
-    'const t = ALL_TOOLS.find(x => x.name === "<exact-tool-name>"); '
-    'text(t ? t.description : "missing")'
-)
-
-
 @pytest.fixture
 def workspace(tmp_path: Path) -> Path:
     root = tmp_path / "workspace"
@@ -326,7 +316,7 @@ def test_generated_hook_is_transport_only_and_checks_exact_v2_spawn(workspace: P
         assert "overrides are forbidden" in blocked["reason"]
 
 
-def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -> None:
+def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(workspace: Path) -> None:
     config = (workspace / ".codex/config.toml").read_text(encoding="utf-8")
     head = (workspace / ".codex/prompts/base_instructions/head-manager.md").read_text(encoding="utf-8")
     fixed_role_path = workspace / ".codex/prompts/base_instructions/fixed-role.md"
@@ -334,26 +324,21 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
     fixed_role = fixed_role_path.read_text(encoding="utf-8")
     role = (workspace / ".codex/agents/fundamental-analyst.toml").read_text(encoding="utf-8")
     skill = (workspace / ".agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
-    model_policy = json.loads(
-        (workspace / ".tradingcodex/generated/model-policy-manifest.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert 'model = "gpt-5.6-sol"' in config
-    assert 'model_reasoning_effort = "xhigh"' in config
+    assert "Model and reasoning settings inherit the user's Codex defaults" in config
+    assert "model =" not in config
+    assert "model_reasoning_effort" not in config
+    assert not (workspace / ".tradingcodex/generated/model-policy-manifest.json").exists()
     assert 'model_instructions_file = "prompts/base_instructions/head-manager.md"' in config
     assert '[features.multi_agent_v2]' in config
     assert 'enabled = true' in config
     assert 'max_concurrent_threads_per_session = 7' in config
     assert 'max_threads = 6' not in config
-    assert model_policy["roles"]["head-manager"]["minimum_codex_version"] == "0.144.4"
-    assert model_policy["roles"]["head-manager"]["reference_codex_version"] == "0.144.4"
     assert "required = true" in config
     assert '"begin_analysis_run"' in config
     assert "record_workflow_plan" not in config
     assert "record_artifact_supervisor_loop" not in config
-    assert 'model = "gpt-5.6-terra"' in role
-    assert 'model_reasoning_effort = "high"' in role
+    assert "model =" not in role
+    assert "model_reasoning_effort" not in role
     assert "required = true" in role
     assert len(fixed_role.encode("utf-8")) <= 7_000
     assert len(fixed_role.encode("utf-8")) < len(head.encode("utf-8")) // 4
@@ -368,35 +353,17 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
     assert "at most one targeted correction" in fixed_role
     assert "Django workflow plan" in head
     assert "server-generated DAG" in head
-    assert "wait_agent` accepts the timeout only" in head
-    assert "10000 <= timeout_ms <= 30000" in head
-    assert "before the first spawn or optional planning reconnaissance" in head
-    assert "before synthesis" in head
-    assert "Never call `wait_agent` a second time" in head
-    assert "Other tool\n  calls do not reset this gate" in head
-    assert "list_research_artifacts" in head
-    assert 'handoff_state="accepted"' in head
-    assert '`detail_level="card"`' in head
-    assert "`artifact_page.returned_count=1`" in head
-    assert "`artifact_page.has_more=false`" in head
-    assert "`run_bound_authentication.verified_artifact_count=1`" in head
-    assert "One returned card\n  on a truncated page is not unique" in head
-    assert "Never use an unfiltered workflow/research list" in head
-    assert "Never wait with an empty receiver set" not in head
-    assert "Reassess the workflow after each wave" in skill
-    assert "timeout_ms >= 10000" in skill
-    assert "at most 30000" in skill
-    assert "before waiting" in skill
-    assert "without first sending visible progress" in skill
-    assert "ARTIFACT <artifact_id> <path> <handoff_state>" in skill
-    assert "`artifact_page.returned_count=1`" in skill
-    assert "`artifact_page.has_more=false`" in skill
-    assert "`run_bound_authentication.verified_artifact_count=1`" in skill
-    assert "truncated page is not unique" in skill
-    assert "Never use an unfiltered artifact list" in skill
-    assert "Dataset `knowledge_cutoff`" in skill
-    assert "tag every material claim" in head
-    assert "section headings alone do not" in skill
+    assert "Answer narrow factual questions and simple recorded-status requests directly" in head
+    assert "Use `followup_task` to correct or clarify" in head
+    assert "generic fallback" in head
+    assert "wait_agent` timeout alone is not a reason to message" in head
+    assert "## Fast Path" in skill
+    assert "Otherwise a generic child may" in skill
+    assert "followup_task" in skill
+    assert "Save an authenticated research artifact when the result will support" in skill
+    assert "$tcx-source-gate" in skill
+    assert "optional direct OpenBB" in skill
+    assert "ALL_TOOLS.filter" not in head + fixed_role + skill
     assert "record_workflow_plan" not in head + role + skill
 
     roles_root = workspace / ".codex/agents"
@@ -410,10 +377,6 @@ def test_generated_contract_projects_sol_head_and_terra_roles(workspace: Path) -
         resolved_instructions = role_path.parent / role_config["model_instructions_file"]
         assert resolved_instructions.resolve() == fixed_role_path.resolve()
         assert resolved_instructions.is_file()
-        assert "maximum service-returned snapshot `known_at`" in role_instructions
-        assert "one separate `cat <exact-path>` command per file" in role_instructions
-        assert "never concatenate paths" in role_instructions
-        assert "keep each command result under 20,000 characters" in role_instructions
         assert "never send a date-only value" in role_instructions
         assert "Never use end-of-day or another future time" in role_instructions
 

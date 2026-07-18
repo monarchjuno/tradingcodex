@@ -34,7 +34,7 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
     HarnessComponent(
         id="fixed-role-dispatch",
         label="Fixed Role Dispatch",
-        summary="Maintains exact Codex V2 role identity, principal-bound artifact storage, and no-overlap handoffs without a server scheduler.",
+        summary="Maintains available Codex role profiles, principal-bound artifact storage, and no-overlap handoffs without a server scheduler.",
         status="core",
         tags=("guardrail.guidance", "guardrail.information_barrier", "improvement.workflow_quality"),
         surfaces={
@@ -42,14 +42,11 @@ HARNESS_COMPONENTS: tuple[HarnessComponent, ...] = (
             "skills": ("tcx-plan", "tcx-workflow", "tcx-automate"),
             "services": ("agents", "analysis_runs", "mcp_runtime"),
             "mcp": ("begin_analysis_run", "create_research_artifact"),
-            "files": (
-                ".tradingcodex/generated/model-policy-manifest.json",
-            ),
             "templates": ("codex-base", "fixed-subagents", "repo-skills"),
             "tests": ("generated-workspace", "subagent-roster"),
         },
         depends_on=(),
-        owned_capabilities=("workflow.dispatch_fixed_roles",),
+        owned_capabilities=("workflow.dispatch_role_profiles",),
         validation=("pytest", "generated workspace contract"),
     ),
     HarnessComponent(

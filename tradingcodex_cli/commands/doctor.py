@@ -19,12 +19,10 @@ from tradingcodex_service.application.agents import (
     EXPECTED_SKILLS,
     EXPECTED_SUBAGENTS,
     MINIMUM_CODEX_VERSION,
-    MODEL_POLICY_MANIFEST_PATH,
     REFERENCE_CODEX_VERSION,
     SKILL_SPECS,
     build_projection_state,
     inspect_skill_projection,
-    resolve_agent_model_policy,
 )
 from tradingcodex_service.application.runtime import (
     assert_runtime_home_outside_workspace,
@@ -156,7 +154,6 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         {"layer": "guidance", "name": "subagent scheduler ceiling is independent of roster", "ok": 1 < thread_policy["max_threads"] < roster_size, "codexNative": True, "detail": f"v2_session_threads={thread_policy['max_concurrent_threads_per_session']}, child_threads={thread_policy['max_threads']}, subagents={roster_size}"},
         {"layer": "guidance", "name": "subagent recursion remains disabled", "ok": thread_policy["max_depth"] == 1, "codexNative": True, "detail": f"max_depth={thread_policy['max_depth']}"},
         *_fixed_role_dispatch_checks(root),
-        *_model_policy_checks(root),
     ]
 
 
@@ -326,47 +323,6 @@ def _generated_file_hash_check(
     return True, "tcx-calc and tcx-calc.cmd match the generated module lock"
 
 
-def _model_policy_checks(root: Path) -> list[dict[str, Any]]:
-    manifest_path = root / MODEL_POLICY_MANIFEST_PATH
-    try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        return [{"layer": "guidance", "name": "runtime model policy manifest", "ok": False, "codexNative": True, "detail": str(exc)}]
-    roles = manifest.get("roles") if isinstance(manifest.get("roles"), dict) else {}
-    checks = [{
-        "layer": "guidance",
-        "name": "runtime model policy manifest",
-        "ok": set(roles) == set(AGENT_SPECS),
-        "codexNative": True,
-        "detail": f"roles={len(roles)}, expected={len(AGENT_SPECS)}",
-    }]
-    comparison_refs = {
-        str(policy.get("evaluation_comparison_ref") or "")
-        for policy in roles.values()
-        if isinstance(policy, dict)
-    }
-    comparison_ready = len(comparison_refs) == 1 and "" not in comparison_refs
-    checks.append({
-        "layer": "guidance",
-        "name": "role-model paired evaluation promotion",
-        "ok": comparison_ready,
-        "warn": not comparison_ready,
-        "codexNative": True,
-        "detail": next(iter(comparison_refs)) if comparison_ready else "active-but-unpromoted: no paired evaluation comparison reference",
-    })
-    for role in AGENT_SPECS:
-        policy = roles.get(role) if isinstance(roles.get(role), dict) else resolve_agent_model_policy(role)
-        config_path = root / (".codex/config.toml" if role == "head-manager" else f".codex/agents/{role}.toml")
-        try:
-            config = tomllib.loads(config_path.read_text(encoding="utf-8"))
-        except Exception as exc:
-            checks.append({"layer": "guidance", "name": f"runtime model policy: {role}", "ok": False, "codexNative": True, "detail": str(exc)})
-            continue
-        ok = config.get("model") == policy["resolved_model"] and config.get("model_reasoning_effort") == policy["reasoning_effort"]
-        checks.append({"layer": "guidance", "name": f"runtime model policy: {role}", "ok": ok, "codexNative": True, "detail": f"{config.get('model')}/{config.get('model_reasoning_effort')} ({policy['support_status']})"})
-    return checks
-
-
 def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
     config_path = root / ".codex" / "config.toml"
     try:
@@ -374,7 +330,7 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
     except Exception as exc:
         return [{
             "layer": "guidance",
-            "name": "exact fixed-role dispatch configuration",
+            "name": "role-profile dispatch configuration",
             "ok": False,
             "codexNative": True,
             "detail": str(exc),
@@ -394,15 +350,15 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
     dispatch_contract = all(
         marker in prompt
         for marker in (
-            "exact `agent_type`",
-            "Do not use a generic/default agent",
-            "waiting_for_subagent_dispatch",
+            "generic fallback may take a compact brief",
+            "Use `followup_task` to correct or clarify",
+            "risk-manager` and `judgment-reviewer`",
         )
     )
     return [
         {
             "layer": "guidance",
-            "name": "exact fixed-role dispatch configuration",
+            "name": "role-profile dispatch configuration",
             "ok": exact_runtime,
             "codexNative": True,
             "detail": (
@@ -415,10 +371,10 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
         },
         {
             "layer": "guidance",
-            "name": "fixed-role dispatch fail-closed contract",
+            "name": "role-profile fallback boundary",
             "ok": dispatch_contract,
             "codexNative": True,
-            "detail": "exact agent_type or waiting; no generic role emulation" if dispatch_contract else "missing exact-dispatch fail-closed instructions",
+            "detail": "generic fallback retains the role brief boundary" if dispatch_contract else "missing generic fallback boundary instructions",
         },
     ]
 
@@ -1060,10 +1016,10 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(path_check(root, "improvement", "agent index projected", ".tradingcodex/generated/agent-index.json", False))
     checks.append(path_check(root, "improvement", "skill index projected", ".tradingcodex/generated/skill-index.json", False))
     checks.append(path_check(root, "improvement", "projection manifest projected", ".tradingcodex/generated/projection-manifest.json", False))
-    checks.append(text_check(root, "improvement", "no-overlap handoff contract installed", ".codex/prompts/base_instructions/head-manager.md", "Never edit, wrap, or recreate another role's report", False))
-    checks.append(text_check(root, "improvement", "decision quality review installed", ".agents/skills/tcx-workflow/SKILL.md", "Decision Quality Spine", False))
+    checks.append(text_check(root, "improvement", "bounded generic fallback installed", ".codex/prompts/base_instructions/head-manager.md", "generic fallback may take a compact brief", False))
+    checks.append(text_check(root, "improvement", "decision quality review installed", ".agents/skills/tcx-workflow/SKILL.md", "high-impact risk judgment", False))
     checks.append(text_check(root, "improvement", "method profile routing installed", ".codex/prompts/base_instructions/head-manager.md", "listed-equity FCFF DCF", False))
-    checks.append(text_check(root, "improvement", "Codex-native workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "Reassess the workflow after each wave", False))
+    checks.append(text_check(root, "improvement", "Codex-native workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "## Fast Path", False))
     checks.append(text_check(root, "improvement", "analysis run hook installed", ".codex/hooks/tradingcodex_hook.py", "begin_analysis_run", True))
     checks.append(text_check(root, "improvement", "native execution parser installed", ".codex/hooks/tradingcodex_hook.py", "parse_native_execution_invocation", True))
     checks.append(text_check(root, "improvement", "native submit skill is explicit only", ".agents/skills/tcx-order-submit/agents/openai.yaml", "allow_implicit_invocation: false", False))
