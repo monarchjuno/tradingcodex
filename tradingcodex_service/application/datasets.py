@@ -371,7 +371,6 @@ def record_dataset_snapshot(
 
 def get_dataset_manifest(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root).expanduser().resolve()
-    _recover_incomplete_external_promotions(root)
     dataset_id = _dataset_id(args.get("dataset_id"))
     manifest = validate_dataset_manifest(
         read_regular_json(_manifest_path(root, dataset_id), label=f"dataset manifest {dataset_id}"),
@@ -424,7 +423,6 @@ def search_datasets(workspace_root: Path | str, args: dict[str, Any] | None = No
 
 def profile_dataset(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root).expanduser().resolve()
-    _recover_incomplete_external_promotions(root)
     dataset_id = _dataset_id(args.get("dataset_id"))
     if dataset_id in _withdrawn_dataset_ids(root):
         raise ValueError("withdrawn datasets cannot be profiled")
@@ -467,7 +465,6 @@ def get_dataset_rows(workspace_root: Path | str, args: dict[str, Any]) -> dict[s
     """Return one bounded, cursor-addressed page of immutable Dataset rows."""
 
     root = Path(workspace_root).expanduser().resolve()
-    _recover_incomplete_external_promotions(root)
     dataset_id = _dataset_id(args.get("dataset_id"))
     if dataset_id in _withdrawn_dataset_ids(root):
         raise ValueError("withdrawn datasets cannot be read")
@@ -551,7 +548,6 @@ def export_dataset_csv(workspace_root: Path | str, args: dict[str, Any]) -> dict
     """Export an immutable Dataset as CSV only when redistribution is explicit."""
 
     root = Path(workspace_root).expanduser().resolve()
-    _recover_incomplete_external_promotions(root)
     dataset_id = _dataset_id(args.get("dataset_id"))
     if dataset_id in _withdrawn_dataset_ids(root):
         raise ValueError("withdrawn datasets cannot be exported")
@@ -985,16 +981,6 @@ def _record_result(root: Path, manifest: dict[str, Any], *, status: str) -> dict
         "workspace_native": True,
         "workspace_context": workspace_context_payload(root),
     }
-
-
-def _recover_incomplete_external_promotions(root: Path) -> None:
-    # Local import avoids coupling the canonical Dataset writer to the optional
-    # external-acquisition orchestration path.
-    from tradingcodex_service.application.data_acquisition import (
-        recover_incomplete_data_acquisitions,
-    )
-
-    recover_incomplete_data_acquisitions(root)
 
 
 def _load_manifest(root: Path, dataset_id: str, *, require_payload: bool) -> dict[str, Any]:

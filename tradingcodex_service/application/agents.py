@@ -153,16 +153,11 @@ DATASET_WRITE = (
     "record_dataset_snapshot",
     "materialize_dataset_slice",
 )
-DATA_SOURCE_STATUS_READ = ("get_data_source_status",)
-OFFICIAL_SOURCE_PLAN_READ = ("get_official_source_plan",)
-OFFICIAL_SOURCE_FETCH_READ = ("fetch_official_source_data",)
 EXTERNAL_DATA_READ = (
-    "get_data_acquisition_receipt",
     "get_source_snapshot",
     "get_dataset_rows",
 )
 EXTERNAL_DATA_EXPORT = ("export_dataset_csv",)
-EXTERNAL_DATA_INGEST = ("record_external_data_result",)
 CALCULATION_CARD_DISCOVERY = (
     "search_calculations",
 )
@@ -268,7 +263,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="fundamental-analyst",
         label="Fundamental Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-fundamental"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-fundamental"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -279,11 +274,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -302,7 +293,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="technical-analyst",
         label="Technical Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-anti-overfit", "tcx-forecast", "tcx-artifact", "tcx-technical"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-anti-overfit", "tcx-forecast", "tcx-artifact", "tcx-technical"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -313,11 +304,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -336,7 +323,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="news-analyst",
         label="News Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-news"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-news"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -344,11 +331,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -367,7 +350,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="macro-analyst",
         label="Macro Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-macro"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-macro"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -378,11 +361,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -401,7 +380,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="instrument-analyst",
         label="Instrument Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-instrument"),
+        builtin_skills=("tcx-source-gate", "tcx-evidence", "tcx-scenarios", "tcx-forecast", "tcx-artifact", "tcx-instrument"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -409,11 +388,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -433,7 +408,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
         role="valuation-analyst",
         label="Valuation Analyst",
         group="research",
-        builtin_skills=("tcx-source-gate", "tcx-openbb", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-valuation"),
+        builtin_skills=("tcx-source-gate", "tcx-data-qc", "tcx-calculation", "tcx-scenarios", "tcx-forecast", "tcx-anti-overfit", "tcx-artifact", "tcx-valuation"),
         mcp_allowlist=(
             "create_research_artifact",
             "get_research_artifact",
@@ -444,11 +419,7 @@ AGENT_SPECS: dict[str, AgentSpec] = {
             "append_research_artifact_version",
             "export_research_artifact_md",
             "record_source_snapshot",
-            *DATA_SOURCE_STATUS_READ,
-            *OFFICIAL_SOURCE_PLAN_READ,
-            *OFFICIAL_SOURCE_FETCH_READ,
             *EXTERNAL_DATA_READ,
-            *EXTERNAL_DATA_INGEST,
             "create_research_spec",
             "get_research_spec",
             "list_research_specs",
@@ -690,7 +661,6 @@ SKILL_SPECS: dict[str, SkillSpec] = {
         user_visible=True,
     ),
     "tcx-source-gate": SkillSpec("tcx-source-gate", "TCX Source Gate", RESEARCH_ROLES, scope="subagent_shared"),
-    "tcx-openbb": SkillSpec("tcx-openbb", "TCX OpenBB", RESEARCH_ROLES, scope="subagent_shared"),
     "tcx-investor-context": SkillSpec("tcx-investor-context", "TCX Investor Context", ("head-manager",), user_visible=True),
     "tcx-strategy": SkillSpec("tcx-strategy", "TCX Strategy", ("head-manager",), user_visible=True),
     "tcx-brain": SkillSpec(

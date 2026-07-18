@@ -112,7 +112,6 @@ _SEARCHABLE_STRUCTURED_FIELDS = frozenset(
 _PRIMARY_ID_BY_TYPE = {
     "source_snapshot": "snapshot_id",
     "dataset_manifest": "dataset_id",
-    "data_acquisition_receipt": "receipt_id",
     "dataset_withdrawal": "withdrawal_id",
     "calculation_spec": "calculation_spec_id",
     "calculation_run": "calculation_run_id",
@@ -651,8 +650,6 @@ def _infer_structured_type(relative: str) -> str:
         return "source_snapshot"
     if relative.startswith("trading/research/datasets/manifests/"):
         return "dataset_manifest"
-    if relative.startswith("trading/research/data-acquisitions/receipts/"):
-        return "data_acquisition_receipt"
     if relative.startswith("trading/research/datasets/withdrawals/"):
         return "dataset_withdrawal"
     if relative.startswith("trading/research/calculations/specs/"):

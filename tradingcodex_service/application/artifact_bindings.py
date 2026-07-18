@@ -76,8 +76,6 @@ ARTIFACT_BINDING_FIELDS_V2 = ARTIFACT_BINDING_FIELDS_V1 | {
 ARTIFACT_BINDING_FIELDS_V3 = ARTIFACT_BINDING_FIELDS_V2 | {
     "dataset_ids",
     "dataset_manifest_hashes",
-    "data_acquisition_receipt_ids",
-    "data_acquisition_receipt_hashes",
 }
 ARTIFACT_BINDING_FIELDS = ARTIFACT_BINDING_FIELDS_V3
 _AUTHENTICATED_SERVICE_BINDING_WRITE = object()
@@ -505,32 +503,15 @@ def _expected_receipt_material(
             "authenticated artifact source snapshot ids and hashes must match current snapshots"
         )
     dataset_ids = artifact.get("dataset_ids", [])
-    data_acquisition_receipt_ids = artifact.get(
-        "data_acquisition_receipt_ids",
-        [],
-    )
-    dataset_hashes, acquisition_receipt_hashes = (
-        validated_research_artifact_data_lineage(
-            root,
-            dataset_ids=dataset_ids,
-            data_acquisition_receipt_ids=data_acquisition_receipt_ids,
-            source_snapshot_ids=source_snapshot_ids,
-            workflow_run_id=run_id,
-            knowledge_cutoff=str(artifact.get("knowledge_cutoff") or ""),
-        )
+    dataset_hashes = validated_research_artifact_data_lineage(
+        root,
+        dataset_ids=dataset_ids,
+        knowledge_cutoff=str(artifact.get("knowledge_cutoff") or ""),
     )
     if artifact.get("dataset_manifest_hashes", {}) != dataset_hashes:
         raise ValueError(
             "authenticated artifact Dataset ids and manifest hashes must match "
             "current Datasets"
-        )
-    if (
-        artifact.get("data_acquisition_receipt_hashes", {})
-        != acquisition_receipt_hashes
-    ):
-        raise ValueError(
-            "authenticated artifact acquisition receipt ids and hashes must match "
-            "current receipts"
         )
     calculation_run_ids = artifact.get("calculation_run_ids", [])
     if not isinstance(calculation_run_ids, list):
@@ -576,7 +557,7 @@ def _expected_receipt_material(
         raise ValueError(
             "authenticated artifact calculation reuse origins must match current runs"
         )
-    has_data_lineage = bool(dataset_ids or data_acquisition_receipt_ids)
+    has_data_lineage = bool(dataset_ids)
     if has_data_lineage:
         receipt_schema_version = ARTIFACT_BINDING_SCHEMA_VERSION
     elif normalized_calculation_run_ids:
@@ -633,13 +614,6 @@ def _expected_receipt_material(
                 "dataset_manifest_hashes": {
                     key: dataset_hashes[key]
                     for key in sorted(dataset_hashes)
-                },
-                "data_acquisition_receipt_ids": list(
-                    data_acquisition_receipt_ids
-                ),
-                "data_acquisition_receipt_hashes": {
-                    key: acquisition_receipt_hashes[key]
-                    for key in sorted(acquisition_receipt_hashes)
                 },
             }
         )

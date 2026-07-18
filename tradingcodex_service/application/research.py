@@ -101,8 +101,6 @@ _RESEARCH_ARTIFACT_REVIEW_EXACT_FIELDS = (
     "source_snapshot_hashes",
     "dataset_ids",
     "dataset_manifest_hashes",
-    "data_acquisition_receipt_ids",
-    "data_acquisition_receipt_hashes",
     "calculation_run_ids",
     "calculation_run_hashes",
 )
@@ -463,19 +461,6 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
             "dataset_manifest_hashes",
             existing.get("dataset_manifest_hashes") if existing else {},
         ),
-        "data_acquisition_receipt_ids": _frontmatter_list(
-            args,
-            metadata,
-            source_frontmatter,
-            "data_acquisition_receipt_ids",
-        ),
-        "data_acquisition_receipt_hashes": _frontmatter_value(
-            args,
-            metadata,
-            source_frontmatter,
-            "data_acquisition_receipt_hashes",
-            existing.get("data_acquisition_receipt_hashes") if existing else {},
-        ),
         "evidence_lane": _frontmatter_value(args, metadata, source_frontmatter, "evidence_lane", ""),
         "research_spec_id": _frontmatter_value(args, metadata, source_frontmatter, "research_spec_id", ""),
         "replay_manifest_id": _frontmatter_value(args, metadata, source_frontmatter, "replay_manifest_id", ""),
@@ -606,34 +591,16 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
                 "source_snapshot_hashes are service-derived from source_snapshot_ids"
         )
         frontmatter["source_snapshot_hashes"] = snapshot_hashes
-        dataset_hashes, acquisition_receipt_hashes = (
-            validated_research_artifact_data_lineage(
-                root,
-                dataset_ids=frontmatter["dataset_ids"],
-                data_acquisition_receipt_ids=frontmatter[
-                    "data_acquisition_receipt_ids"
-                ],
-                source_snapshot_ids=frontmatter["source_snapshot_ids"],
-                workflow_run_id=str(frontmatter.get("workflow_run_id") or ""),
-                knowledge_cutoff=str(frontmatter.get("knowledge_cutoff") or ""),
-            )
+        dataset_hashes = validated_research_artifact_data_lineage(
+            root,
+            dataset_ids=frontmatter["dataset_ids"],
+            knowledge_cutoff=str(frontmatter.get("knowledge_cutoff") or ""),
         )
         if frontmatter.get("dataset_manifest_hashes") not in ({}, dataset_hashes):
             raise ValueError(
                 "dataset_manifest_hashes are service-derived from dataset_ids"
             )
-        if frontmatter.get("data_acquisition_receipt_hashes") not in (
-            {},
-            acquisition_receipt_hashes,
-        ):
-            raise ValueError(
-                "data_acquisition_receipt_hashes are service-derived from "
-                "data_acquisition_receipt_ids"
-            )
         frontmatter["dataset_manifest_hashes"] = dataset_hashes
-        frontmatter["data_acquisition_receipt_hashes"] = (
-            acquisition_receipt_hashes
-        )
         calculation_run_ids = frontmatter["calculation_run_ids"]
         if calculation_run_ids:
             if not str(frontmatter.get("workflow_run_id") or "").strip():
@@ -895,14 +862,6 @@ def _artifact_binding_payload_from_rendered(
         "dataset_manifest_hashes": (
             frontmatter.get("dataset_manifest_hashes")
             if isinstance(frontmatter.get("dataset_manifest_hashes"), dict)
-            else {}
-        ),
-        "data_acquisition_receipt_ids": _coerce_list(
-            frontmatter.get("data_acquisition_receipt_ids")
-        ),
-        "data_acquisition_receipt_hashes": (
-            frontmatter.get("data_acquisition_receipt_hashes")
-            if isinstance(frontmatter.get("data_acquisition_receipt_hashes"), dict)
             else {}
         ),
         "knowledge_cutoff": str(frontmatter.get("knowledge_cutoff") or ""),
@@ -1509,11 +1468,6 @@ def get_source_snapshot(workspace_root: Path | str, args: dict[str, Any]) -> dic
     """Read an authenticated SourceSnapshot with an opt-in bounded payload."""
 
     root = Path(workspace_root).expanduser().resolve()
-    from tradingcodex_service.application.data_acquisition import (
-        recover_incomplete_data_acquisitions,
-    )
-
-    recover_incomplete_data_acquisitions(root)
     snapshot_id = str(args.get("snapshot_id") or "").strip()
     if not snapshot_id or sanitize_id(snapshot_id) != snapshot_id:
         raise ValueError("snapshot_id is invalid")
@@ -1721,11 +1675,6 @@ def rebuild_research_index(workspace_root: Path | str) -> dict[str, Any]:
 
 
 def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
-    from tradingcodex_service.application.data_acquisition import (
-        recover_incomplete_data_acquisitions,
-    )
-
-    recover_incomplete_data_acquisitions(root)
     from tradingcodex_service.application.artifact_catalog import (
         _refresh_artifact_catalog,
     )
@@ -2105,14 +2054,6 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
             if isinstance(frontmatter.get("dataset_manifest_hashes"), dict)
             else {}
         ),
-        "data_acquisition_receipt_ids": _coerce_list(
-            frontmatter.get("data_acquisition_receipt_ids")
-        ),
-        "data_acquisition_receipt_hashes": (
-            frontmatter.get("data_acquisition_receipt_hashes")
-            if isinstance(frontmatter.get("data_acquisition_receipt_hashes"), dict)
-            else {}
-        ),
         "evidence_lane": str(frontmatter.get("evidence_lane") or ""),
         "research_spec_id": str(frontmatter.get("research_spec_id") or ""),
         "replay_manifest_id": str(frontmatter.get("replay_manifest_id") or ""),
@@ -2301,12 +2242,9 @@ def validated_research_artifact_data_lineage(
     root: Path | str,
     *,
     dataset_ids: list[Any],
-    data_acquisition_receipt_ids: list[Any],
-    source_snapshot_ids: list[Any],
-    workflow_run_id: str,
     knowledge_cutoff: str,
-) -> tuple[dict[str, str], dict[str, str]]:
-    """Authenticate Dataset/receipt bindings and derive their sealed hashes."""
+) -> dict[str, str]:
+    """Authenticate Dataset bindings and derive their sealed hashes."""
 
     workspace = Path(root).expanduser().resolve(strict=False)
     normalized_dataset_ids = _canonical_lineage_ids(
@@ -2314,20 +2252,12 @@ def validated_research_artifact_data_lineage(
         field="dataset_ids",
         pattern=r"dataset-[0-9a-f]{24}",
     )
-    normalized_receipt_ids = _canonical_lineage_ids(
-        data_acquisition_receipt_ids,
-        field="data_acquisition_receipt_ids",
-        pattern=r"data-acquisition-[0-9a-f]{24}",
-    )
-    if not normalized_dataset_ids and not normalized_receipt_ids:
-        return {}, {}
+    if not normalized_dataset_ids:
+        return {}
 
     cutoff_text = str(knowledge_cutoff or "").strip()
     if not cutoff_text:
-        raise ValueError(
-            "knowledge_cutoff is required when dataset_ids or "
-            "data_acquisition_receipt_ids are supplied"
-        )
+        raise ValueError("knowledge_cutoff is required when dataset_ids are supplied")
     cutoff = _normalized_iso(cutoff_text, "knowledge_cutoff")
 
     from tradingcodex_service.application.datasets import get_dataset_manifest
@@ -2350,97 +2280,21 @@ def validated_research_artifact_data_lineage(
             )
         dataset_hashes[dataset_id] = str(manifest["manifest_hash"])
 
-    if normalized_receipt_ids and not str(workflow_run_id or "").strip():
-        raise ValueError(
-            "data_acquisition_receipt_ids require workflow_run_id"
-        )
-
-    from tradingcodex_service.application.data_acquisition import (
-        DATA_ACQUISITION_RECEIPT_ROOT,
-        validate_data_acquisition_lineage,
-        validate_data_acquisition_receipt,
-    )
-    from tradingcodex_service.application.research_objects import read_regular_json
-
-    normalized_snapshot_ids = {
-        str(value).strip()
-        for value in source_snapshot_ids
-        if isinstance(value, str) and value.strip()
-    }
-    dataset_id_set = set(normalized_dataset_ids)
-    receipt_hashes: dict[str, str] = {}
-    for receipt_id in normalized_receipt_ids:
-        path = safe_workspace_path(
-            workspace,
-            DATA_ACQUISITION_RECEIPT_ROOT / f"{receipt_id}.json",
-            allowed_roots=(DATA_ACQUISITION_RECEIPT_ROOT,),
-        )
-        receipt = validate_data_acquisition_receipt(
-            read_regular_json(
-                path,
-                label=f"data acquisition receipt {receipt_id}",
-            ),
-            expected_receipt_id=receipt_id,
-        )
-        validate_data_acquisition_lineage(workspace, receipt)
-        if str(receipt["run_id"]) != str(workflow_run_id):
-            raise ValueError(
-                f"data acquisition receipt {receipt_id} belongs to workflow run "
-                f"{receipt['run_id']}, not artifact workflow run {workflow_run_id}"
-            )
-        receipt_recorded_at = _normalized_iso(
-            receipt.get("recorded_at"),
-            f"data acquisition receipt {receipt_id} recorded_at",
-        )
-        if _iso_datetime(receipt_recorded_at) > _iso_datetime(cutoff):
-            raise ValueError(
-                f"data acquisition receipt {receipt_id} recorded_at "
-                f"{receipt_recorded_at} is after artifact knowledge_cutoff {cutoff}; "
-                f"set knowledge_cutoff at or after {receipt_recorded_at}"
-            )
-        receipt_dataset_id = str(receipt.get("dataset_id") or "")
-        if receipt_dataset_id and receipt_dataset_id not in dataset_id_set:
-            raise ValueError(
-                f"data acquisition receipt {receipt_id} dataset_id "
-                f"{receipt_dataset_id} must be included in artifact dataset_ids"
-            )
-        receipt_snapshot_id = str(receipt.get("snapshot_id") or "")
-        if receipt_snapshot_id and receipt_snapshot_id not in normalized_snapshot_ids:
-            raise ValueError(
-                f"data acquisition receipt {receipt_id} snapshot_id "
-                f"{receipt_snapshot_id} must be included in artifact "
-                "source_snapshot_ids"
-            )
-        receipt_hashes[receipt_id] = str(receipt["receipt_hash"])
-
-    return (
-        {dataset_id: dataset_hashes[dataset_id] for dataset_id in sorted(dataset_hashes)},
-        {receipt_id: receipt_hashes[receipt_id] for receipt_id in sorted(receipt_hashes)},
-    )
+    return {dataset_id: dataset_hashes[dataset_id] for dataset_id in sorted(dataset_hashes)}
 
 
 def _validate_stored_research_artifact_data_lineage(
     root: Path,
     artifact: dict[str, Any],
 ) -> None:
-    dataset_hashes, receipt_hashes = validated_research_artifact_data_lineage(
+    dataset_hashes = validated_research_artifact_data_lineage(
         root,
         dataset_ids=artifact.get("dataset_ids", []),
-        data_acquisition_receipt_ids=artifact.get(
-            "data_acquisition_receipt_ids",
-            [],
-        ),
-        source_snapshot_ids=artifact.get("source_snapshot_ids", []),
-        workflow_run_id=str(artifact.get("workflow_run_id") or ""),
         knowledge_cutoff=str(artifact.get("knowledge_cutoff") or ""),
     )
     if artifact.get("dataset_manifest_hashes", {}) != dataset_hashes:
         raise ValueError(
             "research artifact dataset manifest hashes do not match current Datasets"
-        )
-    if artifact.get("data_acquisition_receipt_hashes", {}) != receipt_hashes:
-        raise ValueError(
-            "research artifact acquisition receipt hashes do not match current receipts"
         )
 
 

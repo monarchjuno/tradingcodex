@@ -53,14 +53,11 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "search_research_artifacts",
     "list_artifact_catalog",
     "search_artifact_catalog",
-    "get_data_source_status",
-    "get_data_acquisition_receipt",
     "get_source_snapshot",
     "search_datasets",
     "get_dataset_manifest",
     "get_dataset_rows",
     "profile_dataset",
-    "get_official_source_plan",
     "search_calculations",
     "get_calculation_run",
     "compare_calculation_runs",
@@ -79,14 +76,11 @@ REGISTRY_FAILURE_SAFE_READ_TOOLS = frozenset({
     "search_research_artifacts",
     "list_artifact_catalog",
     "search_artifact_catalog",
-    "get_data_source_status",
-    "get_data_acquisition_receipt",
     "get_source_snapshot",
     "search_datasets",
     "get_dataset_manifest",
     "get_dataset_rows",
     "profile_dataset",
-    "get_official_source_plan",
     "search_calculations",
     "get_calculation_run",
     "compare_calculation_runs",
@@ -98,6 +92,11 @@ RETIRED_PUBLIC_MCP_TOOLS = frozenset(
         "submit_approved_order",
         "cancel_submitted_order",
         "refresh_broker_order_status",
+        "fetch_official_source_data",
+        "get_data_acquisition_receipt",
+        "get_data_source_status",
+        "get_official_source_plan",
+        "record_external_data_result",
     }
 )
 ORDER_TURN_GRANT_TOOL = "use_order_turn_grant"
@@ -159,7 +158,7 @@ class McpToolSpec:
         }
 
     def _open_world_hint(self) -> bool:
-        return self.category in {"brokers", "execution"} or self.name == "fetch_official_source_data"
+        return self.category in {"brokers", "execution"}
 
 
 def json_object_schema(
@@ -339,8 +338,8 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
             "of guessing an end-of-day or other future timestamp. "
             "When source_snapshot_ids are supplied, it must be at or after the "
             "maximum service-returned snapshot known_at timestamp. It must also "
-            "cover every bound Dataset knowledge_cutoff and acquisition receipt "
-            "recorded_at timestamp; prefer the exact maximum lineage timestamp."
+            "cover every bound Dataset knowledge_cutoff; prefer the exact maximum "
+            "lineage timestamp."
         ),
     },
     "context_summary": {"type": "string"},
@@ -365,19 +364,6 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
         "description": (
             "Immutable Dataset ids used by the artifact. Manifest hashes are "
             "authenticated and derived by the service."
-        ),
-    },
-    "data_acquisition_receipt_ids": {
-        "type": "array",
-        "maxItems": 50,
-        "items": {
-            "type": "string",
-            "pattern": r"^data-acquisition-[0-9a-f]{24}$",
-        },
-        "description": (
-            "Run-local Data Acquisition Receipt ids supporting the artifact. "
-            "Receipt hashes are authenticated and derived by the service; any "
-            "receipt Dataset/Snapshot ids must also be bound explicitly."
         ),
     },
     "calculation_run_ids": {
@@ -1063,7 +1049,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         name="create_research_artifact",
         description=(
             "Store markdown research as a workspace-native file. For an analysis run, pass workflow_run_id and any exact "
-            "input_artifact_ids, dataset_ids, and data_acquisition_receipt_ids consumed. "
+            "input_artifact_ids and dataset_ids consumed. "
             "The service derives producer identity, verifies run-local lineage, and computes content hashes; "
             "it does not require a server plan or task binding. Include a non-empty readiness_label. When "
             "decision_quality_required=true, thesis_lifecycle.state and its state-specific evidence are required."
@@ -1322,56 +1308,6 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         capability_required="source_snapshot.record",
     ),
     McpToolSpec(
-        name="get_data_source_status",
-        description=(
-            "Read the sanitized TradingCodex external-data integration status, including "
-            "declared access, credential-reference availability, runtime compatibility, "
-            "projection freshness, observed access, and recommended restart actions."
-        ),
-        category="integrations",
-        risk_level="read",
-        allowed_roles=roles_with_mcp_tool("get_data_source_status"),
-        handler_name="get_data_source_status",
-        input_schema=object_schema(
-            {
-                "provider": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_-]{0,63}$",
-                },
-                "data_kind": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                },
-            },
-            additional_properties=False,
-        ),
-    ),
-    McpToolSpec(
-        name="get_data_acquisition_receipt",
-        description=(
-            "Read one authenticated and sanitized DataAcquisitionReceipt by exact receipt or "
-            "Dataset id. Returns source, evidence, coverage, and lineage metadata without raw "
-            "rows, provider queries, credentials, or unbounded payloads."
-        ),
-        category="research",
-        risk_level="read",
-        allowed_roles=roles_with_mcp_tool("get_data_acquisition_receipt"),
-        handler_name="get_data_acquisition_receipt",
-        input_schema=object_schema(
-            {
-                "receipt_id": {
-                    "type": "string",
-                    "pattern": r"^data-acquisition-[0-9a-f]{24}$",
-                },
-                "dataset_id": {
-                    "type": "string",
-                    "pattern": r"^dataset-[0-9a-f]{24}$",
-                },
-            },
-            additional_properties=False,
-        ),
-    ),
-    McpToolSpec(
         name="get_source_snapshot",
         description=(
             "Read one authenticated SourceSnapshot. Payload is omitted by default; "
@@ -1392,80 +1328,6 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
                 },
             },
             ["snapshot_id"],
-            additional_properties=False,
-        ),
-    ),
-    McpToolSpec(
-        name="get_official_source_plan",
-        description=(
-            "Return the bounded TradingCodex official-source candidate plan for one data need. "
-            "This is source discovery metadata and does not fetch external data."
-        ),
-        category="research",
-        risk_level="read",
-        allowed_roles=roles_with_mcp_tool("get_official_source_plan"),
-        handler_name="get_official_source_plan",
-        input_schema=object_schema(
-            {
-                "data_kind": {"type": "string", "minLength": 1},
-                "asset_class": {"type": "string"},
-                "region": {"type": "string"},
-                "source_id": {"type": "string"},
-                "source_policy": {
-                    "type": "string",
-                    "enum": ["strict", "preferred", "best_available"],
-                },
-            },
-            ["data_kind"],
-            additional_properties=False,
-        ),
-    ),
-    McpToolSpec(
-        name="fetch_official_source_data",
-        description=(
-            "Execute one sequential, bounded TradingCodex vanilla official-source plan "
-            "against reviewed keyless hosts. Returns only compact normalized rows, columns, "
-            "provenance, and typed outcomes—never a raw HTTP body. Free-key sources remain "
-            "approval/configuration gaps. The evidence-producing caller must immediately pass "
-            "every success or typed failure to record_external_data_result and must not repeat "
-            "the same semantic request."
-        ),
-        category="research",
-        risk_level="read",
-        allowed_roles=roles_with_mcp_tool("fetch_official_source_data"),
-        handler_name="fetch_official_source_data",
-        input_schema=object_schema(
-            {
-                "data_kind": {"type": "string", "minLength": 1, "maxLength": 64},
-                "asset_class": {"type": "string", "maxLength": 64},
-                "region": {"type": "string", "maxLength": 6},
-                "source_id": {
-                    "type": "string",
-                    "pattern": "^[a-z][a-z0-9-]{0,63}$",
-                },
-                "source_policy": {
-                    "type": "string",
-                    "enum": ["strict", "preferred", "best_available"],
-                },
-                "identifiers": {
-                    "type": "array",
-                    "minItems": 1,
-                    "maxItems": 5,
-                    "items": {"type": "string", "minLength": 1, "maxLength": 160},
-                },
-                "fields": {
-                    "type": "array",
-                    "maxItems": 40,
-                    "items": {
-                        "type": "string",
-                        "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$",
-                    },
-                },
-                "period_start": {"type": "string", "maxLength": 40},
-                "period_end": {"type": "string", "maxLength": 40},
-                "as_of": {"type": "string", "maxLength": 40},
-            },
-            ["data_kind", "identifiers"],
             additional_properties=False,
         ),
     ),
@@ -1630,268 +1492,6 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             "columns",
         ], additional_properties=False),
         capability_required="dataset.record",
-    ),
-    McpToolSpec(
-        name="record_external_data_result",
-        description=(
-            "Record one typed external acquisition result. Valid results of at most 120 rows "
-            "are atomically promoted into an authenticated SourceSnapshot, immutable Dataset, "
-            "and DataAcquisitionReceipt; failed attempts create a receipt only and never "
-            "fabricate rows or lineage. "
-            "Raw credentials, authorization headers, and credential-bearing URLs are rejected."
-        ),
-        category="research",
-        risk_level="write",
-        allowed_roles=roles_with_mcp_tool("record_external_data_result"),
-        handler_name="record_external_data_result",
-        input_schema=object_schema(
-            {
-                "data_need": {
-                    "type": "object",
-                    "properties": {
-                        "run_id": {
-                            "type": "string",
-                            "pattern": r"^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$",
-                            "maxLength": 180,
-                        },
-                        "family_id": {
-                            "type": "string",
-                            "pattern": r"^data-family-[0-9a-f]{24}$",
-                            "description": (
-                                "Optional service-derived family identity. Omit on the first "
-                                "attempt; if supplied it must match the canonical DataNeed family."
-                            ),
-                        },
-                        "data_kind": {"type": "string"},
-                        "asset_type": {"type": "string"},
-                        "identifiers": {"type": "array", "items": {"type": "string"}},
-                        "fields": {"type": "array", "items": {"type": "string"}},
-                        "period_start": {
-                            "type": "string",
-                            "format": "date-time",
-                            "description": "Optional; supply together with period_end.",
-                        },
-                        "period_end": {
-                            "type": "string",
-                            "format": "date-time",
-                            "description": "Optional; supply together with period_start.",
-                        },
-                        "as_of": {
-                            "type": "string",
-                            "format": "date-time",
-                            "description": "Required only when a complete period is not supplied.",
-                        },
-                        "frequency": {"type": "string"},
-                        "adjustment_policy": {"type": "string"},
-                        "minimum_evidence_grade": {
-                            "type": "string",
-                            "enum": ["screen-grade", "factual-baseline"],
-                        },
-                        "owner_role": {
-                            "type": "string",
-                            "enum": [
-                                "fundamental-analyst",
-                                "technical-analyst",
-                                "news-analyst",
-                                "macro-analyst",
-                                "instrument-analyst",
-                                "valuation-analyst",
-                            ],
-                        },
-                        "source_policy": {
-                            "type": "string",
-                            "enum": ["strict", "preferred", "best_available"],
-                        },
-                        "explicit_source": {"type": "string"},
-                    },
-                    "required": [
-                        "run_id",
-                        "data_kind",
-                        "asset_type",
-                        "identifiers",
-                        "fields",
-                        "frequency",
-                        "adjustment_policy",
-                        "minimum_evidence_grade",
-                        "owner_role",
-                        "source_policy",
-                    ],
-                    "additionalProperties": False,
-                },
-                "source_tier": {
-                    "type": "string",
-                    "enum": ["user_capability", "openbb", "tradingcodex"],
-                },
-                "transport": {"type": "string"},
-                "requested_provider": {"type": "string"},
-                "returned_provider": {"type": "string"},
-                "upstream_provider": {"type": "string"},
-                "tool_name": {"type": "string"},
-                "route": {"type": "string"},
-                "returned_adjustment_policy": {"type": "string"},
-                "compatibility_receipt_hash": {"type": "string"},
-                "result_status": {
-                    "type": "string",
-                    "enum": [
-                        "complete_valid",
-                        "partial_valid",
-                        "correctable_error",
-                        "terminal_gap",
-                        "unsafe",
-                        "transient",
-                        "approval_required",
-                        "conflict",
-                    ],
-                },
-                "fallback_reason": {"type": "string"},
-                "predecessor_receipt_ids": {
-                    "type": "array",
-                    "items": {
-                        "type": "string",
-                        "pattern": r"^data-acquisition-[0-9a-f]{24}$",
-                    },
-                    "maxItems": 20,
-                },
-                "skipped_tier_attestations": {
-                    "type": "array",
-                    "maxItems": 2,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "source_tier": {
-                                "type": "string",
-                                "enum": ["user_capability", "openbb"],
-                            },
-                            "status": {
-                                "type": "string",
-                                "enum": ["unavailable", "skipped"],
-                            },
-                            "reason": {
-                                "type": "string",
-                                "minLength": 1,
-                                "maxLength": 300,
-                            },
-                        },
-                        "required": ["source_tier", "status", "reason"],
-                        "additionalProperties": False,
-                    },
-                },
-                "missing_fields": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "maxItems": 100,
-                },
-                "missing_identifiers": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "maxItems": 100,
-                },
-                "missing_periods": {
-                    "type": "array",
-                    "maxItems": 1,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "start": {"type": "string", "format": "date-time"},
-                            "end": {"type": "string", "format": "date-time"},
-                        },
-                        "required": ["start", "end"],
-                        "additionalProperties": False,
-                    },
-                },
-                "evidence_grade": {
-                    "type": "string",
-                    "enum": ["unusable", "screen-grade", "factual-baseline"],
-                },
-                "provider_query": {"type": "object"},
-                "source_category": {"type": "string"},
-                "source_locator": {"type": "string"},
-                "observed_at": {"type": "string"},
-                "published_at": {"type": "string"},
-                "revision": {"type": "string"},
-                "vintage": {"type": "string"},
-                "timezone": {"type": "string"},
-                "coverage_note": {"type": "string"},
-                "warnings": {"type": "array", "items": {"type": "string"}},
-                "rows": {
-                    "type": "array",
-                    "minItems": 0,
-                    "maxItems": 120,
-                    "items": {"type": "object"},
-                },
-                "columns": {
-                    "type": "array",
-                    "minItems": 0,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "name": {"type": "string"},
-                            "type": {"type": "string"},
-                            "nullable": {"type": "boolean"},
-                            "unit": {"type": "string"},
-                            "currency": {"type": "string"},
-                            "description": {"type": "string"},
-                        },
-                        "required": ["name", "type"],
-                        "additionalProperties": False,
-                    },
-                },
-                "title": {"type": "string"},
-                "description": {"type": "string"},
-                "tags": {"type": "array", "items": {"type": "string"}},
-                "instrument_ids": {"type": "array", "items": {"type": "string"}},
-                "symbols": {"type": "array", "items": {"type": "string"}},
-                "universe_membership_policy": {"type": "string"},
-                "universe_membership": {"type": "object"},
-                "corporate_action_policy": {"type": "string"},
-                "delisting_policy": {"type": "string"},
-                "retention_policy": {
-                    "type": "string",
-                    "enum": ["permanent_local", "locator_only", "time_limited"],
-                },
-                "redistribution": {"type": "string"},
-                "license_notes": {"type": "string"},
-                "data_classification": {
-                    "type": "string",
-                    "enum": ["public", "licensed_research", "user_provided"],
-                },
-            },
-            [
-                "data_need",
-                "source_tier",
-                "transport",
-                "requested_provider",
-                "upstream_provider",
-                "tool_name",
-                "route",
-                "result_status",
-                "evidence_grade",
-                "provider_query",
-            ],
-            additional_properties=False,
-        ),
-        capability_required="external_data.record",
-    ),
-    McpToolSpec(
-        name="export_dataset_csv",
-        description=(
-            "Export an immutable Dataset to the workspace CSV export directory only when its "
-            "manifest explicitly permits redistribution."
-        ),
-        category="research",
-        risk_level="write",
-        allowed_roles=roles_with_mcp_tool("export_dataset_csv"),
-        handler_name="export_dataset_csv",
-        input_schema=object_schema(
-            {
-                "dataset_id": {"type": "string"},
-                "columns": {"type": "array", "items": {"type": "string"}, "maxItems": 100},
-                "export_path": {"type": "string"},
-            },
-            ["dataset_id"],
-            additional_properties=False,
-        ),
-        capability_required="dataset.export",
     ),
     McpToolSpec(
         name="materialize_dataset_slice",
@@ -2809,8 +2409,6 @@ def raw_call_tool(
         brokers,
         calculations,
         codex_capabilities,
-        data_acquisition,
-        data_sources,
         datasets,
         evaluation_lab,
         execution_gateway,
@@ -2818,8 +2416,6 @@ def raw_call_tool(
         investment_analysis,
         investment_brains,
         orders,
-        official_source_adapters,
-        official_sources,
         policy,
         portfolio,
         postmortems,
@@ -3248,32 +2844,12 @@ def raw_call_tool(
             workspace_root,
             {**args, "principal_id": principal_id},
         ),
-        "get_data_source_status": lambda: data_sources.get_data_source_status(
-            workspace_root,
-            args,
-        ),
-        "get_data_acquisition_receipt": lambda: data_acquisition.get_data_acquisition_receipt(
-            workspace_root,
-            {**args, "principal_id": principal_id},
-        ),
         "get_source_snapshot": lambda: research.get_source_snapshot(workspace_root, args),
-        "get_official_source_plan": lambda: official_sources.get_official_source_plan(
-            workspace_root,
-            args,
-        ),
-        "fetch_official_source_data": lambda: official_source_adapters.fetch_official_source_data(
-            workspace_root,
-            args,
-        ),
         "search_datasets": lambda: datasets.search_datasets(workspace_root, args),
         "get_dataset_manifest": lambda: datasets.get_dataset_manifest(workspace_root, args),
         "get_dataset_rows": lambda: datasets.get_dataset_rows(workspace_root, args),
         "profile_dataset": lambda: datasets.profile_dataset(workspace_root, args),
         "record_dataset_snapshot": lambda: datasets.record_dataset_snapshot(
-            workspace_root,
-            {**args, "principal_id": principal_id},
-        ),
-        "record_external_data_result": lambda: data_acquisition.record_external_data_result(
             workspace_root,
             {**args, "principal_id": principal_id},
         ),
