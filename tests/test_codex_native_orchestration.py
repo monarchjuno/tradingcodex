@@ -242,8 +242,7 @@ def test_generated_hook_is_transport_only_and_audits_native_spawns(workspace: Pa
     assert "classify_starter_request" not in source
     assert "record_workflow_plan" not in source
     assert "dispatch_tasks_for_state" not in source
-    assert "handle_native_spawn" in source
-    assert 'rewritten["fork_turns"] = "none"' in source
+    assert "native_codex_transport_normalized" not in source
 
     prompt = subprocess.run(
         [sys.executable, str(hook), "user-prompt-submit"],
@@ -308,13 +307,44 @@ def test_generated_hook_is_transport_only_and_audits_native_spawns(workspace: Pa
     assert dispatch_audit["message_bytes"] == len(valid_input["message"].encode("utf-8"))
     assert "message" not in dispatch_audit
     assert pre_spawn({**valid_input, "agent_type": "default"}) is None
-    normalized_fork = pre_spawn({**valid_input, "fork_turns": "all"})
-    assert normalized_fork["hookSpecificOutput"]["updatedInput"] == valid_input
+    assert pre_spawn({**valid_input, "fork_turns": "all"}) is None
     assert pre_spawn({**valid_input, "task_name": "ACME facts"}) is None
-    for override in ({"reasoning_effort": "high"}, {"model": "gpt-5.6-terra"}):
-        normalized_override = pre_spawn({**valid_input, **override})
-        assert normalized_override["hookSpecificOutput"]["updatedInput"] == valid_input
-    assert pre_spawn({**valid_input, "sandbox_mode": "read-only"}) is None
+    for override in (
+        {"reasoning_effort": "high"},
+        {"model": "gpt-5.6-terra"},
+        {"sandbox_mode": "read-only"},
+    ):
+        assert pre_spawn({**valid_input, **override}) is None
+
+    followup_message = "Clarify whether the periods and schemas align."
+    followup_result = subprocess.run(
+        [sys.executable, str(hook), "pre-tool-use"],
+        cwd=workspace,
+        input=json.dumps({
+            "tool_name": "agentsfollowup_task",
+            "workflow_run_id": run["workflow_run_id"],
+            "tool_input": {
+                "target": "technical_evidence",
+                "message": followup_message,
+            },
+        }),
+        text=True,
+        capture_output=True,
+        env={**os.environ, "PYTHONPATH": str(ROOT)},
+        check=True,
+    )
+    assert followup_result.stdout == ""
+    followup_audit = json.loads(
+        (workspace / "trading/audit/codex-hooks.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()[-1]
+    )
+    assert followup_audit["tool_name"] == "agentsfollowup_task"
+    assert followup_audit["target"] == "technical_evidence"
+    assert followup_audit["message_sha256"] == hashlib.sha256(
+        followup_message.encode("utf-8")
+    ).hexdigest()
+    assert "message" not in followup_audit
 
 
 def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(workspace: Path) -> None:
@@ -361,16 +391,16 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     assert "generic fallback" in head
     assert '`fork_turns="none"`' in head
     assert "Omit `model` and" in head
-    assert "Never wait or follow up without a returned live target" in flat_head
-    assert "absent from completed tool calls in this run" in flat_head
+    assert "Native wait may be targetless because it waits for any child" in flat_head
+    assert "child-lifecycle results in this run" in flat_head
     assert "wait_agent` timeout alone is not a reason to message" in flat_head
     assert "## Fast Path" in skill
     assert "Otherwise a generic child may" in skill
     assert "followup_task" in skill
     assert '`fork_turns="none"`' in skill
     assert "omit `model` and" in skill
-    assert "Do not wait or follow up without a returned live target" in flat_skill
-    assert "absent from completed tool calls in this run" in flat_skill
+    assert "native wait may be targetless because it waits for any child" in flat_skill.lower()
+    assert "child-lifecycle results in this run" in flat_skill
     assert "Save an authenticated research artifact when the result will support" in skill
     assert "$tcx-source-gate" in skill
     assert "optional direct OpenBB" in skill

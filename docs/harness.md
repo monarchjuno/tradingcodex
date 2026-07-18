@@ -78,7 +78,7 @@ source dumps. This is skill guidance, not a provider router or trust engine.
 The generated hook is deliberately small. It owns:
 
 - redacted session/run and subagent lifecycle context;
-- fixed-profile spawn transport normalization without role selection;
+- redacted native spawn and follow-up call metadata without role selection;
 - exact parsing of reserved root action prompts;
 - current-turn proof issue, reservation, and injection for Build, Brain,
   Strategy, and final order service calls;
@@ -86,10 +86,11 @@ The generated hook is deliberately small. It owns:
   bypass blocks; and
 - immediate submit/cancel dispatch through the canonical execution gateway.
 
-It does not classify investment language, choose roles, decide whether to
-delegate or wait, validate generic shell syntax, constrain ordinary public
-retrieval, reimplement Codex workdir policy, or parse calculation commands.
-Native permission profiles and the relevant launcher own those behaviors.
+It does not classify investment language, choose roles, modify native spawn or
+follow-up inputs, decide whether to delegate or wait, validate generic shell
+syntax, constrain ordinary public retrieval, reimplement Codex workdir policy,
+or parse calculation commands. Native permission profiles and the relevant
+launcher own those behaviors.
 
 ## Durable Research And Effects
 

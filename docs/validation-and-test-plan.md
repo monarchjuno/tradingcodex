@@ -651,9 +651,11 @@ Scenarios should include:
   a stale session binding
 - unavailable or unverified subagent routing fails closed without a generic
   spawn, role-TOML/source-code emulation, or an empty wait
-- fixed-profile spawn transport has `fork_turns="none"`, no model or reasoning
-  override, and a returned live target before wait or follow-up; lifecycle
-  claims must match completed native tool calls
+- fixed-profile spawn audit records `fork_turns="none"` and no model or
+  reasoning override; one child session starts, returns once for the initial
+  task, and returns again after one audited follow-up. Native wait-any may have
+  no explicit target list while the child is live; no wait may occur when no
+  child is live
 - unavailable or unauthenticated native Codex does not affect viewer readability
   or corrupt workflow state
 - completed role artifacts are reused when quality gates pass

@@ -165,17 +165,15 @@ Spawn an exact profile with its exact `agent_type`, compact `message`,
 `task_name`, and `fork_turns="none"`; omit `model` and `reasoning_effort` so
 the user's native defaults apply. Continue only after the tool returns a live
 target. Correct a rejected spawn at most once using the error it returned.
-The generated `PreToolUse` hook normalizes only those transport fields after
-Codex selects an exact fixed profile; it does not choose roles or schedule work.
 
 Use `followup_task` when a live child still owns the correction or clarification.
 Start a fresh child for a new specialty, an unavailable session, or independent
 review. A generic fallback retains the same research-only scope, evidence
 standard, no-secret boundary, and no-order boundary as the missing profile; it
 cannot approve, execute, access a broker, or act as Head Manager. Children never
-delegate recursively. Do not wait or follow up without a returned live target,
-and report a spawn, follow-up, or child result only when the corresponding
-native tool call completed in the current run.
+delegate recursively. Wait only while a live child has useful work. Native
+wait-any may serialize without explicit targets; verify lifecycle through the
+native tool result and child session events rather than treating that as failure.
 
 ## Handoffs And Artifacts
 

@@ -53,13 +53,13 @@ that needs fresh evidence or more than one distinct expertise.
 7. Reuse a live child's session with `followup_task` for a correction or
    clarification while it still owns the question. Start another child only for
    a new independent specialty, an unavailable session, or independent review.
-   Run work in parallel only when the questions are genuinely independent. Do
-   not wait or follow up without a returned live target, and never claim a spawn,
-   follow-up, or result that is absent from completed tool calls in this run.
-8. Wait only on returned live targets while useful work remains. Update the user
-   after a material change or after roughly a minute without a visible update;
-   a timeout by itself is not progress. Report only observable status, evidence
-   gaps, and next action.
+   Run work in parallel only when the questions are genuinely independent.
+   Never claim a spawn, follow-up, or result that is absent from native tool and
+   child-lifecycle results in this run.
+8. Wait only while at least one live child has useful work. A native wait may be
+   targetless because it waits for any child; do not treat an empty target list
+   as failure by itself. Update the user after a material change or after roughly
+   a minute without a visible update. A timeout alone is not progress.
 9. Save an authenticated research artifact when the result will support a
    decision, reuse, audit, or downstream handoff. Otherwise return the bounded
    answer directly. Read only the exact artifact needed and keep its provenance
