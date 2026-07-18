@@ -313,16 +313,13 @@ def test_generated_hook_reports_explicit_syntax_without_semantic_routing(
         check=True,
     )
     context = json.loads(json.loads(result.stdout)["hookSpecificOutput"]["additionalContext"])
-    assert context["investment_brain_selection"] == {
-        "status": "explicit",
-        "brain_id": BRAIN_ID,
-        "validation": "begin_analysis_run",
-    }
+    assert context["investment_brain_id"] == BRAIN_ID
+    assert context["run_start_tool"] == "begin_analysis_run"
     assert "selected_team" not in context
     assert "DAG" not in context
 
 
-def test_generated_hook_allows_only_session_bound_sealed_brain_references(
+def test_native_skill_loading_and_run_binding_own_brain_references(
     brain_workspace: tuple[Path, dict[str, object]],
 ) -> None:
     workspace, installed = brain_workspace
@@ -371,21 +368,27 @@ def test_generated_hook_allows_only_session_bound_sealed_brain_references(
         return json.loads(result.stdout) if result.stdout.strip() else None
 
     assert pre_tool(f"cat {selected_reference}") is None
-    assert pre_tool(f"cat {selected_reference}", current_session="unknown-session")["decision"] == "block"
-    assert pre_tool(f"cat {selected_reference}", current_session="", explicit_run_id=run_id)["decision"] == "block"
+    assert pre_tool(f"cat {selected_reference}", current_session="unknown-session") is None
+    assert pre_tool(f"cat {selected_reference}", current_session="", explicit_run_id=run_id) is None
 
     unselected_reference = workspace / ".agents/skills/investment-brain-unselected/references/decoy.md"
     unselected_reference.parent.mkdir(parents=True)
     unselected_reference.write_text("# Decoy\n", encoding="utf-8")
-    blocked_commands = (
+    native_permission_commands = (
         "cat .agents/skills/investment-brain-unselected/references/decoy.md",
         f"cat .agents/skills/{BRAIN_ID}/agents/openai.yaml",
         f"cat .agents/skills/{BRAIN_ID}/SKILL.md",
         f"cat {selected_reference} && cat .tradingcodex/investment-brains/registry.json",
         "cat .tradingcodex/investment-brains/registry.json",
     )
-    for command in blocked_commands:
-        assert pre_tool(command)["decision"] == "block", command
+    for command in native_permission_commands:
+        assert pre_tool(command) is None, command
 
     (workspace / selected_reference).write_text("# Changed after run binding\n", encoding="utf-8")
-    assert pre_tool(f"cat {selected_reference}")["decision"] == "block"
+    with pytest.raises(ValueError, match="projected digest mismatch"):
+        begin_analysis_run(
+            workspace,
+            prompt,
+            run_id="analysis-brain-mutated-projection",
+            apply_investor_context=False,
+        )

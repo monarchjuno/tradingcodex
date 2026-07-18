@@ -328,14 +328,13 @@ source, registry files, or role configuration to emulate it. A different Brain
 or Strategy requires a new analysis run.
 
 Treat optional Markdown files linked from the selected Brain's `references/`
-directory as lazy skill context. Read one only after `begin_analysis_run` has
-sealed the Brain, using a standalone `cat` command for the exact linked path;
-do not combine that read with discovery or another shell operation. The native
-hook permits only references beneath the session-bound selected projection
-whose complete skill tree still matches the sealed `skill_digest`. If that
-check blocks or the reference is unavailable, stop as
-`waiting_for_investment_brain`; never discover the registry, package store,
-source checkout, generated indexes, TOML, or an unselected Brain as a fallback.
+directory as native skill context. Read only an explicitly linked file needed
+for the current task. `begin_analysis_run` validates the complete projected
+skill tree and seals its `skill_digest`; ordinary file access remains governed
+by native Codex permissions, not hook command parsing. If the selected skill is
+unavailable or changed, stop as `waiting_for_investment_brain`; never discover
+the registry, package store, source checkout, generated indexes, TOML, or an
+unselected Brain as a fallback.
 
 Translate the selected Brain's platform-neutral questions into compact,
 role-owned assignments using your own dynamic fixed-role judgment. Do not let

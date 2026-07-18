@@ -275,20 +275,15 @@ metadata, installed content digest, projected skill-tree digest, sealed Strategy
 Context snapshot, and request hash. A prompt token that does not resolve to one
 active, validated Investment Brain plugin fails closed before analysis begins.
 
-`SKILL.md` is loaded through native explicit skill invocation. Optional
-Markdown references remain lazy. After the analysis run exists, Head Manager
-may read an exact linked file below the selected projection's `references/`
-directory with a read-only `cat` command. Multiple permitted references may be
-read in one bundle containing only validated `cat` commands and optional
-literal `printf` headings joined by `&&`. The PreToolUse gate resolves the
-current Codex session to exactly one analysis run, verifies the run record,
-requires the selected Brain id and projected path to match, and recomputes the
-whole projected skill tree against the run-sealed `skill_digest` before it
-allows the read. Missing session binding, baseline runs, changed projections,
-unselected Brains, non-Markdown paths, symlinks, redirects, pipelines,
-substitutions, executable compounds, and registry, immutable-package, source,
-generated-index, or TOML discovery all fail closed. A caller-supplied run id
-without the matching session binding is not sufficient authority.
+`SKILL.md` and any required linked Markdown references are loaded through
+native Codex skill handling. `begin_analysis_run` resolves the active plugin,
+validates the whole projected skill tree, and seals its `skill_digest` before
+analysis. TradingCodex hooks do not parse ordinary shell commands to authorize
+Brain reference reads; native Codex permissions own file access. Head Manager
+uses only references explicitly linked by the selected skill and must not
+discover unselected Brains, registry or package internals, generated indexes,
+or TOML as a fallback. A changed projection fails validation for a new run, and
+changing the selected Brain or Strategy requires a new run.
 
 Brain lineage is service-derived, never trusted from caller-authored Markdown
 or JSON. A run-bound artifact is accepted only when the service that performed

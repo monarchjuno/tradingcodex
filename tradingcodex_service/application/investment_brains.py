@@ -371,56 +371,6 @@ def resolve_active_investment_brain(workspace_root: Path | str, brain_id: str) -
     }
 
 
-def resolve_sealed_investment_brain_reference(
-    workspace_root: Path | str,
-    binding: dict[str, Any],
-    reference_path: str,
-) -> Path:
-    """Resolve one Markdown reference from the exact Brain projection sealed to a run."""
-
-    root = Path(workspace_root).resolve()
-    if not isinstance(binding, dict):
-        raise ValueError("analysis run Investment Brain binding is unavailable")
-    brain_id = str(binding.get("brain_id") or "")
-    if not BRAIN_ID_PATTERN.fullmatch(brain_id):
-        raise ValueError("analysis run does not seal an Investment Brain")
-    if not str(binding.get("version") or ""):
-        raise ValueError("analysis run Investment Brain version is unavailable")
-    if not re.fullmatch(r"[0-9a-f]{64}", str(binding.get("content_digest") or "")):
-        raise ValueError("analysis run Investment Brain content digest is invalid")
-    skill_digest = str(binding.get("skill_digest") or "")
-    if not re.fullmatch(r"[0-9a-f]{64}", skill_digest):
-        raise ValueError("analysis run Investment Brain skill digest is invalid")
-
-    projected_relative = BRAIN_PROJECTION_DIR / brain_id
-    if str(binding.get("projected_skill_path") or "") != projected_relative.as_posix():
-        raise ValueError("analysis run Investment Brain projection path is invalid")
-    projection = root / projected_relative
-    _assert_managed_workspace_path(root, projection)
-    if not projection.is_dir() or _skill_tree_digest(projection) != skill_digest:
-        raise ValueError("analysis run Investment Brain projection no longer matches its sealed digest")
-
-    reference_path = str(reference_path or "").strip()
-    _validate_snapshot_path(reference_path)
-    relative = Path(reference_path)
-    references_root = projected_relative / "references"
-    try:
-        nested_reference = relative.relative_to(references_root)
-    except ValueError as exc:
-        raise ValueError("Investment Brain runtime reads are limited to its references directory") from exc
-    if nested_reference == Path() or relative.suffix.lower() != ".md":
-        raise ValueError("Investment Brain runtime references must be Markdown files")
-
-    reference = root / relative
-    _assert_managed_workspace_path(root, reference)
-    _read_bounded_regular_bytes(
-        reference,
-        MAX_REFERENCE_BYTES,
-        f"sealed reference {nested_reference.as_posix()}",
-    )
-    return reference
-
-
 def investment_brain_skill_index_records(workspace_root: Path | str) -> list[dict[str, Any]]:
     root = Path(workspace_root).resolve()
     records: list[dict[str, Any]] = []

@@ -352,9 +352,9 @@ separate namespaces and do not receive legacy bundled aliases.
   fixed-role team. It sends derived questions rather than the Brain body to
   children.
 - Brain, Strategy, and Investor Context bindings are sealed into the analysis
-  run and cannot be replaced mid-run. The Brain binding includes the projected
-  skill-tree digest; optional Markdown references are readable only from that
-  exact session-bound projection. A different Brain or Strategy starts a new
+  run and cannot be replaced mid-run. The Brain binding includes the validated
+  projected skill-tree digest; native Codex loads only the selected skill and
+  its required linked references. A different Brain or Strategy starts a new
   run.
 - Optional skills must stay within their owner role and cannot widen MCP, approval, broker, or execution permissions.
 
