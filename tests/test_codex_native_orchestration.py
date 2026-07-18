@@ -324,6 +324,8 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     fixed_role = fixed_role_path.read_text(encoding="utf-8")
     role = (workspace / ".codex/agents/fundamental-analyst.toml").read_text(encoding="utf-8")
     skill = (workspace / ".agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
+    flat_head = " ".join(head.split())
+    flat_skill = " ".join(skill.split())
     assert "Model and reasoning settings inherit the user's Codex defaults" in config
     assert "model =" not in config
     assert "model_reasoning_effort" not in config
@@ -356,10 +358,18 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     assert "Answer narrow factual questions and simple recorded-status requests directly" in head
     assert "Use `followup_task` to correct or clarify" in head
     assert "generic fallback" in head
-    assert "wait_agent` timeout alone is not a reason to message" in head
+    assert '`fork_turns="none"`' in head
+    assert "Omit `model` and" in head
+    assert "Never wait or follow up without a returned live target" in flat_head
+    assert "absent from completed tool calls in this run" in flat_head
+    assert "wait_agent` timeout alone is not a reason to message" in flat_head
     assert "## Fast Path" in skill
     assert "Otherwise a generic child may" in skill
     assert "followup_task" in skill
+    assert '`fork_turns="none"`' in skill
+    assert "omit `model` and" in skill
+    assert "Do not wait or follow up without a returned live target" in flat_skill
+    assert "absent from completed tool calls in this run" in flat_skill
     assert "Save an authenticated research artifact when the result will support" in skill
     assert "$tcx-source-gate" in skill
     assert "optional direct OpenBB" in skill

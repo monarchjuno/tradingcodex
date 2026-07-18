@@ -532,5 +532,5 @@ a new user-owned id, compatible license, and original wording.
   Strategy, research, and memory files remain eligible for deliberate version
   control.
 - A real Codex-native smoke proves Head Manager uses the selected Brain while
-  fixed subagents retain their own Terra model, exact role identity,
-  `fork_turns="none"`, and Research profile with no source/TOML emulation.
+  fixed subagents retain exact role identity, `fork_turns="none"`, inherited
+  native model defaults, and Research profile with no source/TOML emulation.

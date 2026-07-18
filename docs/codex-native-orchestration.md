@@ -80,12 +80,20 @@ compact role-owned brief rather than the full root history. Role profiles inheri
 the user's Codex model and reasoning defaults while retaining their projected
 web posture, skills, tools, and MCP principal.
 
+For an exact profile, Head Manager calls native `spawn_agent` with the exact
+`agent_type`, a compact `message`, a `task_name`, and `fork_turns="none"`. It
+does not pass `model` or `reasoning_effort`. A spawn is real only when the tool
+returns a live target. A rejected spawn may receive at most one correction
+explicitly named by the error; otherwise delegation remains blocked.
+
 Use `followup_task` when a live child still owns a correction or clarification.
 Start another child for a new specialty, an unavailable session, or independent
 review. If an exact profile is unavailable, a generic child may take the same
 bounded research-only brief, evidence standard, and no-secret/no-order
 prohibitions. It cannot approve, execute, access a broker, or emulate Head
-Manager. Children never delegate recursively.
+Manager. Children never delegate recursively. Head Manager waits or follows up
+only on a returned live target and reports lifecycle events only when their
+native tool calls completed in the current run.
 
 When a Brain applies, the assignment contains the question Head Manager derived
 from it, not the Brain body or a delegation of Brain authority. Brain content is
@@ -151,11 +159,12 @@ A passing native smoke proves:
    fresh research and decision work;
 3. Korean and English requests both route by agent understanding;
 4. Head Manager and children inherit native Codex model defaults;
-5. exact profiles, child follow-up, and bounded generic fallback preserve role
-   and safety boundaries;
-6. no Brain preserves baseline behavior, one exact Brain changes only inquiry
+5. exact profiles spawn with compact fresh context, child follow-up targets a
+   returned live child, and lifecycle claims match completed native tool calls;
+6. bounded generic fallback preserves role and safety boundaries;
+7. no Brain preserves baseline behavior, one exact Brain changes only inquiry
    and interpretation, and multiple or unresolved Brains fail closed;
-7. artifacts are principal-bound and preserve run-local Brain and input lineage;
-8. Head Manager dynamically revises from artifacts without old plan tools;
-9. memory-influenced judgment is blind-first and reports its delta; and
-10. order/approval/execution gates remain service-owned.
+8. artifacts are principal-bound and preserve run-local Brain and input lineage;
+9. Head Manager dynamically revises from artifacts without old plan tools;
+10. memory-influenced judgment is blind-first and reports its delta; and
+11. order/approval/execution gates remain service-owned.

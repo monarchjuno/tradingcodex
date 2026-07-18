@@ -27,6 +27,10 @@ an existing child for correction when practical; a generic child can receive a
 bounded role brief when a profile is unavailable. Head Manager and children
 inherit the user's native Codex model and reasoning defaults.
 
+An exact profile spawn uses its exact `agent_type`, compact task context, and
+`fork_turns="none"` without model overrides. Waiting, follow-up, and lifecycle
+claims require the live target returned by a completed native spawn.
+
 Prompts state role identity, authority, evidence standards, and safety. Shared
 procedures live once in a skill. Tool syntax, exact search counts, wait loops,
 artifact pagination, and retry mechanics should not be copied through every

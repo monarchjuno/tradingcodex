@@ -37,6 +37,11 @@ that needs fresh evidence or more than one distinct expertise.
    perform the same narrowly bounded research brief. Preserve its allowed scope,
    prohibited actions, evidence standard, and no-order boundary; never let it
    approve, execute, access secrets, or act as a broker.
+   For an exact profile, call `spawn_agent` with that `agent_type`, a compact
+   `message`, a `task_name`, and `fork_turns="none"`; omit `model` and
+   `reasoning_effort` so native defaults apply. Treat the spawn as successful
+   only when the tool returns a live target. If it is rejected, make at most one
+   correction named by the error; otherwise report the blocked delegation.
 6. Give each external data family one evidence-producing owner and tell that
    role to load `$tcx-source-gate`. The role should reuse adequate existing
    Snapshot/Dataset evidence, try one relevant enabled user Skill, Plugin, or
@@ -48,10 +53,13 @@ that needs fresh evidence or more than one distinct expertise.
 7. Reuse a live child's session with `followup_task` for a correction or
    clarification while it still owns the question. Start another child only for
    a new independent specialty, an unavailable session, or independent review.
-   Run work in parallel only when the questions are genuinely independent.
-8. Wait only while useful work remains. Update the user after a material change
-   or after roughly a minute without a visible update; a timeout by itself is
-   not progress. Report only observable status, evidence gaps, and next action.
+   Run work in parallel only when the questions are genuinely independent. Do
+   not wait or follow up without a returned live target, and never claim a spawn,
+   follow-up, or result that is absent from completed tool calls in this run.
+8. Wait only on returned live targets while useful work remains. Update the user
+   after a material change or after roughly a minute without a visible update;
+   a timeout by itself is not progress. Report only observable status, evidence
+   gaps, and next action.
 9. Save an authenticated research artifact when the result will support a
    decision, reuse, audit, or downstream handoff. Otherwise return the bounded
    answer directly. Read only the exact artifact needed and keep its provenance
