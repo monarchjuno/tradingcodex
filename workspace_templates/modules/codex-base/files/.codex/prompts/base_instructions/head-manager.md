@@ -136,6 +136,9 @@ source/as-of discipline, artifact acceptance, independent review, or the rule
 that synthesis consumes only authenticated run-local artifacts. Do not use
 native web search in Build, Brain, Strategy, order, approval, execution,
 dashboard, server-status, or other non-workflow turns.
+Use at most two discovery queries in one `response_length="short"` call, then
+open one selected primary source per call, at most two total, also with
+`response_length="short"`. Never use `medium` or `long`, or batch sources.
 
 Use `$tcx-memory` for prior decisions, point-in-time replay, resolved forecasts, decision reviews, and lesson validation. Preserve an independent current view before introducing similar past cases. Memory is evidence, not authority.
 
@@ -244,22 +247,22 @@ or activates a managed workspace extension, and record it as an extension.
 
 Read-only external apps, connectors, MCP servers, and data tools are evidence
 sources, not skill overlays. Do not apply the external-skill opt-in rule to
-them. When the request needs external data or names a provider, inspect the
-current task's callable tools before using public-web fallback; use the
-runtime's available deferred-tool discovery surface when needed, then call
-only the smallest relevant read-only tools. Preserve an explicitly named
-provider or capability in the owning role brief.
+them. When the request needs external data or names a provider, inspect only
+the current task's bounded names-only deferred-tool discovery surface and, when necessary, one
+exact selected schema. Do not make the external data call yourself. Preserve
+the exact namespace/FQN, provider, and DataNeed in the one acquisition owner's
+brief so that role performs the single source call.
 
 The sanitized `list_codex_capabilities` inventory proves only that Codex
 configuration or plugin metadata was discovered. An installed or enabled
 inventory record is not proof that its tools are callable in the current task,
 and absence from that inventory is not proof that a current-task tool is
 missing. Never report a capability or market-data field as unavailable merely
-from inventory state or a static TradingCodex MCP allowlist. First inspect the
-current callable surface and attempt the narrow read-only call. If discovery or
-the call fails, distinguish installed/enabled state from current-task
-callability, preserve the exact failure as a coverage gap, and recommend a new
-task or app restart when the capability changed after the task started.
+from inventory state or a static TradingCodex MCP allowlist. Inspect the
+current names-only surface, then assign the exact narrow call to the producer.
+That owner distinguishes installed/enabled state from current-task callability
+and preserves an actual call failure as a coverage gap. Recommend a new task or
+app restart when the capability changed after the task started.
 
 Managed strategies, optional role skills, and additional instructions may
 refine methods but never replace evidence, point-in-time, uncertainty,
@@ -403,15 +406,47 @@ You are coordinator and synthesizer, not an investment analyst.
 - Interpret the request directly in its original language and preserve every explicit constraint and negation.
 - For investment analysis, load and call `begin_analysis_run` once with the verbatim request and hook-provided `workflow_run_id` when present. It records request hash/size and sealed Investment Brain/Strategy/Investor Context provenance only.
 - Use `$tcx-workflow` to choose the smallest useful first wave. Dispatch independent roles in parallel; reassess after artifacts arrive and add, revise, challenge, or stop based on the evidence.
+- Keep the user oriented during a long run. After `begin_analysis_run` binds
+  the run and the initial specialist questions are clear, send a concise
+  progress update before the first spawn or optional planning reconnaissance;
+  never delay the first update until the complete first wave is dispatched.
+  Update after dispatch when status materially changes, after each completed
+  wave, before synthesis, and after every `wait_agent` return before you call
+  `wait_agent` again, even when no child completed. State only observable
+  status, evidence gaps, and next action; never expose private reasoning or
+  promote unverified role work into a claim.
 - Start every assignment as a fresh V2 child with exact `agent_type`, compact underscore-only `task_name`, compact message, and `fork_turns="none"`. Include the analysis run id plus descriptive `universe` and `workflow_type` artifact metadata in the message. Spawn the complete independent first wave before waiting. Never use `followup_task`, a full-history fork, or model/reasoning overrides.
-- Wait only while at least one spawned child remains live, and use
-  `timeout_ms >= 10000`. In V2, `wait_agent` accepts the timeout only; call
-  `list_agents` when child liveness is uncertain, and never wait when no child
-  remains live.
+- For each external data family, assign exactly one of the six evidence-producing roles as acquisition owner and include one compact DataNeed using the service fields `run_id` copied from the current `workflow_run_id`, `data_kind`, `asset_type`, `identifiers`, `fields`, period or `as_of`, `frequency`, `adjustment_policy`, `minimum_evidence_grade`, `owner_role`, `source_policy`, and optional `explicit_source`. Normally omit `family_id` on the first attempt; the service derives it from the run and stable data-family coordinates. Route a reusable current Dataset first only after `get_data_acquisition_receipt` authenticates its exact coverage and source, then one relevant enabled user MCP/skill, supported OpenBB, and TradingCodex official/web fallback. A `strict` pin may reuse only evidence already attested to that exact source, then calls only that source and never falls through. This is not a trust ranking: require an official cross-check for partial, stale, warning-bearing, unofficial, or screen-grade evidence unless strict forbids it. Independent families may run in parallel; the same family may not. Give non-owners only the returned Snapshot/Dataset/Data Acquisition Receipt/Artifact IDs.
+- Wait only while a child remains live, using `10000 <= timeout_ms <= 30000`.
+  In V2, `wait_agent` accepts the timeout only; call `list_agents` when
+  liveness is uncertain. Never call `wait_agent` a second time after one
+  returns until you have sent the user a visible progress update. Other tool
+  calls do not reset this gate.
 - If exact `agent_type` is unavailable, return `waiting_for_subagent_dispatch` with compact briefs. Do not use a generic/default agent or read role TOML/source to imitate a role.
-- Require every producing role to store its own report through authenticated `create_research_artifact` and return its artifact ID/path. Process completion is not artifact completion.
+- Require every producing role to store its report through authenticated
+  `create_research_artifact` and begin its final handoff with exactly
+  `ARTIFACT <artifact_id> <path> <handoff_state>` copied from the write result.
+  Process completion is not artifact completion.
 - Every child has the shared `$tcx-artifact` persistence contract. When you store the final synthesis with `decision_quality_required: true`, use a real `thesis_lifecycle.state`: `testing` needs evidence references, `validated` needs evidence run and validation cards plus reviewer acceptance, `rejected` needs an invalidation note, and `monitoring` needs either `monitoring_artifact` or `review_cadence`.
-- Read only exact returned artifacts through `get_research_artifact`. Do not discover role output with shell or latest pointers.
+- Read only exact returned artifacts through `get_research_artifact`. Use compact
+  cards for routing, then one accepted `detail_level=review` artifact at a time
+  with `markdown_start=0` and bounded `markdown_max_chars`. Follow only the
+  returned `markdown_window.next_start` while `has_more` is true. Do not batch
+  full Markdown bodies or dump raw result arrays. Retain artifact id, version,
+  content hash, and window; never re-read the same version/hash/window. If a
+  client truncates before returning window metadata, make at most one changed
+  call with a smaller Markdown bound, then stop with the evidence gap. Do not
+  discover role output with shell or latest pointers.
+- If a child says its write succeeded but omits the receipt, do not spawn the
+  same role solely to rediscover it. Make at most one
+  `list_research_artifacts` call filtered by the exact current
+  `workflow_run_id`, exact `producer_role`, `handoff_state="accepted"`,
+  `detail_level="card"`, and `limit=2`. Recover only when exactly one card
+  matches and the response reports `artifact_page.returned_count=1`,
+  `artifact_page.has_more=false`, `run_bound_authentication.status="verified"`,
+  and `run_bound_authentication.verified_artifact_count=1`. One returned card
+  on a truncated page is not unique. Otherwise return the missing receipt as
+  role-owned correction work. Never use an unfiltered workflow/research list.
 - Accepted run-bound writes pass strict artifact quality before the service publishes their files and receipts. A rejected write remains role-owned correction work; do not synthesize it or ask the role to weaken its handoff state. Inputs with `revise`, `blocked`, or `waiting` handoff state are not synthesis-ready even when authenticated.
 - Dynamically add a role only when it owns a material unanswered question. Use `judgment-reviewer` for recommendations, portfolio/risk decisions, material conflicts, or high-consequence uncertainty; do not force it into narrow factual work.
 - Ask a fresh same-role child to correct weak work. Never edit, wrap, or recreate another role's report.
@@ -513,6 +548,27 @@ credential references and secret schemas only.
 
 - Prefer hook context, artifact IDs, `context_summary`, source/as-of metadata, and short deltas.
 - Do not paste full strategy libraries, artifacts, role manuals, source dumps, or repeated guardrails into briefs.
+- Keep deferred-tool discovery narrow. Call a known tool directly. To resolve
+  an unknown provider, use
+  `text(ALL_TOOLS.filter(x => x.name.includes("<provider-or-keyword>")).slice(0, 12).map(x => x.name))`.
+  One query may combine at most four literal `x.name.includes(...)` predicates
+  with only `||`/`&&`, while retaining `.slice(0, 12).map(x => x.name)`; the
+  projection may be direct or one `const` local passed to `text`, and the result
+  contains at most twelve names. Only if the exact selected name
+  appeared in that prior names result, run at most one schema lookup:
+  `const t = ALL_TOOLS.find(x => x.name === "<exact-tool-name>"); text(t ? t.description : "missing")`.
+  Each step emits exactly one standard data envelope; a transport-owned status
+  prelude may appear before it and is not a second data envelope. Never map,
+  search, filter, or regex descriptions; emit full `ALL_TOOLS` records or
+  catalogs; inspect an unselected tool; or repeat a schema lookup.
+- Build capability/source context once per run. Give a child the exact known
+  namespace/provider lead and reusable Dataset IDs; do not make each role scan
+  the full catalog. OpenBB calls require an explicit upstream provider and
+  immediate atomic result promotion. After promotion, pass IDs and compact
+  cards rather than raw rows or repeated provider output.
+- Never repeat an unchanged tool call after a documented terminal success or a
+  deterministic error. Apply at most one evidence-backed field correction; if
+  the same reason recurs, preserve the gap and stop that branch as `waiting`.
 - Skills are procedures. `$tcx-build` is only deterministic current-turn Build
   intent for the hook; it does not grant role eligibility, Codex filesystem
   permission, approval, execution, user-owned capability control, or policy overrides.

@@ -3,64 +3,69 @@ name: tcx-artifact
 description: "Prepare, persist, and repair TradingCodex research artifacts and forecast records when a role must hand off run-bound evidence through MCP tools."
 ---
 
-# Artifact Persistence
+# Persist An Artifact
 
-Use this procedure whenever the role must call `create_research_artifact`,
-`append_research_artifact_version`, or `issue_forecast`. The MCP schema is the
-authoritative input contract. Search for and call the exact deferred tool; do
-not approximate a tool name or write a ledger record directly.
+Use the authoritative MCP schema for `create_research_artifact`,
+`append_research_artifact_version`, or `issue_forecast`. Never approximate a
+tool name or write ledger state directly.
 
-## Persist the artifact first
+## Write once, then return the receipt
 
-1. Record source snapshots before citing them, and use the exact returned IDs.
-2. Pass the assigned `workflow_run_id` and exact `input_artifact_ids` consumed.
-   When a recorded calculation affects the conclusion, also pass its current
-   workflow `calculation_run_id`; the service derives hashes and reuse origin.
-3. Include a non-empty `readiness_label`, markdown, handoff state, evidence
-   posture, and the role's bounded conclusion.
-4. Keep optional gates honest. If forecasting or decision-quality review is
-   outside the assignment, use `false` or omit the optional field; do not
-   fabricate fields merely to satisfy a gate.
-5. Apply every field correction returned by the service in one targeted
-   resubmission. If the same contract error repeats, stop retrying and return a
-   `waiting` handoff with the exact error.
+1. Record source snapshots before citing them and use only returned IDs.
+2. Pass the assigned `workflow_run_id`, every exact consumed
+   `input_artifact_id`, `dataset_id`, Data Acquisition Receipt ID, and any
+   conclusion-relevant current-run Calculation ID. Include each receipt's
+   returned Dataset and Source Snapshot IDs too. The service derives all four
+   lineage hash maps.
+3. Include Markdown, non-empty conservative `readiness_label`, source/as-of
+   posture, `context_summary`, `reader_summary`, confidence, missing evidence,
+   next action, blocked actions, and explicit handoff state.
+4. Keep optional gates truthful. Do not fabricate fields merely to pass a
+   validator. `accepted` means ready for Head Manager review.
+5. On terminal success, stop and make the final handoff begin with one compact
+   receipt line: `ARTIFACT <artifact_id> <path> <handoff_state>`. Copy all three
+   values from the authenticated result; never reconstruct them.
 
-`follow_up_requests[].required_inputs` is always an array of strings.
-`probability_range` is one lower/upper range such as `[0.3, 0.4]` or `30-40%`.
-Put multiple scenario-specific ranges in `scenario_cases`.
+When binding source snapshots, Datasets, or acquisition receipts, set the
+timezone-qualified `knowledge_cutoff` at or after the maximum snapshot
+`known_at`, Dataset `knowledge_cutoff`, and receipt `recorded_at`. Prefer that
+exact maximum and never guess a future or date-only cutoff.
 
-## Use the thesis lifecycle correctly
+`follow_up_requests[].required_inputs` is an array of strings. Use one
+lower/upper `probability_range`, such as `[0.3, 0.4]`; put multiple ranges in
+`scenario_cases`. Allowed follow-up triggers are `coverage_gap`,
+`freshness_gap`, `contradiction`, `material_driver`, `assumption_change`,
+`method_gap`, `scope_boundary`, `forecast_gap`, and
+`investor_context_gap`. A valuation sensitivity is an improvement type, not a
+follow-up trigger.
 
-When `decision_quality_required` is true, include `thesis_lifecycle.state` and
-the evidence required for that state:
+## Stop unchanged tool loops
 
-- `exploring`: `{state: exploring}` is sufficient.
-- `testing`: add `evidence_refs`, or cite top-level `source_snapshot_ids` or
-  `evidence_ids`.
-- `validated`: add `evidence_run_card` or `evidence_run_cards`,
-  `validation_card` or `validation_cards`, and `reviewer_acceptance`.
-- `rejected`: add `invalidation_note`.
-- `monitoring`: add either `monitoring_artifact` or `review_cadence`.
+- Treat every documented terminal success, including `stored`, `updated`,
+  `existing`, `reused`, and `prepared`, as completion. Never repeat the same
+  canonical arguments hoping for another status.
+- After a deterministic validation, permission, policy, or immutable-conflict
+  error, make at most one correction directly supported by returned field
+  guidance. Never submit the unchanged arguments again.
+- If the same reason recurs, stop, lower readiness, and return `waiting` with
+  the bounded error and owning next action.
 
-`monitoring_artifact_or_cadence` is an error label, not an input field.
+## Set thesis state honestly
 
-## Issue a ledger forecast only after acceptance
+When decision quality is required:
 
-Artifact forecast metadata does not create a forecast ledger record. Call
-`issue_forecast` only after the supporting artifact is accepted and only when
-the assignment calls for a scoreable forecast.
+- `exploring`: state only.
+- `testing`: add evidence references or top-level snapshot/evidence IDs.
+- `validated`: add evidence run card, validation card, and reviewer acceptance.
+- `rejected`: add an invalidation note.
+- `monitoring`: add a monitoring artifact or cadence.
 
-- Use RFC 3339 timestamps with explicit timezones for `horizon` and
-  `knowledge_cutoff`.
-- Normally omit `issued_at`; the service records receipt time.
-- Set `base_rate.cohort`, `base_rate.source_snapshot_id`, positive
-  `base_rate.sample_size`, and `base_rate.selection_rule`.
-- For binary targets add `base_rate.value`; for categorical targets add
-  category-matched `base_rate.probabilities` summing to 1; for continuous
-  targets add `base_rate.prediction`.
-- Keep the base-rate snapshot at or before `knowledge_cutoff`.
-- Match the forecast payload to `target_type`: binary probability,
-  categorical probabilities summing to 1, or continuous prediction/interval.
+## Issue forecasts only after acceptance
 
-If the evidence cannot support that contract, set `forecast_allowed: false`
-on the artifact with a precise block reason and do not call `issue_forecast`.
+Call `issue_forecast` only when the assignment requires a scoreable forecast
+and its supporting artifact is accepted. Use timezone-qualified RFC 3339
+`horizon` and `knowledge_cutoff`; normally omit `issued_at`. Bind a base-rate
+snapshot at or before the cutoff with cohort, sample size, and selection rule.
+Match binary, categorical, or continuous payload fields to `target_type`. If
+the evidence cannot support that contract, set `forecast_allowed: false` and a
+precise block reason instead of issuing a forecast.

@@ -16,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SCRATCH_ROOT = Path({{TRADINGCODEX_SCRATCH_PATH_PYTHON}}).resolve()
 PROVIDER_SOURCES_ROOT = SCRATCH_ROOT / "provider-sources"
+RESEARCH_DOWNLOADS_ROOT = SCRATCH_ROOT / "research-downloads"
 GENERATED_PYTHON = {{TRADINGCODEX_PYTHON_PYTHON}}
 GENERATED_PYTHON_COMMAND = GENERATED_PYTHON.replace("\\", "/")
 GENERATED_GIT_COMMAND = {{TRADINGCODEX_GIT_COMMAND_PYTHON}}
@@ -23,11 +24,17 @@ CALCULATION_RUNTIME_ROOT = Path({{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_PYTHON}}
 TRADINGCODEX_HOME_ROOT = Path({{TRADINGCODEX_HOME_PYTHON}}).resolve()
 CODEX_HOME_ROOT = Path({{CODEX_HOME_PATH_PYTHON}}).resolve()
 MAX_STAGED_GIT_CONFIG_BYTES = 128 * 1024
+WINDOWS_RESERVED_DEVICE_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{index}" for index in range(1, 10)}
+    | {f"LPT{index}" for index in range(1, 10)}
+)
 os.environ.setdefault("TRADINGCODEX_WORKSPACE_ROOT", str(ROOT))
 
 from tradingcodex_service.application.agents import (  # noqa: E402
     CALCULATION_DISCIPLINE_ROLES,
     EXPECTED_SUBAGENTS,
+    RESEARCH_ROLES,
 )
 from tradingcodex_service.application.analysis_runs import (  # noqa: E402
     explicit_investment_brain_invocation,
@@ -69,6 +76,53 @@ from tradingcodex_cli.startup_status import build_server_status  # noqa: E402
 MAX_SESSION_EVENTS = 12
 MAX_COMPLETED_RECORDS = 12
 SESSION_RUNS_PATH = ROOT / ".tradingcodex" / "mainagent" / "session-workflow-runs.json"
+EXTERNAL_CALL_KEYS_ROOT = ROOT / ".tradingcodex" / "mainagent" / "external-call-keys"
+OFFICIAL_SOURCE_DATA_MCP_TOOL = "mcp__tradingcodex__fetch_official_source_data"
+EXTERNAL_PRESENTATION_KEYS = frozenset({
+    "chart", "include_chart", "limit", "max_results", "max_rows",
+    "output_format", "page_size", "pretty", "raw", "verbose",
+})
+EXTERNAL_RESULT_STATUSES = frozenset({
+    "complete_valid",
+    "partial_valid",
+    "correctable_error",
+    "terminal_gap",
+    "unsafe",
+    "transient",
+    "approval_required",
+    "conflict",
+})
+GENERIC_MCP_READ_VERBS = frozenset({
+    "describe", "fetch", "find", "get", "historical", "inspect", "list",
+    "lookup", "price", "prices", "profile", "query", "quote", "quotes",
+    "read", "search", "view",
+})
+GENERIC_MCP_UNSAFE_TOKENS = frozenset({
+    "account", "accounts", "add", "approve", "archive", "auth", "authenticate",
+    "billing", "broker", "brokers", "buy", "cancel", "checkout", "comment",
+    "connect", "contact", "cookie", "create", "credential", "credentials",
+    "customer", "delete", "download", "email", "entitlement", "execute", "export",
+    "file", "filesystem", "inbox", "install", "invoice", "key", "keys", "mail",
+    "message", "messages", "mutate", "notify", "order", "orders", "password",
+    "patch", "paid", "payment", "post", "private", "publish", "purchase", "put",
+    "remove", "reply", "secret", "sell", "send", "session", "subscribe", "token",
+    "trade", "transfer", "unsubscribe", "update", "upload", "user", "wallet",
+    "withdraw", "write",
+})
+GENERIC_MCP_SENSITIVE_INPUT_KEYS = frozenset({
+    "account", "account_id", "account_number", "authorization", "billing",
+    "cookie", "credentials", "customer", "customer_id", "email", "headers",
+    "http_headers", "inbox", "mailbox", "message", "password", "payload",
+    "private_payload", "secret", "session", "session_id", "token", "user_id",
+})
+GENERIC_MCP_COST_INPUT_KEYS = frozenset({
+    "billing", "cost", "credits", "entitlement", "invoice", "paid", "payment",
+    "price_usd", "purchase", "subscription",
+})
+GENERIC_MCP_PATH_INPUT_KEYS = frozenset({
+    "destination", "directory", "download_path", "file", "file_path", "filename",
+    "output_path", "path", "upload_path",
+})
 HOOK_WRITE_ROOTS = (Path(".tradingcodex/mainagent"), Path("trading/audit"))
 SENSITIVE_ACTION_MARKERS = ("broker api", "api_key", "secret.read", "cash.withdraw", "policy.write")
 SHELL_TOOL_NAMES = frozenset({"bash", "shell", "exec_command", "write_stdin", "unified_exec"})
@@ -136,6 +190,19 @@ NETWORK_PACKAGE_INSTALL = re.compile(
     re.I,
 )
 NETWORK_FETCH_EXECUTABLES = frozenset({"curl", "wget", "git"})
+NETWORK_COMMAND_WRAPPERS = frozenset(
+    {
+        "bash",
+        "command",
+        "dash",
+        "env",
+        "fish",
+        "ksh",
+        "nohup",
+        "sh",
+        "zsh",
+    }
+)
 PROVIDER_READ_EXECUTABLES = frozenset(
     {"cat", "cmp", "diff", "grep", "head", "ls", "sha256sum", "shasum", "tail", "wc"}
 )
@@ -222,10 +289,12 @@ def main() -> None:
     elif event in {"pre-tool-use", "permission-request"}:
         policy_gate(event, payload)
     elif event == "post-tool-use":
+        result_status = finalize_external_semantic_call(payload)
         append_hook_audit({
             "event": event,
             "workflow_run_id": resolve_workflow_run_id(payload),
             "tool_name": payload_tool_name(payload),
+            **({"result_status": result_status} if result_status else {}),
             "redacted": True,
         })
     elif event == "stop":
@@ -945,6 +1014,9 @@ def subagent_session_state(event: str, payload: dict) -> None:
             "workflow_run_id": run_id,
         })
         return
+    session_key = event_session_key(payload)
+    if event == "subagent-start" and run_id and session_key:
+        remember_session_run(session_key, run_id)
     event_count_total = int(state.get("event_count_total") or len(state.get("events", [])))
     completed_count_total = int(state.get("completed_count_total") or len(state.get("completed", [])))
     agent_session_id = subagent_session_id(payload, run_id, role)
@@ -1053,6 +1125,60 @@ def policy_gate(event: str, payload: dict) -> None:
             print(json.dumps({"decision": "block", "reason": reason}))
         return
     tool_name = payload_tool_name(payload).lower()
+    generic_disposition, generic_reason = generic_external_mcp_disposition(payload)
+    if generic_disposition in {"block", "approval_required"}:
+        append_hook_audit({
+            "event": event,
+            "workflow_run_id": resolve_workflow_run_id(payload),
+            "tool_name": payload_tool_name(payload),
+            "decision": "block",
+            "reason_code": (
+                "user_mcp_cost_approval_required"
+                if generic_disposition == "approval_required"
+                else "user_mcp_source_gate"
+            ),
+            "redacted": True,
+        })
+        print(json.dumps({"decision": "block", "reason": generic_reason}))
+        return
+    if event == "pre-tool-use":
+        openbb_reason = openbb_tool_block_reason(payload)
+        if openbb_reason:
+            append_hook_audit({
+                "event": event,
+                "workflow_run_id": resolve_workflow_run_id(payload),
+                "tool_name": payload_tool_name(payload),
+                "decision": "block",
+                "reason_code": "openbb_read_only_policy",
+                "redacted": True,
+            })
+            print(json.dumps({"decision": "block", "reason": openbb_reason}))
+            return
+        openbb_admin_reason = reserve_openbb_admin_call(payload)
+        if openbb_admin_reason:
+            append_hook_audit({
+                "event": event,
+                "workflow_run_id": resolve_workflow_run_id(payload),
+                "tool_name": payload_tool_name(payload),
+                "decision": "block",
+                "reason_code": "openbb_repeated_discovery_or_activation",
+                "redacted": True,
+            })
+            print(json.dumps({"decision": "block", "reason": openbb_admin_reason}))
+            return
+        repeat_reason = reserve_external_semantic_call(payload)
+        if repeat_reason:
+            append_hook_audit({
+                "event": event,
+                "workflow_run_id": resolve_workflow_run_id(payload),
+                "tool_name": payload_tool_name(payload),
+                "decision": "block",
+                "reason_code": "external_semantic_repeat",
+                "argument_fingerprint": external_semantic_fingerprint(payload),
+                "redacted": True,
+            })
+            print(json.dumps({"decision": "block", "reason": repeat_reason}))
+            return
     if is_order_turn_grant_tool(tool_name):
         handle_order_turn_grant_tool(event, payload)
         return
@@ -1091,13 +1217,762 @@ def policy_gate(event: str, payload: dict) -> None:
             })
             print(json.dumps({"decision": "block", "reason": reason}))
         return
-    text = json.dumps(payload, ensure_ascii=False).lower()
-    if any(item in text for item in SENSITIVE_ACTION_MARKERS):
-        print(json.dumps({"decision": "block", "reason": "TradingCodex policy gate blocked sensitive request"}))
 
 
 def payload_tool_name(payload: dict) -> str:
     return str(payload.get("tool_name") or "")[:180]
+
+
+def external_mcp_tool_parts(tool_name: str) -> tuple[str, str] | None:
+    normalized_name = str(tool_name or "").strip().lower()
+    match = re.fullmatch(
+        r"mcp__(?P<server>[a-z0-9][a-z0-9_-]{0,79})__(?P<tool>[a-z0-9][a-z0-9_-]{0,127})",
+        normalized_name,
+    )
+    if not match:
+        return None
+    if (
+        match.group("server") == "tradingcodex"
+        and normalized_name != OFFICIAL_SOURCE_DATA_MCP_TOOL
+    ):
+        return None
+    return match.group("server"), match.group("tool")
+
+
+def _generic_mcp_input_items(value, path: tuple[str, ...] = ()):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            normalized = str(key).strip().lower()
+            yield (*path, normalized), child
+            yield from _generic_mcp_input_items(child, (*path, normalized))
+        return
+    if isinstance(value, list):
+        for child in value:
+            yield from _generic_mcp_input_items(child, path)
+        return
+    yield path, value
+
+
+def _generic_mcp_input_block_reason(tool_input: dict) -> str:
+    for path, value in _generic_mcp_input_items(tool_input):
+        key = path[-1] if path else ""
+        if (
+            key in GENERIC_MCP_SENSITIVE_INPUT_KEYS
+            or SECRET_LIKE_FILENAME.search(key)
+        ):
+            return "TradingCodex user MCP evidence calls cannot carry secrets, accounts, sessions, or private payloads"
+        if key in GENERIC_MCP_COST_INPUT_KEYS:
+            return "TradingCodex user MCP evidence calls cannot invoke billing, purchase, entitlement, or cost-bearing surfaces"
+        if key in GENERIC_MCP_PATH_INPUT_KEYS:
+            return "TradingCodex user MCP evidence calls cannot read, write, upload, download, or export files"
+        if key in {"method", "http_method"}:
+            if str(value or "GET").strip().upper() not in {"GET", "HEAD"}:
+                return "TradingCodex user MCP evidence calls permit read-only HTTP methods only"
+        if key in {"action", "operation", "verb"}:
+            action = re.sub(r"[^a-z0-9]+", "_", str(value or "").strip().lower()).strip("_")
+            if action not in GENERIC_MCP_READ_VERBS:
+                return "TradingCodex user MCP evidence calls reject unknown or side-effecting operations"
+        if not isinstance(value, str):
+            continue
+        text = value.strip()
+        if re.search(
+            r"(?:\bauthorization\s*[:=]|\bbearer\s+[A-Za-z0-9._~+/=-]+|"
+            r"\bbasic\s+[A-Za-z0-9+/=]+|\bsk-[A-Za-z0-9_-]{12,})",
+            text,
+            re.I,
+        ):
+            return "TradingCodex user MCP evidence calls cannot carry raw credential material"
+        if text.lower().startswith(("http://", "https://")):
+            url_reason = _public_url_reason(text)
+            if url_reason:
+                return url_reason.replace("public fetch", "user MCP evidence call")
+    return ""
+
+
+def generic_external_mcp_disposition(payload: dict) -> tuple[str, str]:
+    """Classify a user-added MCP without trusting its server instructions.
+
+    Codex's hook payload currently exposes no trusted tool-annotation channel
+    that proves an arbitrary user MCP is read-only, public-input, and
+    cost-allowed. Structurally plausible data calls therefore fail closed with
+    an approval-required outcome. Do not infer trust from the MCP name, server
+    instructions, model-authored arguments, or capability inventory.
+    """
+
+    raw_name = payload_tool_name(payload).strip()
+    lowered_name = raw_name.lower()
+    if not lowered_name.startswith("mcp__"):
+        return "", ""
+    parts = external_mcp_tool_parts(raw_name)
+    if parts is None:
+        if lowered_name.startswith("mcp__tradingcodex__"):
+            return "", ""
+        return "block", "TradingCodex user MCP evidence calls require one exact fully qualified tool name"
+    server, tool = parts
+    if server in {"openbb", "tradingcodex"}:
+        return "", ""
+    tokens = frozenset(item for item in re.split(r"[^a-z0-9]+", tool) if item)
+    unsafe = sorted(tokens.intersection(GENERIC_MCP_UNSAFE_TOKENS))
+    if unsafe:
+        return (
+            "block",
+            "TradingCodex user MCP evidence calls reject mutation, account, order, secret, "
+            "private-payload, cost, file, and side-effect surfaces",
+        )
+    if not tokens.intersection(GENERIC_MCP_READ_VERBS):
+        return "block", "TradingCodex cannot establish that this user MCP tool is a public read-only data surface"
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    input_reason = _generic_mcp_input_block_reason(tool_input)
+    if input_reason:
+        return "block", input_reason
+    if not external_semantic_fingerprint(payload):
+        return "block", "TradingCodex user MCP evidence calls require explicit public data coordinates"
+    return (
+        "approval_required",
+        "TradingCodex approval_required: this user MCP call has no trusted hook-visible read-only, public-input, cost-allowed attestation",
+    )
+
+
+def _first_tool_input_value(tool_input: dict, names: tuple[str, ...]):
+    for name in names:
+        if name in tool_input:
+            return tool_input[name]
+    return None
+
+
+def _semantic_value(value, *, sort_items: bool = False):
+    if isinstance(value, dict):
+        return {
+            str(key): _semantic_value(child)
+            for key, child in sorted(value.items(), key=lambda item: str(item[0]))
+            if str(key).lower() not in EXTERNAL_PRESENTATION_KEYS
+        }
+    if isinstance(value, list):
+        normalized = [_semantic_value(child) for child in value]
+        return sorted(normalized, key=lambda child: json.dumps(child, sort_keys=True, default=str)) if sort_items else normalized
+    return value
+
+
+def _coordinate_values(value, *, sort_items: bool = False) -> list[str]:
+    if value is None:
+        return []
+    raw = value if isinstance(value, list) else [value]
+    normalized = [str(item).strip().casefold() for item in raw if str(item).strip()]
+    return sorted(normalized) if sort_items else normalized
+
+
+def _coordinate_scalar(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    normalized = text[:-1] + "+00:00" if text.endswith("Z") else text
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return text.casefold()
+    date_only = len(text) == 10 and text[4:5] == "-" and text[7:8] == "-"
+    if parsed.tzinfo is None:
+        if date_only or parsed.time() == datetime.min.time():
+            return parsed.date().isoformat()
+        return parsed.isoformat().casefold()
+    utc_value = parsed.astimezone(timezone.utc)
+    if date_only or utc_value.time() == datetime.min.time():
+        return utc_value.date().isoformat()
+    return utc_value.isoformat().casefold()
+
+
+def _semantic_frequency(value) -> str:
+    normalized = re.sub(r"[\s_-]+", "", str(value or "").strip().casefold())
+    aliases = {
+        "d": "1d",
+        "1d": "1d",
+        "1day": "1d",
+        "day": "1d",
+        "daily": "1d",
+        "eod": "1d",
+        "h": "1h",
+        "1h": "1h",
+        "1hour": "1h",
+        "hour": "1h",
+        "hourly": "1h",
+        "1min": "1min",
+        "minute": "1min",
+        "minutely": "1min",
+        "w": "1w",
+        "1w": "1w",
+        "1wk": "1w",
+        "1week": "1w",
+        "week": "1w",
+        "weekly": "1w",
+        "1mo": "1mo",
+        "1month": "1mo",
+        "month": "1mo",
+        "monthly": "1mo",
+        "3mo": "1q",
+        "quarter": "1q",
+        "quarterly": "1q",
+        "1y": "1y",
+        "1yr": "1y",
+        "annual": "1y",
+        "annually": "1y",
+        "year": "1y",
+        "yearly": "1y",
+    }
+    return aliases.get(normalized, normalized)
+
+
+def _semantic_adjustment(value) -> str:
+    if value is True:
+        return "adjusted"
+    if value is False:
+        return "unadjusted"
+    normalized = re.sub(r"[\s_-]+", "", str(value or "").strip().casefold())
+    return {
+        "adjust": "adjusted",
+        "adjusted": "adjusted",
+        "true": "adjusted",
+        "none": "unadjusted",
+        "false": "unadjusted",
+        "raw": "unadjusted",
+        "unadjusted": "unadjusted",
+    }.get(normalized, normalized)
+
+
+def external_semantic_fingerprint(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    if parts is None:
+        return ""
+    server, tool = parts
+    if server == "openbb" and tool in {"available_tools", "activate_tools"}:
+        return ""
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    is_official_source = (
+        server == "tradingcodex" and tool == "fetch_official_source_data"
+    )
+    material = {
+        "server": server,
+        "tool": tool,
+        "provider": _coordinate_scalar(
+            _first_tool_input_value(
+                tool_input, ("provider", "provider_name", "source_id")
+            )
+        ),
+        "identifiers": _coordinate_values(
+            _first_tool_input_value(
+                tool_input,
+                (
+                    "identifiers",
+                    "identifier",
+                    "symbols",
+                    "symbol",
+                    "tickers",
+                    "ticker",
+                    "isin",
+                    "cik",
+                    "series_id",
+                    "contract",
+                ),
+            ),
+            sort_items=True,
+        ),
+        "fields": _coordinate_values(
+            _first_tool_input_value(tool_input, ("fields", "columns")),
+            sort_items=True,
+        ),
+        "start": _coordinate_scalar(
+            _first_tool_input_value(
+                tool_input, ("start_date", "start", "date_from", "period_start")
+            )
+        ),
+        "end": _coordinate_scalar(
+            _first_tool_input_value(
+                tool_input, ("end_date", "end", "date_to", "period_end")
+            )
+        ),
+        "as_of": _coordinate_scalar(
+            _first_tool_input_value(tool_input, ("as_of", "asof", "date"))
+        ),
+        "interval": _semantic_frequency(
+            _first_tool_input_value(tool_input, ("interval", "frequency", "period"))
+        ),
+        "adjustment": _semantic_adjustment(
+            "not_applicable"
+            if is_official_source
+            else _first_tool_input_value(tool_input, ("adjustment", "adjusted"))
+        ),
+        "query": (
+            {
+                "data_kind": _coordinate_scalar(tool_input.get("data_kind")),
+                "asset_class": _coordinate_scalar(tool_input.get("asset_class")),
+                "region": _coordinate_scalar(tool_input.get("region")),
+                "source_policy": _coordinate_scalar(
+                    tool_input.get("source_policy") or "best_available"
+                ),
+            }
+            if is_official_source
+            else {}
+        ),
+    }
+    if server != "openbb" and not any(
+        value not in (None, "", [], {})
+        for key, value in material.items()
+        if key not in {"server", "tool"}
+    ):
+        # TradingCodex does not classify arbitrary user-owned MCPs as data
+        # sources. Without at least one recognized data coordinate, a semantic
+        # acquisition key would overreach into unrelated BYOR tools.
+        return ""
+    return hashlib.sha256(
+        json.dumps(material, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+    ).hexdigest()
+
+
+def _external_argument_hashes(tool_input: dict) -> dict[str, str]:
+    return {
+        str(key).strip().lower(): hashlib.sha256(
+            json.dumps(
+                _semantic_value(value),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
+        for key, value in tool_input.items()
+        if str(key).strip()
+    }
+
+
+def _external_argument_fingerprint(tool_input: dict) -> str:
+    return hashlib.sha256(
+        json.dumps(
+            _semantic_value(tool_input),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        ).encode("utf-8")
+    ).hexdigest()
+
+
+def _external_scope_directory(payload: dict) -> Path | None:
+    scope = resolve_workflow_run_id(payload) or event_session_key(payload)
+    if not scope:
+        return None
+    scope_key = hashlib.sha256(scope.encode("utf-8")).hexdigest()
+    directory = safe_hook_path(EXTERNAL_CALL_KEYS_ROOT / scope_key)
+    directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def _create_external_state(path: Path, value: dict) -> bool:
+    flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except FileExistsError:
+        return False
+    with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(value, ensure_ascii=False, sort_keys=True) + "\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    return True
+
+
+def _acquire_external_state_lock(directory: Path) -> Path | None:
+    lock_path = safe_hook_path(directory / ".state-lock")
+    try:
+        os.mkdir(lock_path, 0o700)
+        return lock_path
+    except FileExistsError:
+        try:
+            metadata = lock_path.stat(follow_symlinks=False)
+            if stat.S_ISDIR(metadata.st_mode) and datetime.now(timezone.utc).timestamp() - metadata.st_mtime > 60:
+                os.rmdir(lock_path)
+                os.mkdir(lock_path, 0o700)
+                return lock_path
+        except (FileNotFoundError, OSError):
+            return None
+    return None
+
+
+def _release_external_state_lock(lock_path: Path | None) -> None:
+    if lock_path is None:
+        return
+    try:
+        os.rmdir(lock_path)
+    except FileNotFoundError:
+        return
+
+
+def _correction_matches(record: dict, argument_hashes: dict[str, str]) -> bool:
+    field = str(record.get("correctable_field") or "").strip().lower()
+    baseline = record.get("argument_hashes") if isinstance(record.get("argument_hashes"), dict) else {}
+    if not field or baseline.get(field) == argument_hashes.get(field):
+        return False
+    compared_keys = (set(baseline) | set(argument_hashes)) - {field}
+    return all(baseline.get(key) == argument_hashes.get(key) for key in compared_keys)
+
+
+def _external_repeat_reason() -> str:
+    return (
+        "TradingCodex blocked a repeated external semantic call in this analysis scope; "
+        "reuse the prior result or its Snapshot/Dataset receipt, or request only genuinely missing coverage"
+    )
+
+
+def reserve_external_semantic_call(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    semantic_key = external_semantic_fingerprint(payload)
+    if parts is None or not semantic_key:
+        return ""
+    directory = _external_scope_directory(payload)
+    if directory is None:
+        return (
+            "TradingCodex external semantic data calls require an active "
+            "workflow or Codex session binding"
+        )
+    lock_path = _acquire_external_state_lock(directory)
+    if lock_path is None:
+        return "TradingCodex external-call state is busy; do not issue a parallel call for the same analysis scope"
+    try:
+        return _reserve_external_semantic_call_locked(payload)
+    finally:
+        _release_external_state_lock(lock_path)
+
+
+def _reserve_external_semantic_call_locked(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    semantic_key = external_semantic_fingerprint(payload)
+    directory = _external_scope_directory(payload)
+    if parts is None or not semantic_key or directory is None:
+        return ""
+    target = directory / f"{semantic_key}.json"
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    argument_hashes = _external_argument_hashes(tool_input)
+    if target.exists():
+        existing = read_json(target, {})
+        if str(existing.get("state") or "") == "correctable":
+            field = str(existing.get("correctable_field") or "argument")
+            return f"TradingCodex permits one correction only after changing the returned `{field}` argument"
+        return _external_repeat_reason()
+
+    matching: list[tuple[Path, dict]] = []
+    exhausted = False
+    for candidate in sorted(directory.glob("*.json"))[:512]:
+        record = read_json(candidate, {})
+        if str(record.get("tool_name") or "").lower() != payload_tool_name(payload).lower():
+            continue
+        state = str(record.get("state") or "")
+        if state not in {"correctable", "correction_consumed", "correction_exhausted"}:
+            continue
+        if _correction_matches(record, argument_hashes):
+            if state == "correctable":
+                matching.append((candidate, record))
+            else:
+                exhausted = True
+    if exhausted:
+        return "TradingCodex blocked a second corrected call; one changed-argument retry has already been used"
+    if len(matching) > 1:
+        return "TradingCodex could not bind this corrected call to one unambiguous prior error"
+
+    attempt = 1
+    correction_parent = ""
+    if matching:
+        parent_path, parent = matching[0]
+        attempt = 2
+        correction_parent = str(parent.get("semantic_fingerprint") or parent_path.stem)
+    record = {
+        "tool_name": payload_tool_name(payload),
+        "semantic_fingerprint": semantic_key,
+        "argument_fingerprint": _external_argument_fingerprint(tool_input),
+        "argument_hashes": argument_hashes,
+        "tool_use_id": str(payload.get("tool_use_id") or "")[:180],
+        "state": "pending_retry" if matching else "pending",
+        "attempt": attempt,
+        "correction_parent": correction_parent,
+        "reserved_at": now(),
+    }
+    if not _create_external_state(target, record):
+        return _external_repeat_reason()
+    if matching:
+        parent_path, parent = matching[0]
+        parent["state"] = "correction_consumed"
+        parent["correction_tool_use_id"] = str(payload.get("tool_use_id") or "")[:180]
+        parent["correction_reserved_at"] = now()
+        try:
+            write_json(parent_path, parent)
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+    return ""
+
+
+def _response_nodes(value, *, depth: int = 0):
+    if depth > 5:
+        return
+    if isinstance(value, dict):
+        yield value
+        for child in value.values():
+            yield from _response_nodes(child, depth=depth + 1)
+        return
+    if isinstance(value, list):
+        for child in value[:120]:
+            yield from _response_nodes(child, depth=depth + 1)
+        return
+    if isinstance(value, str) and len(value) <= 20_000 and value.lstrip().startswith(("{", "[")):
+        try:
+            decoded = json.loads(value)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return
+        yield from _response_nodes(decoded, depth=depth + 1)
+
+
+def _external_result_classification(payload: dict) -> tuple[str, str]:
+    response = None
+    for key in ("tool_response", "tool_result", "response", "result"):
+        if key in payload:
+            response = payload.get(key)
+            break
+    status = ""
+    correctable_field = ""
+    saw_error = False
+    for node in _response_nodes(response):
+        raw_status = str(node.get("result_status") or node.get("status") or "").strip().lower()
+        if raw_status in EXTERNAL_RESULT_STATUSES and not status:
+            status = raw_status
+        if (
+            node.get("isError") is True
+            or node.get("is_error") is True
+            or node.get("error") not in (None, False, "", [], {})
+        ):
+            saw_error = True
+        if not correctable_field:
+            for key in ("correctable_field", "invalid_field", "invalid_parameter", "parameter", "argument"):
+                candidate = str(node.get(key) or "").strip().lower()
+                if re.fullmatch(r"[a-z][a-z0-9_.-]{0,63}", candidate):
+                    correctable_field = candidate
+                    break
+    if status == "correctable_error":
+        if (
+            not correctable_field
+            or SECRET_LIKE_FILENAME.search(correctable_field)
+            or correctable_field in GENERIC_MCP_SENSITIVE_INPUT_KEYS
+            or correctable_field in GENERIC_MCP_COST_INPUT_KEYS
+            or correctable_field in GENERIC_MCP_PATH_INPUT_KEYS
+        ):
+            return "terminal_gap", ""
+        return status, correctable_field
+    if status:
+        return status, ""
+    if saw_error or response is None:
+        return "terminal_gap", ""
+    return "complete_valid", ""
+
+
+def finalize_external_semantic_call(payload: dict) -> str:
+    if external_mcp_tool_parts(payload_tool_name(payload)) is None or not external_semantic_fingerprint(payload):
+        return ""
+    directory = _external_scope_directory(payload)
+    if directory is None:
+        return ""
+    lock_path = _acquire_external_state_lock(directory)
+    if lock_path is None:
+        return ""
+    try:
+        return _finalize_external_semantic_call_locked(payload)
+    finally:
+        _release_external_state_lock(lock_path)
+
+
+def _finalize_external_semantic_call_locked(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    semantic_key = external_semantic_fingerprint(payload)
+    directory = _external_scope_directory(payload)
+    if parts is None or directory is None:
+        return ""
+    target = directory / f"{semantic_key}.json" if semantic_key else None
+    record = read_json(target, {}) if target is not None and target.exists() else {}
+    tool_use_id = str(payload.get("tool_use_id") or "")[:180]
+    if not record or (tool_use_id and str(record.get("tool_use_id") or "") != tool_use_id):
+        target = None
+        for candidate in sorted(directory.glob("*.json"))[:512]:
+            possible = read_json(candidate, {})
+            if tool_use_id and str(possible.get("tool_use_id") or "") == tool_use_id:
+                target = candidate
+                record = possible
+                break
+    if target is None or str(record.get("state") or "") not in {"pending", "pending_retry"}:
+        return ""
+    status, correctable_field = _external_result_classification(payload)
+    attempt = int(record.get("attempt") or 1)
+    record["result_status"] = status
+    record["classified_at"] = now()
+    if status == "correctable_error" and attempt == 1 and correctable_field:
+        record["state"] = "correctable"
+        record["correctable_field"] = correctable_field
+    elif status == "correctable_error":
+        record["state"] = "correction_exhausted"
+        record["correctable_field"] = correctable_field
+    else:
+        record["state"] = "closed"
+    write_json(target, record)
+    return status
+
+
+def reserve_openbb_admin_call(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    if parts is None or parts[0] != "openbb" or parts[1] not in {"available_tools", "activate_tools"}:
+        return ""
+    workflow = resolve_workflow_run_id(payload)
+    role = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip().lower()
+    role_session = ""
+    for key in ("agent_session_id", "subagent_session_id", "agent_id", "subagent_id", "session_id"):
+        if payload.get(key):
+            role_session = str(payload[key]).strip()
+            break
+    if not workflow:
+        return "TradingCodex OpenBB discovery and activation require an active workflow binding"
+    if not role:
+        return "TradingCodex OpenBB discovery and activation require an evidence-role binding"
+    if not role_session:
+        return "TradingCodex OpenBB discovery and activation require a role-session binding"
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    category = str(tool_input.get("category") or "").strip().lower()
+    subcategory = str(tool_input.get("subcategory") or tool_input.get("sub_category") or "").strip().lower()
+    if subcategory and not category:
+        return "TradingCodex OpenBB admin subcategory requires an explicit category binding"
+    category_scopes: set[tuple[str, str]] = set()
+    if parts[1] == "available_tools":
+        category_scopes.add((category, subcategory or "*"))
+    else:
+        requested = _first_tool_input_value(tool_input, ("tool_names", "tools", "names"))
+        if isinstance(requested, str):
+            names = [item.strip().lower() for item in requested.split(",") if item.strip()]
+        elif isinstance(requested, list):
+            names = [str(item).strip().lower() for item in requested if str(item).strip()]
+        else:
+            names = []
+        derived_scopes: set[tuple[str, str]] = set()
+        for name in names:
+            tokens = [item for item in name.split("_") if item]
+            if len(tokens) < 2:
+                return "TradingCodex OpenBB activation tool names must bind a category/subcategory scope"
+            derived_scopes.add((tokens[0], tokens[1]))
+        if category:
+            if any(scoped_category != category for scoped_category, _ in derived_scopes):
+                return "TradingCodex OpenBB activation category must match every requested tool"
+            if subcategory:
+                if any(
+                    scoped_subcategory != subcategory
+                    for _, scoped_subcategory in derived_scopes
+                ):
+                    return "TradingCodex OpenBB activation subcategory must match every requested tool"
+                category_scopes.add((category, subcategory))
+            else:
+                category_scopes.update(derived_scopes)
+        else:
+            category_scopes.update(derived_scopes)
+    if not category_scopes or any(not scoped_category for scoped_category, _ in category_scopes):
+        return "TradingCodex OpenBB discovery and activation require one bounded category/subcategory scope"
+    scope_material = json.dumps(
+        {"workflow": workflow, "role": role, "role_session": role_session},
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    scope_key = hashlib.sha256(scope_material.encode("utf-8")).hexdigest()
+    directory = safe_hook_path(EXTERNAL_CALL_KEYS_ROOT / scope_key)
+    directory.mkdir(parents=True, exist_ok=True)
+    created: list[Path] = []
+    for scoped_category, scoped_subcategory in sorted(category_scopes):
+        marker_key = hashlib.sha256(
+            json.dumps(
+                {
+                    "tool": parts[1],
+                    "category": scoped_category,
+                    "subcategory": scoped_subcategory,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()
+        target = directory / f"openbb-admin-{marker_key}.json"
+        if not _create_external_state(target, {
+            "tool_name": payload_tool_name(payload),
+            "category": scoped_category,
+            "subcategory": scoped_subcategory,
+            "reserved_at": now(),
+        }):
+            for created_path in created:
+                created_path.unlink(missing_ok=True)
+            return (
+                f"TradingCodex permits OpenBB {parts[1]} at most once per workflow, role session, "
+                "and category/subcategory; reuse the compatibility receipt or discovered route map"
+            )
+        created.append(target)
+    return ""
+
+
+def openbb_tool_block_reason(payload: dict) -> str:
+    parts = external_mcp_tool_parts(payload_tool_name(payload))
+    if parts is None or parts[0] != "openbb":
+        return ""
+    tool = parts[1]
+    agent_type = str(payload.get("agent_type") or payload.get("subagent_type") or "").strip()
+    if agent_type not in RESEARCH_ROLES:
+        return "TradingCodex managed OpenBB is available only to the six evidence-producing fixed roles"
+    tool_input = payload.get("tool_input") if isinstance(payload.get("tool_input"), dict) else {}
+    if tool == "install_skill" or "download" in tool:
+        return "TradingCodex managed OpenBB blocks skill installation and download/export tools"
+    if re.search(
+        r"(?:^|_)(?:account|broker|cancel|connect|create|delete|execute|install|order|patch|post|put|remove|submit|trade|transfer|update|upload|withdraw)(?:_|$)",
+        tool,
+    ):
+        return "TradingCodex managed OpenBB permits read-only evidence tools only"
+    method = str(tool_input.get("method") or tool_input.get("http_method") or "GET").upper()
+    if method not in {"GET", "HEAD"}:
+        return "TradingCodex managed OpenBB blocks non-read HTTP methods"
+    if tool == "activate_tools":
+        requested = _first_tool_input_value(tool_input, ("tool_names", "tools", "names"))
+        if isinstance(requested, str):
+            names = [item.strip() for item in requested.split(",") if item.strip()]
+        elif isinstance(requested, list):
+            names = [str(item).strip() for item in requested if str(item).strip()]
+        else:
+            names = []
+        if (
+            not 1 <= len(names) <= 3
+            or len(names) != len(set(names))
+            or any(re.fullmatch(r"[a-z0-9][a-z0-9_-]{0,127}", name.lower()) is None for name in names)
+        ):
+            return "TradingCodex OpenBB activation requires one to three exact tool names"
+        for key in ("category", "subcategory", "sub_category"):
+            value = str(tool_input.get(key) or "").strip().lower()
+            if value and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", value) is None:
+                return "TradingCodex OpenBB admin scope requires bounded category/subcategory names"
+        return ""
+    if tool == "available_tools":
+        category = str(tool_input.get("category") or "").strip().lower()
+        if not category or category == "admin" or re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", category) is None:
+            return "TradingCodex OpenBB discovery requires one narrow evidence category"
+        subcategory = str(tool_input.get("subcategory") or tool_input.get("sub_category") or "").strip().lower()
+        if subcategory and re.fullmatch(r"[a-z][a-z0-9_-]{0,63}", subcategory) is None:
+            return "TradingCodex OpenBB admin scope requires bounded category/subcategory names"
+        return ""
+    if tool in {"available_categories", "deactivate_tools", "get_tool", "health", "status"}:
+        return "TradingCodex managed OpenBB exposes only bounded discovery and activation admin tools"
+    provider = _first_tool_input_value(tool_input, ("provider", "provider_name"))
+    if not isinstance(provider, str) or not provider.strip():
+        return "TradingCodex OpenBB data calls require an explicit upstream provider"
+    if tool_input.get("chart") is True or tool_input.get("include_chart") is True:
+        return "TradingCodex OpenBB data calls must disable charts"
+    for key in ("limit", "max_results", "max_rows", "page_size"):
+        value = tool_input.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 120:
+            return "TradingCodex OpenBB data calls are limited to 120 observations"
+    return ""
 
 
 def build_native_network_tool_block_reason(payload: dict) -> str:
@@ -1895,12 +2770,15 @@ def public_fetch_command_reason(
         return None
     if NETWORK_PACKAGE_INSTALL.search(raw):
         return "TradingCodex public fetch does not permit network package or dependency installation"
+    executable_word = raw.split(None, 1)[0]
+    if (
+        executable_word.startswith("=")
+        or any(character in executable_word for character in ("$", "`", "{", "}", "*", "?", "[", "]"))
+    ):
+        return "TradingCodex shell commands must not construct or expand the executable name"
     expansion_safe = _mask_scratch_expansion(raw)
     if _has_unquoted_network_control(expansion_safe):
-        if any(
-            re.search(rf"(?<![A-Za-z0-9_.-]){name}(?![A-Za-z0-9_.-])", raw)
-            for name in NETWORK_FETCH_EXECUTABLES
-        ):
+        if _shell_command_contains_network_fetch(raw):
             return "TradingCodex public fetch cannot use shell composition, redirection, substitution, or background execution"
         return None
     try:
@@ -1916,10 +2794,12 @@ def public_fetch_command_reason(
     executable_token = argv[0]
     executable = _external_command_name(executable_token)
     if executable not in NETWORK_FETCH_EXECUTABLES:
+        if executable in NETWORK_COMMAND_WRAPPERS:
+            return "TradingCodex public fetch commands must not use shell or environment wrappers"
         if any(
             _external_command_name(value) in NETWORK_FETCH_EXECUTABLES
             for value in argv[1:]
-        ):
+        ) or any(_shell_command_contains_network_fetch(value) for value in argv[1:]):
             return "TradingCodex public fetch command must begin directly with curl, wget, or git"
         return None
     self_contained = require_provider_root and not str(workdir or "").strip()
@@ -1944,9 +2824,20 @@ def public_fetch_command_reason(
             cwd,
             require_absolute_paths=self_contained,
             require_globoff=require_provider_root,
+            research_downloads_only=not require_provider_root,
         )
     if executable == "wget":
-        return _wget_fetch_reason(argv[1:], cwd, require_absolute_paths=self_contained)
+        return _wget_fetch_reason(
+            argv[1:],
+            cwd,
+            require_absolute_paths=self_contained,
+            research_downloads_only=not require_provider_root,
+        )
+    if not require_provider_root:
+        return (
+            "TradingCodex Research public fetch permits only one-file curl or wget "
+            "downloads; Git staging is Build-only"
+        )
     return _git_fetch_reason(argv[1:], cwd, self_contained=self_contained)
 
 
@@ -1956,6 +2847,31 @@ def _external_command_name(token: str) -> str:
         if leaf.endswith(suffix):
             return leaf[: -len(suffix)]
     return leaf
+
+
+def _shell_command_contains_network_fetch(command: str) -> bool:
+    """Recognize fetch executables after POSIX quote concatenation and escapes."""
+
+    try:
+        lexer = shlex.shlex(
+            str(command or ""),
+            posix=True,
+            punctuation_chars=";&|><",
+        )
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        tokens = tuple(lexer)
+    except ValueError:
+        tokens = ()
+    if any(
+        _external_command_name(token) in NETWORK_FETCH_EXECUTABLES
+        for token in tokens
+    ):
+        return True
+    return any(
+        re.search(rf"(?<![A-Za-z0-9_.-]){name}(?![A-Za-z0-9_.-])", command)
+        for name in NETWORK_FETCH_EXECUTABLES
+    )
 
 
 def _has_unquoted_network_control(command: str) -> bool:
@@ -2201,8 +3117,23 @@ def _secret_like_filename(path: Path) -> bool:
     )
 
 
+def _portable_staging_component_reason(component: str) -> str:
+    """Reject path spellings that alias files or devices on Windows."""
+
+    value = str(component or "")
+    if ":" in value:
+        return "TradingCodex public fetch destination must not use alternate data streams"
+    if value.rstrip(" .") != value:
+        return "TradingCodex public fetch destination components must not end with a dot or space"
+    if value.split(".", 1)[0].upper() in WINDOWS_RESERVED_DEVICE_NAMES:
+        return "TradingCodex public fetch destination must not use a reserved device filename"
+    return ""
+
+
 def _public_download_destination_reason(raw_path: str, cwd: Path) -> str:
-    value = str(raw_path or "").strip()
+    value = str(raw_path or "")
+    if value != value.strip():
+        return "TradingCodex public fetch destination must not begin or end with whitespace"
     if value == "-":
         return ""
     if any(character in value for character in "*?[]{}"):
@@ -2214,6 +3145,10 @@ def _public_download_destination_reason(raw_path: str, cwd: Path) -> str:
         lexical_relative = lexical.relative_to(PROVIDER_SOURCES_ROOT)
     except ValueError:
         return "TradingCodex public fetch destination escapes provider-source staging"
+    for component in lexical_relative.parts:
+        portable_reason = _portable_staging_component_reason(component)
+        if portable_reason:
+            return portable_reason
     if _path_has_symlink_below(PROVIDER_SOURCES_ROOT, lexical, include_target=True):
         return "TradingCodex public fetch destination cannot traverse or replace a symlink"
     if lexical.exists():
@@ -2234,6 +3169,61 @@ def _public_download_destination_reason(raw_path: str, cwd: Path) -> str:
         return "TradingCodex public fetch cannot write into Git or other VCS metadata"
     if _secret_like_filename(resolved):
         return "TradingCodex public fetch rejects secret-like destination filenames"
+    return ""
+
+
+def _research_download_destination_reason(raw_path: str, cwd: Path) -> str:
+    """Admit one fresh direct leaf in the precreated Research download staging root."""
+
+    value = str(raw_path or "")
+    if value != value.strip():
+        return "TradingCodex Research fetch destination must not begin or end with whitespace"
+    if not value or value == "-":
+        return "TradingCodex Research fetch requires an explicit staged output file"
+    if any(character in value for character in "*?[]{}"):
+        return "TradingCodex Research fetch destination must not use pathname expansion"
+    if re.search(r"#[0-9]+", value):
+        return "TradingCodex Research fetch rejects curl output template placeholders"
+    try:
+        root_metadata = os.lstat(RESEARCH_DOWNLOADS_ROOT)
+        root_attributes = int(getattr(root_metadata, "st_file_attributes", 0) or 0)
+        if (
+            not stat.S_ISDIR(root_metadata.st_mode)
+            or stat.S_ISLNK(root_metadata.st_mode)
+            or root_attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            or RESEARCH_DOWNLOADS_ROOT.resolve(strict=True) != RESEARCH_DOWNLOADS_ROOT
+        ):
+            return "TradingCodex Research download staging root must be a real nonsymlink directory"
+    except (OSError, RuntimeError, ValueError):
+        return "TradingCodex Research download staging root must be a real nonsymlink directory"
+    lexical = _lexical_fetch_path(value, cwd)
+    try:
+        lexical_relative = lexical.relative_to(RESEARCH_DOWNLOADS_ROOT)
+    except ValueError:
+        return (
+            "TradingCodex Research fetch files must be written under "
+            "$TRADINGCODEX_SCRATCH/research-downloads/"
+        )
+    if len(lexical_relative.parts) != 1:
+        return "TradingCodex Research fetch destination must be one direct staged filename"
+    portable_reason = _portable_staging_component_reason(lexical_relative.parts[0])
+    if portable_reason:
+        return portable_reason
+    if _path_has_symlink_below(RESEARCH_DOWNLOADS_ROOT, lexical, include_target=True):
+        return "TradingCodex Research fetch destination cannot traverse or replace a symlink"
+    if lexical.exists():
+        return "TradingCodex Research fetch destination must be a new staged file"
+    resolved = _resolved_fetch_path(value, cwd)
+    try:
+        resolved_relative = resolved.relative_to(RESEARCH_DOWNLOADS_ROOT)
+    except ValueError:
+        return "TradingCodex Research fetch destination escapes research download staging"
+    if len(resolved_relative.parts) != 1:
+        return "TradingCodex Research fetch destination must be one direct staged filename"
+    if resolved_relative.parts[0].lower() in VCS_METADATA_NAMES:
+        return "TradingCodex Research fetch cannot write VCS metadata"
+    if _secret_like_filename(resolved):
+        return "TradingCodex Research fetch rejects secret-like destination filenames"
     return ""
 
 
@@ -2284,6 +3274,8 @@ def _public_url_reason(raw_url: str, *, git_https_only: bool = False) -> str:
     value = str(raw_url or "").strip()
     if any(character in value for character in ("$", "`", "\x00")):
         return "TradingCodex public fetch URL cannot use shell expansion"
+    if "{" in value or "}" in value or _curl_url_has_glob_brackets(value):
+        return "TradingCodex public fetch URL must not use glob, range, or brace expansion"
     try:
         parsed = urllib.parse.urlsplit(value)
     except ValueError:
@@ -2345,6 +3337,7 @@ def _curl_fetch_reason(
     *,
     require_absolute_paths: bool = False,
     require_globoff: bool = False,
+    research_downloads_only: bool = False,
 ) -> str:
     urls: list[str] = []
     output_paths: list[str] = []
@@ -2486,6 +3479,16 @@ def _curl_fetch_reason(
 
     if not urls:
         return "TradingCodex public fetch requires at least one URL"
+    if research_downloads_only:
+        if len(urls) != 1 or len(output_paths) != 1:
+            return (
+                "TradingCodex Research curl requires one URL and one explicit "
+                "$TRADINGCODEX_SCRATCH/research-downloads/<file> output"
+            )
+        if create_dirs:
+            return "TradingCodex Research curl does not permit --create-dirs"
+        if remote_name or output_directory:
+            return "TradingCodex Research curl does not permit remote-name or output-dir forms"
     if create_dirs and not require_globoff:
         return "TradingCodex public curl --create-dirs is limited to Build provider staging"
     if require_globoff and not globoff:
@@ -2525,9 +3528,15 @@ def _curl_fetch_reason(
             reason = _absolute_staging_operand_reason(path)
             if reason:
                 return reason
-        reason = _public_download_destination_reason(path, cwd)
+        reason = (
+            _research_download_destination_reason(path, cwd)
+            if research_downloads_only
+            else _public_download_destination_reason(path, cwd)
+        )
         if reason:
             return reason
+        if research_downloads_only:
+            continue
         if create_dirs:
             reason = _fresh_http_provider_directory_reason(path, cwd)
             if reason:
@@ -2582,6 +3591,7 @@ def _wget_fetch_reason(
     cwd: Path,
     *,
     require_absolute_paths: bool = False,
+    research_downloads_only: bool = False,
 ) -> str:
     urls: list[str] = []
     output_document = ""
@@ -2667,6 +3677,14 @@ def _wget_fetch_reason(
             return "TradingCodex public fetch rejects unsupported or effectful wget options"
     if not urls:
         return "TradingCodex public fetch requires at least one URL"
+    if research_downloads_only:
+        if len(urls) != 1 or not output_document:
+            return (
+                "TradingCodex Research wget requires one URL and one explicit "
+                "$TRADINGCODEX_SCRATCH/research-downloads/<file> output"
+            )
+        if directory_prefix:
+            return "TradingCodex Research wget does not permit directory-prefix or implicit output"
     for url in urls:
         reason = _public_url_reason(url)
         if reason:
@@ -2676,7 +3694,11 @@ def _wget_fetch_reason(
             reason = _absolute_staging_operand_reason(output_document)
             if reason:
                 return reason
-        return _public_download_destination_reason(output_document, cwd)
+        return (
+            _research_download_destination_reason(output_document, cwd)
+            if research_downloads_only
+            else _public_download_destination_reason(output_document, cwd)
+        )
     if spider:
         return ""
     if require_absolute_paths and not directory_prefix:
@@ -2744,6 +3766,9 @@ def _safe_git_clone_destination_reason(raw_destination: str, cwd: Path) -> str:
         return "TradingCodex public Git clone destination escapes provider-source staging"
     if len(lexical_relative.parts) != 1 or re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", lexical_relative.name) is None:
         return "TradingCodex public Git clone destination must be one new provider-id directory"
+    portable_reason = _portable_staging_component_reason(lexical_relative.name)
+    if portable_reason:
+        return portable_reason
     if lexical_relative.name.lower() in VCS_METADATA_NAMES or _secret_like_filename(lexical_destination):
         return "TradingCodex public Git clone destination is reserved or secret-like"
     if _path_has_symlink_below(PROVIDER_SOURCES_ROOT, lexical_destination, include_target=True):
@@ -3800,7 +4825,7 @@ def projected_role_skill_read_allowed(payload: dict, command: str) -> bool:
     if role not in EXPECTED_SUBAGENTS:
         return False
     paths = simple_cat_paths(command)
-    if not paths:
+    if len(paths) != 1:
         return False
     config_path = ROOT / ".codex" / "agents" / f"{role}.toml"
     if not config_path.is_file() or config_path.is_symlink():

@@ -141,6 +141,7 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         _codex_cli_runtime_check(),
         text_check(root, "guidance", "head-manager model instructions file configured", ".codex/config.toml", 'model_instructions_file = "prompts/base_instructions/head-manager.md"', True),
         text_check(root, "guidance", "head-manager instructions installed", ".codex/prompts/base_instructions/head-manager.md", "You are the `head-manager` agent", True),
+        text_check(root, "guidance", "fixed-role base instructions installed", ".codex/prompts/base_instructions/fixed-role.md", "You are a fixed-role child in TradingCodex", True),
         *_launcher_checks(root),
         text_check(root, "guidance", "hooks configured", ".codex/hooks.json", "\"PreToolUse\"", True),
         text_check(root, "guidance", "session context configured", ".codex/hooks/tradingcodex_hook.py", "tradingcodex-session-context", True),
@@ -1034,6 +1035,14 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     ])
     for subagent in EXPECTED_SUBAGENTS:
         checks.append(path_check(root, "improvement", f"subagent installed: {subagent}", f".codex/agents/{subagent}.toml", True))
+        checks.append(text_check(
+            root,
+            "improvement",
+            f"subagent compact base configured: {subagent}",
+            f".codex/agents/{subagent}.toml",
+            'model_instructions_file = "../prompts/base_instructions/fixed-role.md"',
+            True,
+        ))
         subagent_path = root / ".codex" / "agents" / f"{subagent}.toml"
         try:
             subagent_text = subagent_path.read_text(encoding="utf-8")

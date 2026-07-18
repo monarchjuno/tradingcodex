@@ -2,6 +2,7 @@ name = "technical-analyst"
 nickname_candidates = ["technical-analyst"]
 description = "Analyze price action, trend, volatility, liquidity, and technical setup."
 web_search = "live"
+model_instructions_file = "../prompts/base_instructions/fixed-role.md"
 
 developer_instructions = """
 You are the technical analyst for this workspace's fixed-role investment workflow team.
@@ -56,6 +57,16 @@ Write evidence-backed notes for `trading/reports/technical/`.
 Do not create order tickets, approve orders, read approvals, or request execution.
 """
 
+[mcp_servers.openbb]
+command = {{OPENBB_MCP_COMMAND_TOML}}
+args = ["-m", "tradingcodex_cli", "data-sources", "openbb", "serve", "--principal", "technical-analyst"]
+enabled = {{OPENBB_MCP_ENABLED_TOML}}
+required = false
+cwd = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}}
+env = { TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE = {{TRADINGCODEX_HOME_SOURCE_TOML}}, TRADINGCODEX_WORKSPACE_ROOT = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}} }
+env_vars = {{OPENBB_MCP_ENV_VARS_TOML}}
+default_tools_approval_mode = "approve"
+
 [mcp_servers.tradingcodex]
 command = {{TRADINGCODEX_PYTHON_TOML}}
 args = ["-m", "tradingcodex_cli", "mcp", "stdio"]
@@ -63,6 +74,6 @@ enabled = true
 required = true
 cwd = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}}
 env = { TRADINGCODEX_CALCULATION_RUNTIME_ROOT = {{TRADINGCODEX_CALCULATION_RUNTIME_ROOT_TOML}}, TRADINGCODEX_HOME = {{TRADINGCODEX_HOME_TOML}}, TRADINGCODEX_HOME_SOURCE = {{TRADINGCODEX_HOME_SOURCE_TOML}}{{TRADINGCODEX_DB_ENV_TOML}}, TRADINGCODEX_MCP_AUTOSTART_SERVICE = "1"{{TRADINGCODEX_MCP_PACKAGE_SPEC_ENV_TOML}}{{TRADINGCODEX_PACKAGE_SOURCE_KIND_ENV_TOML}}{{TRADINGCODEX_MCP_PYTHONPATH_ENV_TOML}}, TRADINGCODEX_MCP_PRINCIPAL = "technical-analyst", TRADINGCODEX_SCRATCH = {{TRADINGCODEX_SCRATCH_PATH_TOML}}, TRADINGCODEX_SERVICE_ADDR = {{TRADINGCODEX_SERVICE_ADDR_TOML}}, TRADINGCODEX_WORKSPACE_ROOT = {{TRADINGCODEX_WORKSPACE_ROOT_TOML}} }
-enabled_tools = ["list_workflow_artifacts", "create_research_artifact", "get_research_artifact", "list_research_artifacts", "search_research_artifacts", "append_research_artifact_version", "export_research_artifact_md", "record_source_snapshot", "record_audit_event"]
+enabled_tools = ["create_research_artifact", "get_research_artifact", "get_data_acquisition_receipt", "append_research_artifact_version", "export_research_artifact_md", "record_source_snapshot", "get_dataset_manifest", "get_data_source_status", "get_official_source_plan", "fetch_official_source_data", "get_source_snapshot", "get_dataset_rows", "record_external_data_result", "record_audit_event"]
 disabled_tools = ["run_order_checks", "validate_approval_receipt", "request_order_approval", "get_order_status", "get_positions", "get_portfolio_snapshot"]
 default_tools_approval_mode = "approve"

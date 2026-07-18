@@ -5,70 +5,42 @@ description: "Collect source-backed investment evidence at the start of analyst 
 
 # Collect Evidence
 
-Use this skill at the start of an investment workflow.
+Build the smallest evidence pack that can answer the assigned question.
 
-Before using external data, apply read-only source, provider, as-of, and coverage checks.
+1. Identify the universe and workflow type. Use only relevant, callable source
+   classes; mark missing universe support or unavailable routes as gaps.
+2. Apply `tcx-source-gate` before external retrieval. Reuse a satisfying
+   Dataset first, then one relevant enabled user MCP/skill, supported OpenBB,
+   and finally TradingCodex official/web fallback. Record provider/tool,
+   stable locator or material query, source/retrieval time, units, coverage,
+   warnings, conflicts, and credential failures.
+3. Separate `[factual]` observations, source/management claims,
+   `[inference]`, and `[assumption]`. Prefer opened primary filings, releases,
+   and exchange/regulator records over snippets, secondary news, stale data,
+   or unsupported assumptions.
+4. State the identifier, source list, source-trust notes, market context,
+   missing evidence, freshness, decision readiness, confidence, update
+   triggers, invalidation conditions, and contrary evidence that matter.
+5. Apply the shared artifact quality floor and persist the pack under
+   `trading/research/` only through authenticated MCP.
 
-Universe and source posture:
+For a row result, call `record_external_data_result` immediately and preserve
+all validated rows. Carry only its Snapshot, Dataset, and acquisition receipt
+IDs plus a compact card into calculation or handoff context. Do not summarize
+away the source rows or make another provider call for the same promoted
+coverage.
 
-- Identify the investment universe before collecting evidence: public equity, ETF/index, crypto public market, macro/rates/FX/commodity, cross-asset overlay, credit signal, or unsupported/unclear.
-- For public equity, the detailed evidence shape usually includes company filings/IR, transcripts/presentations, market data/estimates, internal/user notes, portfolio/model/tracker context, and news.
-- For other universes, collect only source categories that are actually available and relevant; label missing installed workflows or unavailable source routes as support gaps.
-- Record source/as-of or retrieved-at timestamps for market-sensitive data.
-- Keep support files such as source indexes, raw exports, normalized CSVs, and logs secondary to the evidence pack unless explicitly requested.
+For `record_source_snapshot`, omit caller-owned `snapshot_id`, `retrieved_at`,
+and `recorded_at`. Supply `known_at` only when an exact timezone-aware knowable
+time is genuinely supported; never repair validation with a guessed time.
+When an artifact cites returned `source_snapshot_ids`, set `knowledge_cutoff`
+to a timezone-qualified RFC 3339 time at or after the maximum service-returned
+snapshot `known_at`, preferably that exact maximum. Never use end-of-day or another future time, and never send a date-only value. If no exact bound is
+available, omit the optional cutoff; if no snapshot exists, use `[]`.
 
-Expected output:
-
-- Universe and workflow type
-- Company or asset identifier
-- Source list
-- Source trust notes: official primary source, management claim,
-  market-derived evidence, secondary news, stale evidence, or unsupported
-  assumption
-- Filing, news, price, and market context references
-- Facts versus assumptions
-- Missing evidence
-- Source/as-of posture and support gaps
-
-Decision quality fields when applicable:
-
-- `evidence_grade`, `source_freshness`, `source_quality`
-- `conflict_status`, `decision_readiness`, `confidence`
-- `source_trust_notes`
-- `forecast_required`, `forecast_allowed`, `forecast_block_reason`
-- `contrary_evidence`, `update_triggers`, `invalidation_conditions`
-
-Quality floor:
-
-- Apply the shared artifact quality floor.
-- Tag material narrative claims as `[factual]`, `[inference]`, or `[assumption]`.
-- Include source dates or retrieval dates when available.
-- Include provider/tool names, query parameters, warnings, and credential or coverage failures for external sources.
-- For `record_source_snapshot`, let TradingCodex derive `snapshot_id`,
-  `retrieved_at`, and `recorded_at`; omit those fields in normal agent calls.
-  Supply `known_at` only when its exact timezone-aware knowable time is truly
-  supported, and never repair a validation error with a guessed clock time.
-- When sending `source_snapshot_ids` to an artifact tool, set
-  `knowledge_cutoff` to a full RFC 3339 timestamp with an explicit timezone at
-  or after the maximum service-returned snapshot `known_at`; prefer that exact
-  maximum, and never send a date-only value.
-- Never use end-of-day or another future time as `knowledge_cutoff`. When no
-  source snapshot provides an exact bound and the exact current cutoff time is
-  unavailable, omit the optional field rather than guessing.
-- Separate verified facts, source claims, assumptions, and analyst inference.
-- Weight official primary sources above management claims, secondary news,
-  stale sources, and unsupported assumptions.
-- Flag stale, missing, or conflicting evidence.
-- Label the evidence pack `factual-baseline`, `screen-grade`, or `not-decision-ready` when source gaps limit downstream use.
-- Do not fabricate source dates, prices, filings, metrics, or tool output.
-- Include confidence: high, medium, or low, with one reason.
-- When writing markdown, include context summary, handoff state, confidence,
-  missing-evidence, next-recipient, blocked-action, and source-snapshot metadata
-  in frontmatter.
-- An `accepted` run-bound artifact must pass the service's strict quality gate
-  before its file and receipt are published. Correct a rejected payload; never
-  downgrade the handoff merely to evade validation. Use `follow_up_requests=[]`
-  when none apply. Otherwise supply structured objects with `trigger`,
-  `suggested_role`, `question`, `reason`, and `materiality`; never use strings.
-
-Write evidence packs under `trading/research/`.
+Use `factual-baseline`, `screen-grade`, or `not-decision-ready` when gaps limit
+downstream use. Include high/medium/low confidence with one reason. An
+`accepted` artifact must pass service quality; correct a rejected payload
+instead of weakening its handoff. Use `follow_up_requests=[]` when none apply;
+otherwise provide structured objects with `trigger`, `suggested_role`,
+`question`, `reason`, and `materiality`.

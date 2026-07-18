@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX OpenBB"
+  short_description: "Use OpenBB MCP for bounded read-only financial research"
+  default_prompt: "Use $tcx-openbb to acquire this financial dataset through the managed OpenBB MCP and preserve it in TradingCodex."
+policy:
+  allow_implicit_invocation: false

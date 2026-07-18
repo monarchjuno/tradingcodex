@@ -26,9 +26,17 @@ a conclusion explicitly exploratory.
 6. Run exactly `./tcx-calc <filename.py>` from the workspace root on POSIX or
    `.\\tcx-calc.cmd <filename.py>` on Windows. Do not invoke system Python,
    install packages, use heredocs, or pass `-c`, `-m`, paths, or extra args.
-7. Emit one typed result with `tcx_emit_result()`. Record success or failure
-   with `record_calculation_run`; do not retry silently or reuse failed runs.
-8. Bind accepted `calculation_run_ids`, Dataset lineage, assumptions,
+7. Call the runner-injected `tcx_emit_result` global exactly once with one
+   positional object. Never import it, pass keyword arguments, invent wrapper
+   fields, or emit a metrics mapping. Copy the exact typed shape from
+   [references/data-runtime.md](references/data-runtime.md).
+8. Record success or failure with `record_calculation_run`. On failure, read
+   its safe `error_code` and `error_message`, make one concrete correction,
+   stage a new script basename, prepare a new immutable spec, and retry. Never
+   overwrite a prepared script/result, repeat the same failed code unchanged,
+   install packages, or reuse a failed Run. Stop and hand off as `waiting` if
+   the same error code recurs after its targeted correction.
+9. Bind accepted `calculation_run_ids`, Dataset lineage, assumptions,
    diagnostics, and warnings into the role artifact. Do not cite an
    exploratory sidecar-free execution as decision evidence.
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import tomllib
@@ -12,8 +13,16 @@ from tradingcodex_service.application.common import now_iso
 
 
 CODEX_COMMAND_TIMEOUT_SECONDS = 5
+MAX_CALLABLE_SCHEMA_BYTES = 20_000
+MAX_COST_METADATA_BYTES = 2_000
 RESERVED_SKILL_PREFIX = "tcx-"
 RESERVED_MCP_NAMES = {"tradingcodex", "tradingcodex-home"}
+_EXACT_MCP_FQN = re.compile(r"mcp__[A-Za-z0-9_.-]+__[A-Za-z0-9_.-]+")
+_SENSITIVE_METADATA_KEY = re.compile(
+    r"(?:api[_-]?key|secret|password|authorization|cookie|access[_-]?token|refresh[_-]?token)",
+    re.IGNORECASE,
+)
+_SECRET_BEARING_SCHEMA_KEYS = frozenset({"const", "default", "example", "examples"})
 
 
 def list_codex_capabilities(workspace_root: Path | str) -> dict[str, Any]:
@@ -23,11 +32,15 @@ def list_codex_capabilities(workspace_root: Path | str) -> dict[str, Any]:
     warnings: list[str] = []
     capabilities: list[dict[str, Any]] = []
 
-    mcp_payload = _run_codex_json(("mcp", "list", "--json"), warnings, "MCP")
+    mcp_payload = _run_codex_json(
+        ("mcp", "list", "--json"), warnings, "MCP", workspace_root=root
+    )
     if mcp_payload is not None:
         capabilities.extend(_mcp_capabilities(mcp_payload))
 
-    plugin_payload = _run_codex_json(("plugin", "list", "--json"), warnings, "plugin")
+    plugin_payload = _run_codex_json(
+        ("plugin", "list", "--json"), warnings, "plugin", workspace_root=root
+    )
     if plugin_payload is not None:
         capabilities.extend(_plugin_capabilities(plugin_payload, warnings))
 
@@ -48,7 +61,13 @@ def list_codex_capabilities(workspace_root: Path | str) -> dict[str, Any]:
     }
 
 
-def _run_codex_json(argv: tuple[str, ...], warnings: list[str], label: str) -> Any | None:
+def _run_codex_json(
+    argv: tuple[str, ...],
+    warnings: list[str],
+    label: str,
+    *,
+    workspace_root: Path,
+) -> Any | None:
     executable = shutil.which("codex")
     if not executable:
         warnings.append(f"Codex {label} inventory is unavailable because the Codex CLI was not found")
@@ -62,6 +81,7 @@ def _run_codex_json(argv: tuple[str, ...], warnings: list[str], label: str) -> A
             timeout=CODEX_COMMAND_TIMEOUT_SECONDS,
             stdin=subprocess.DEVNULL,
             env=_inventory_environment(),
+            cwd=str(workspace_root),
         )
     except subprocess.TimeoutExpired:
         warnings.append(f"Codex {label} inventory timed out")
@@ -107,8 +127,158 @@ def _mcp_capabilities(payload: Any) -> list[dict[str, Any]]:
         if not name or name in RESERVED_MCP_NAMES:
             continue
         enabled = item.get("enabled") is not False
-        records.append(_capability("mcp", name, name, _scope(item), "codex", enabled))
+        record = _capability("mcp", name, name, _scope(item), "codex", enabled)
+        callable_tools = _known_callable_tools(item)
+        if callable_tools:
+            record["callable_tools"] = callable_tools
+        records.append(record)
     return records
+
+
+def _known_callable_tools(server: dict[str, Any]) -> list[dict[str, Any]]:
+    """Expose tool metadata only when Codex returned an explicit exact FQN."""
+
+    candidates: list[Any] = []
+    for key in ("tools", "callableTools", "callable_tools"):
+        value = server.get(key)
+        if isinstance(value, list):
+            candidates.extend(value)
+    for key in ("toolFqns", "tool_fqns", "callableFqns", "callable_fqns"):
+        value = server.get(key)
+        if isinstance(value, list):
+            candidates.extend(value)
+    capabilities = server.get("capabilities")
+    if isinstance(capabilities, dict) and isinstance(capabilities.get("tools"), list):
+        candidates.extend(capabilities["tools"])
+
+    by_fqn: dict[str, dict[str, Any]] = {}
+    conflicts: set[str] = set()
+    for candidate in candidates:
+        if isinstance(candidate, str):
+            fqn = candidate.strip()
+            if _EXACT_MCP_FQN.fullmatch(fqn) is not None:
+                by_fqn.setdefault(fqn, {"fqn": fqn})
+            continue
+        if not isinstance(candidate, dict):
+            continue
+        fqn = str(
+            candidate.get("fqn")
+            or candidate.get("fullyQualifiedName")
+            or candidate.get("fully_qualified_name")
+            or ""
+        ).strip()
+        if _EXACT_MCP_FQN.fullmatch(fqn) is None:
+            continue
+        metadata: dict[str, Any] = {"fqn": fqn}
+
+        schema_candidates = [
+            candidate[key]
+            for key in ("inputSchema", "input_schema")
+            if isinstance(candidate.get(key), dict)
+        ]
+        if schema_candidates and all(item == schema_candidates[0] for item in schema_candidates):
+            schema = _sanitize_known_metadata(
+                schema_candidates[0],
+                maximum_bytes=MAX_CALLABLE_SCHEMA_BYTES,
+                schema=True,
+            )
+            if isinstance(schema, dict):
+                metadata["input_schema"] = schema
+
+        annotations = candidate.get("annotations")
+        annotations = annotations if isinstance(annotations, dict) else {}
+        read_only_values = [
+            value
+            for value in (
+                candidate.get("readOnly"),
+                candidate.get("read_only"),
+                annotations.get("readOnlyHint"),
+            )
+            if type(value) is bool
+        ]
+        if read_only_values and all(value is read_only_values[0] for value in read_only_values):
+            metadata["read_only"] = read_only_values[0]
+
+        cost_values = [
+            value
+            for present, value in (
+                ("cost" in candidate, candidate.get("cost")),
+                ("cost" in annotations, annotations.get("cost")),
+            )
+            if present
+        ]
+        if cost_values and all(value == cost_values[0] for value in cost_values):
+            cost = _sanitize_known_metadata(
+                cost_values[0],
+                maximum_bytes=MAX_COST_METADATA_BYTES,
+                schema=False,
+            )
+            if cost is not None:
+                metadata["cost"] = cost
+
+        existing = by_fqn.get(fqn)
+        if existing is None:
+            by_fqn[fqn] = metadata
+        elif any(
+            key in existing and existing[key] != item
+            for key, item in metadata.items()
+            if key != "fqn"
+        ):
+            conflicts.add(fqn)
+        else:
+            by_fqn[fqn] = {**existing, **metadata}
+    for fqn in conflicts:
+        # The FQN itself is explicit, but contradictory optional metadata is not known.
+        by_fqn[fqn] = {"fqn": fqn}
+    return [by_fqn[fqn] for fqn in sorted(by_fqn)]
+
+
+def _sanitize_known_metadata(
+    value: Any,
+    *,
+    maximum_bytes: int,
+    schema: bool,
+) -> Any | None:
+    def scrub(item: Any, *, key: str = "") -> Any:
+        if item is None or type(item) in {bool, int, float}:
+            return item
+        if isinstance(item, str):
+            if _SENSITIVE_METADATA_KEY.search(key) or (
+                schema and _SENSITIVE_METADATA_KEY.search(item)
+            ):
+                return None
+            return item[:500]
+        if isinstance(item, list):
+            cleaned_items = [scrub(child, key=key) for child in item[:100]]
+            return [child for child in cleaned_items if child is not None]
+        if isinstance(item, dict):
+            cleaned: dict[str, Any] = {}
+            for raw_key, child in list(item.items())[:200]:
+                child_key = str(raw_key)
+                if _SENSITIVE_METADATA_KEY.search(child_key):
+                    continue
+                if schema and child_key in _SECRET_BEARING_SCHEMA_KEYS:
+                    continue
+                cleaned_child = scrub(child, key=child_key)
+                if cleaned_child is not None:
+                    cleaned[child_key] = cleaned_child
+            return cleaned
+        return None
+
+    cleaned = scrub(value)
+    try:
+        encoded = json.dumps(
+            cleaned,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
+    if len(encoded) > maximum_bytes:
+        return None
+    return cleaned
 
 
 def _plugin_capabilities(payload: Any, warnings: list[str]) -> list[dict[str, Any]]:
@@ -156,7 +326,7 @@ def _plugin_components(
                 if name:
                     records.append(_capability("skill", f"{plugin_id}:{name}", name, "plugin", "plugin", enabled, plugin_id))
         elif skills_path.is_file() and skills_path.name == "SKILL.md":
-            name = _skill_name(skills_path)
+            name = skills_path.parent.name
             if name:
                 records.append(_capability("skill", f"{plugin_id}:{name}", name, "plugin", "plugin", enabled, plugin_id))
 

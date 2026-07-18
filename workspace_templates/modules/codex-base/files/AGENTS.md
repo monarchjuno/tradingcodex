@@ -2,8 +2,10 @@
 
 This file is the generated workspace guide. It should stay small: durable
 agent behavior lives in `.codex/prompts/base_instructions/head-manager.md`,
-fixed-role behavior lives in `.codex/agents/*.toml`, and executable policy
-lives in the TradingCodex service layer.
+shared fixed-role safety, evidence, artifact, and retry behavior lives in
+`.codex/prompts/base_instructions/fixed-role.md`, role-specific identity and
+tool configuration live in `.codex/agents/*.toml`, and executable policy lives
+in the TradingCodex service layer.
 
 Repository expectations:
 
@@ -22,7 +24,11 @@ Repository expectations:
 - All normal analysis threads, including `head-manager` and fixed roles, inherit
   the project-wide `trading-research` permission profile. It permits ordinary
   shell, credential-free public-network research, and reviewable edits to
-  user-owned files outside `trading/`. Fixed roles assigned `tcx-calculation`
+  user-owned files outside `trading/`. Command-line `curl`/`wget` retrieval
+  uses one URL and one explicit new direct file under the precreated
+  `$TRADINGCODEX_SCRATCH/research-downloads/` directory; do not use implicit,
+  remote-name, directory-creating, nested, existing, link-like, stdout, VCS, or
+  secret-like destinations. Fixed roles assigned `tcx-calculation`
   must follow it for numeric work: prepare and record conclusion-relevant
   calculations, keep exploratory runs out of artifact evidence, and use only
   the exact generated `tcx-calc` launcher contract. The calculation runtime is
@@ -82,10 +88,23 @@ Repository expectations:
   workspace refresh and the managed optional skill, MCP-config, or connector
   lifecycle service that owns the requested state. Use direct `$tcx-brain` or
   `$tcx-strategy` turns for those capabilities.
-- Keep prompts lean. Put repeatable procedures in repo skills, standing role
-  behavior in role TOML, and generated indexes under `.tradingcodex/generated/`.
+- Keep prompts lean. Put repeatable procedures in repo skills, shared standing
+  child behavior in the compact fixed-role base, specialist identity and tool
+  configuration in role TOML, and generated indexes under
+  `.tradingcodex/generated/`.
 - Keep handoffs context-efficient: pass artifact paths, `context_summary`,
   source/as-of metadata, and source snapshot IDs before pasting full artifacts.
+- For each external data family, Head Manager defines one DataNeed and one of
+  the six evidence-producing roles as acquisition owner. Route a reusable
+  current Dataset first only after its exact acquisition receipt authenticates
+  coverage and source, then one relevant enabled user MCP/skill, the optional
+  TradingCodex-supported OpenBB transport, and finally TradingCodex official/web
+  fallback. This order is not a trust ranking; Core source, evidence, cost, and
+  safety gates still apply. Non-owners consume returned Snapshot/Dataset/
+  Data Acquisition Receipt/Artifact IDs. OpenBB is read-only, provider-explicit, and
+  optional; never install or configure it from an analyst skill, and store only
+  `env:<NAME>` credential references through the user-terminal CLI. Never paste
+  raw keys or repeat the same external semantic call after any result.
 - Treat hook `additionalContext` as transport/run guidance and the exact
   `begin_analysis_run` result plus authenticated artifact receipts as the
   current run binding. Do not look for a latest intake, selected team, plan, or

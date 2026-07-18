@@ -29,7 +29,7 @@ CALCULATION_RUN_ROOT = Path("trading/research/calculations/runs")
 CALCULATION_SPEC_SCHEMA_VERSION = 1
 CALCULATION_RUN_SCHEMA_VERSION = 1
 CALCULATION_SIDECAR_SCHEMA_VERSION = 1
-CALCULATION_RESULT_SCHEMA_VERSION = 1
+CALCULATION_RESULT_SCHEMA_VERSION = 2
 MAX_SCRIPT_BYTES = 1_000_000
 MAX_INPUT_BYTES = 256 * 1024 * 1024
 MAX_RESULT_BYTES = 1_000_000
@@ -42,6 +42,68 @@ RUN_STATUSES = {"succeeded", "failed", "reused"}
 PRIVATE_INPUT_KINDS = {"private_ledger", "private_portfolio", "private_account"}
 ALLOWED_INPUT_KINDS = {"dataset_slice", *PRIVATE_INPUT_KINDS}
 FORBIDDEN_OUTPUT_SUFFIXES = (".pickle", ".pkl", ".joblib", ".pyc", ".pyo")
+CALCULATION_ERROR_MESSAGES = {
+    "emit_is_injected_global": (
+        "tcx_emit_result is injected into prepared scripts; remove the import and call the global directly."
+    ),
+    "emit_requires_one_positional_object": (
+        "Call tcx_emit_result exactly once with one positional result object; do not use keyword arguments."
+    ),
+    "emit_unknown_fields": (
+        "The result object may contain only metrics, diagnostics, assumptions, warnings, and output_files; "
+        "metrics must use the exact typed metric shape."
+    ),
+    "emit_metrics_must_be_array": (
+        "metrics must be a non-empty array of typed metric objects, not a name-to-value mapping."
+    ),
+    "emit_metric_must_be_object": "Every metrics entry must be an object.",
+    "emit_metric_fields_mismatch": (
+        "Every metric must contain exactly name, value, value_type, unit, currency, and precision."
+    ),
+    "emit_metric_name_or_value_type_invalid": (
+        "Each metric needs a non-empty name and value_type of number, integer, decimal, string, or boolean."
+    ),
+    "emit_metric_value_type_mismatch": (
+        "A metric value does not match its declared value_type; correct the value or value_type."
+    ),
+    "emit_metric_decimal_invalid": (
+        "A decimal metric must be an exact finite string with no surrounding whitespace."
+    ),
+    "emit_metric_precision_invalid": (
+        "Metric precision must be a non-negative integer or null."
+    ),
+    "emit_metric_unit_currency_invalid": (
+        "Metric unit and currency must each be a string or null."
+    ),
+    "emit_non_finite_json": (
+        "The result contains NaN, Infinity, or a value that is not finite JSON."
+    ),
+    "emit_diagnostics_must_be_object": "diagnostics must be an object.",
+    "emit_assumptions_must_be_strings": "assumptions must be an array of strings.",
+    "emit_warnings_must_be_strings": "warnings must be an array of strings.",
+    "emit_output_files_must_be_array": "output_files must be an array of basenames.",
+    "emit_output_file_invalid": "Every output_files entry must be one direct scratch-local basename.",
+    "emit_output_file_undeclared": (
+        "The result references an output file that was not declared during prepare_calculation."
+    ),
+    "emit_prepared_only": "tcx_emit_result is available only in prepared calculations.",
+    "emit_called_more_than_once": "Call tcx_emit_result exactly once.",
+    "emit_required": "A prepared calculation must call tcx_emit_result exactly once.",
+    "module_not_available": (
+        "The script imported a module outside the pinned calculation runtime; use only the documented packages or standard library."
+    ),
+    "runtime_boundary_denied": (
+        "The script crossed the calculation boundary; remove network/process access or declare the required scratch input/output."
+    ),
+    "script_key_error": "The script referenced a missing mapping key or input column; verify the materialized schema.",
+    "script_index_error": "The script indexed outside the available rows or dimensions; validate sample and window sizes.",
+    "script_arithmetic_error": "The script raised an arithmetic error; guard zero, overflow, and invalid numeric cases.",
+    "script_type_error": "The script raised a type error; inspect call signatures and input types.",
+    "script_value_error": "The script raised a value error; validate inputs and conversions before retrying.",
+    "script_exception": "The script raised an unclassified exception; inspect the script without exposing input values.",
+}
+RESULT_TOP_LEVEL_FIELDS = ("metrics", "diagnostics", "assumptions", "warnings", "output_files")
+RESULT_METRIC_FIELDS = ("name", "value", "value_type", "unit", "currency", "precision")
 
 
 def prepare_calculation(
@@ -176,6 +238,7 @@ def prepare_calculation(
         "script_name": script_name,
         "sidecar_file": sidecar_name,
         "result_file": result_name,
+        "result_contract": _result_contract(output_schema),
         "spec_status": spec_status,
         "workspace_context": workspace_context_payload(root),
     }
@@ -270,6 +333,10 @@ def record_calculation_run(
         "authority": "evidence_only",
         "blocked_actions": ["order_drafting", "order_approval", "order_execution"],
     }
+    if envelope["status"] == "failed":
+        error_code = str(envelope["error_code"])
+        run["error_code"] = error_code
+        run["error_message"] = CALCULATION_ERROR_MESSAGES[error_code]
     run["run_sha256"] = stable_hash(run)
     path = _artifact_path(root, CALCULATION_RUN_ROOT, run_id)
     artifact, status = _store_immutable(
@@ -613,6 +680,8 @@ def _run_card(run: dict[str, Any], *, spec: dict[str, Any] | None = None) -> dic
             if isinstance(metric, dict)
         ],
         "warnings": list(run.get("warnings", []))[:10],
+        "error_code": str(run.get("error_code") or ""),
+        "error_message": str(run.get("error_message") or ""),
         "system_recorded_at": run.get("system_recorded_at"),
     }
 
@@ -1007,15 +1076,17 @@ def _validated_output_schema(value: Any) -> dict[str, Any]:
             if set(raw) - allowed:
                 raise ValueError(f"output_schema.metrics[{index}] has unknown fields")
             name = str(raw.get("name") or "").strip()
-            record = {"name": name}
             value_type = raw.get("value_type")
-            if value_type is not None:
-                value_type = str(value_type)
-                if value_type not in {"number", "integer", "decimal", "string", "boolean"}:
-                    raise ValueError(
-                        f"output_schema.metrics[{index}].value_type is invalid"
-                    )
-                record["value_type"] = value_type
+            if value_type is None:
+                raise ValueError(
+                    f"output_schema.metrics[{index}].value_type is required"
+                )
+            value_type = str(value_type)
+            if value_type not in {"number", "integer", "decimal", "string", "boolean"}:
+                raise ValueError(
+                    f"output_schema.metrics[{index}].value_type is invalid"
+                )
+            record = {"name": name, "value_type": value_type}
             for field in ("unit", "currency"):
                 if field in raw:
                     field_value = raw[field]
@@ -1042,6 +1113,18 @@ def _validated_output_schema(value: Any) -> dict[str, Any]:
         names.add(name)
         normalized.append(record)
     return {**schema, "metrics": normalized}
+
+
+def _result_contract(output_schema: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "emitter": "tcx_emit_result",
+        "emitter_is_injected_global": True,
+        "call_style": "one_positional_object_exactly_once",
+        "allowed_result_fields": list(RESULT_TOP_LEVEL_FIELDS),
+        "required_metric_fields": list(RESULT_METRIC_FIELDS),
+        "output_schema_metrics": list(output_schema["metrics"]),
+        "failed_run_fields": ["error_type", "error_code", "error_message"],
+    }
 
 
 def _validate_prepared_execution(
@@ -1357,6 +1440,7 @@ def _validate_envelope(envelope: dict[str, Any], manifest: dict[str, Any]) -> No
         "workflow_run_id",
         "status",
         "error_type",
+        "error_code",
         "result",
         "outputs",
         "stdout",
@@ -1393,10 +1477,17 @@ def _validate_envelope(envelope: dict[str, Any], manifest: dict[str, Any]) -> No
         if not isinstance(summary.get("bytes"), int) or not 0 <= summary["bytes"] <= MAX_RESULT_BYTES:
             raise ValueError(f"calculation result {field} byte count is invalid")
     if envelope["status"] == "succeeded":
-        if envelope.get("error_type") != "" or not isinstance(envelope.get("result"), dict):
+        if (
+            envelope.get("error_type") != ""
+            or envelope.get("error_code") != ""
+            or not isinstance(envelope.get("result"), dict)
+        ):
             raise ValueError("successful calculation result payload is invalid")
-    elif not str(envelope.get("error_type") or "").strip():
-        raise ValueError("failed calculation result error_type is required")
+    else:
+        if not str(envelope.get("error_type") or "").strip():
+            raise ValueError("failed calculation result error_type is required")
+        if str(envelope.get("error_code") or "") not in CALCULATION_ERROR_MESSAGES:
+            raise ValueError("failed calculation result error_code is invalid")
     _finite_value(envelope, "calculation result")
 
 

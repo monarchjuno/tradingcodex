@@ -66,6 +66,69 @@ REQUIRED_DIRECT_PACKAGES = {
     "statsmodels": "0.14.6",
 }
 WINDOWS_CTYPES_BOOTSTRAP_LIBRARIES = frozenset({"kernel32", "kernel32.dll"})
+RUNNER_FAILURE_CODES = frozenset(
+    {
+        "emit_is_injected_global",
+        "emit_requires_one_positional_object",
+        "emit_unknown_fields",
+        "emit_metrics_must_be_array",
+        "emit_metric_must_be_object",
+        "emit_metric_fields_mismatch",
+        "emit_metric_name_or_value_type_invalid",
+        "emit_metric_value_type_mismatch",
+        "emit_metric_decimal_invalid",
+        "emit_metric_precision_invalid",
+        "emit_metric_unit_currency_invalid",
+        "emit_non_finite_json",
+        "emit_diagnostics_must_be_object",
+        "emit_assumptions_must_be_strings",
+        "emit_warnings_must_be_strings",
+        "emit_output_files_must_be_array",
+        "emit_output_file_invalid",
+        "emit_output_file_undeclared",
+        "emit_prepared_only",
+        "emit_called_more_than_once",
+        "emit_required",
+        "module_not_available",
+        "runtime_boundary_denied",
+        "script_key_error",
+        "script_index_error",
+        "script_arithmetic_error",
+        "script_type_error",
+        "script_value_error",
+        "script_exception",
+    }
+)
+
+
+class _CalculationContractError(ValueError):
+    """A runner-authored failure code that is safe to persist and display."""
+
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
+
+
+def _failure_code(exc: BaseException) -> str:
+    if isinstance(exc, _CalculationContractError):
+        return exc.code
+    if isinstance(exc, ModuleNotFoundError):
+        if getattr(exc, "name", None) == "tcx_calculation":
+            return "emit_is_injected_global"
+        return "module_not_available"
+    if isinstance(exc, PermissionError):
+        return "runtime_boundary_denied"
+    if isinstance(exc, KeyError):
+        return "script_key_error"
+    if isinstance(exc, IndexError):
+        return "script_index_error"
+    if isinstance(exc, ArithmeticError):
+        return "script_arithmetic_error"
+    if isinstance(exc, TypeError):
+        return "script_type_error"
+    if isinstance(exc, ValueError):
+        return "script_value_error"
+    return "script_exception"
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -605,7 +668,7 @@ def _validate_json_value(value: Any, *, label: str) -> None:
         return
     if isinstance(value, float):
         if not math.isfinite(value):
-            raise ValueError(f"{label} must not contain NaN or Infinity")
+            raise _CalculationContractError("emit_non_finite_json")
         return
     if isinstance(value, list):
         for index, item in enumerate(value):
@@ -615,73 +678,74 @@ def _validate_json_value(value: Any, *, label: str) -> None:
         for key, item in value.items():
             _validate_json_value(item, label=f"{label}.{key}")
         return
-    raise ValueError(f"{label} must be a finite JSON value")
+    raise _CalculationContractError("emit_non_finite_json")
 
 
 def _validate_emitted_result(value: Any, declared_outputs: set[str]) -> dict[str, Any]:
     if not isinstance(value, dict):
-        raise ValueError("tcx_emit_result requires one result object")
+        raise _CalculationContractError("emit_requires_one_positional_object")
     allowed = {"metrics", "diagnostics", "assumptions", "warnings", "output_files"}
     if set(value) - allowed:
-        raise ValueError("tcx_emit_result contains unknown fields")
+        raise _CalculationContractError("emit_unknown_fields")
     metrics = value.get("metrics")
     if not isinstance(metrics, list) or not metrics:
-        raise ValueError("tcx_emit_result metrics must be a non-empty array")
+        raise _CalculationContractError("emit_metrics_must_be_array")
     normalized_metrics = []
     for index, metric in enumerate(metrics):
         if not isinstance(metric, dict):
-            raise ValueError(f"metric {index} must be an object")
+            raise _CalculationContractError("emit_metric_must_be_object")
         required = {"name", "value", "value_type", "unit", "currency", "precision"}
         if set(metric) != required:
-            raise ValueError(f"metric {index} fields do not match the typed metric schema")
+            raise _CalculationContractError("emit_metric_fields_mismatch")
         name = str(metric.get("name") or "").strip()
         value_type = str(metric.get("value_type") or "")
         if not name or value_type not in {"number", "integer", "decimal", "string", "boolean"}:
-            raise ValueError(f"metric {index} has an invalid name or value_type")
+            raise _CalculationContractError("emit_metric_name_or_value_type_invalid")
         raw = metric.get("value")
         if value_type == "number" and (isinstance(raw, bool) or not isinstance(raw, (int, float))):
-            raise ValueError(f"metric {index} value must be numeric")
+            raise _CalculationContractError("emit_metric_value_type_mismatch")
         if value_type == "integer" and (isinstance(raw, bool) or not isinstance(raw, int)):
-            raise ValueError(f"metric {index} value must be an integer")
+            raise _CalculationContractError("emit_metric_value_type_mismatch")
         if value_type in {"decimal", "string"} and not isinstance(raw, str):
-            raise ValueError(f"metric {index} value must be a string")
+            raise _CalculationContractError("emit_metric_value_type_mismatch")
         if value_type == "decimal":
             if not raw or raw != raw.strip():
-                raise ValueError(f"metric {index} decimal value must be an exact finite string")
+                raise _CalculationContractError("emit_metric_decimal_invalid")
             try:
                 decimal_value = Decimal(raw)
             except InvalidOperation as exc:
-                raise ValueError(
-                    f"metric {index} decimal value must be an exact finite string"
-                ) from exc
+                raise _CalculationContractError("emit_metric_decimal_invalid") from exc
             if not decimal_value.is_finite():
-                raise ValueError(f"metric {index} decimal value must be finite")
+                raise _CalculationContractError("emit_metric_decimal_invalid")
         if value_type == "boolean" and not isinstance(raw, bool):
-            raise ValueError(f"metric {index} value must be a boolean")
+            raise _CalculationContractError("emit_metric_value_type_mismatch")
         if metric["precision"] is not None and (isinstance(metric["precision"], bool) or not isinstance(metric["precision"], int) or metric["precision"] < 0):
-            raise ValueError(f"metric {index} precision must be a non-negative integer or null")
+            raise _CalculationContractError("emit_metric_precision_invalid")
         for field in ("unit", "currency"):
             if metric[field] is not None and not isinstance(metric[field], str):
-                raise ValueError(f"metric {index} {field} must be a string or null")
+                raise _CalculationContractError("emit_metric_unit_currency_invalid")
         _validate_json_value(metric, label=f"metric {index}")
         normalized_metrics.append(dict(metric))
     diagnostics = value.get("diagnostics", {})
     if not isinstance(diagnostics, dict):
-        raise ValueError("diagnostics must be an object")
+        raise _CalculationContractError("emit_diagnostics_must_be_object")
     assumptions = value.get("assumptions", [])
     warnings = value.get("warnings", [])
     if not isinstance(assumptions, list) or not all(isinstance(item, str) for item in assumptions):
-        raise ValueError("assumptions must be an array of strings")
+        raise _CalculationContractError("emit_assumptions_must_be_strings")
     if not isinstance(warnings, list) or not all(isinstance(item, str) for item in warnings):
-        raise ValueError("warnings must be an array of strings")
+        raise _CalculationContractError("emit_warnings_must_be_strings")
     output_files = value.get("output_files", [])
     if not isinstance(output_files, list):
-        raise ValueError("output_files must be an array")
+        raise _CalculationContractError("emit_output_files_must_be_array")
     normalized_files = []
     for item in output_files:
-        filename = _direct_name(item, label="result output file")
+        try:
+            filename = _direct_name(item, label="result output file")
+        except ValueError as exc:
+            raise _CalculationContractError("emit_output_file_invalid") from exc
         if filename not in declared_outputs:
-            raise ValueError(f"result references an undeclared output: {filename}")
+            raise _CalculationContractError("emit_output_file_undeclared")
         normalized_files.append(filename)
     normalized = {
         "metrics": normalized_metrics,
@@ -728,17 +792,20 @@ def run_calculation(*, workspace: str, scratch: str, script_name: str) -> int:
     emitted_once = False
     declared_outputs: dict[str, Path] = {}
 
-    def tcx_emit_result(value: Any) -> None:
+    def tcx_emit_result(*args: Any, **kwargs: Any) -> None:
         nonlocal emitted, emitted_once
         if sidecar is None:
-            raise RuntimeError("tcx_emit_result is available only for prepared calculations")
+            raise _CalculationContractError("emit_prepared_only")
+        if kwargs or len(args) != 1:
+            raise _CalculationContractError("emit_requires_one_positional_object")
         if emitted_once:
-            raise RuntimeError("tcx_emit_result may be called exactly once")
-        emitted = _validate_emitted_result(value, set(declared_outputs))
+            raise _CalculationContractError("emit_called_more_than_once")
+        emitted = _validate_emitted_result(args[0], set(declared_outputs))
         emitted_once = True
 
     status = "succeeded"
     error_type = ""
+    error_code = ""
     try:
         if sidecar is not None and sidecar_path is not None:
             readable, declared_outputs, result_name = _declared_io(scratch_path, sidecar)
@@ -763,13 +830,21 @@ def run_calculation(*, workspace: str, scratch: str, script_name: str) -> int:
         }
         exec(code, namespace, namespace)
         if sidecar is not None and not emitted_once:
-            raise RuntimeError("prepared calculation must call tcx_emit_result exactly once")
+            raise _CalculationContractError("emit_required")
     except BaseException as exc:
         if sidecar is None:
             raise
         status = "failed"
-        error_type = type(exc).__name__
-        print(f"tcx-calc: calculation failed ({error_type})", file=sys.stderr)
+        error_type = (
+            "ValueError"
+            if isinstance(exc, _CalculationContractError)
+            else type(exc).__name__
+        )
+        error_code = _failure_code(exc)
+        print(
+            f"tcx-calc: calculation failed ({error_type}; {error_code})",
+            file=sys.stderr,
+        )
     finally:
         timer.cancel()
         if result_descriptor is not None and sidecar is not None:
@@ -791,12 +866,13 @@ def run_calculation(*, workspace: str, scratch: str, script_name: str) -> int:
                         }
                     )
             envelope = {
-                "schema_version": 1,
+                "schema_version": 2,
                 "calculation_spec_id": sidecar["calculation_spec_id"],
                 "fingerprint": sidecar["fingerprint"],
                 "workflow_run_id": sidecar["workflow_run_id"],
                 "status": status,
                 "error_type": error_type,
+                "error_code": error_code,
                 "result": emitted,
                 "outputs": output_records,
                 "stdout": stdout.summary(),

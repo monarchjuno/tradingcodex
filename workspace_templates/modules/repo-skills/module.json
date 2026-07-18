@@ -11,6 +11,7 @@
     "capabilities": [
       "skill.collect_evidence",
       "skill.external_data_source_gate",
+      "skill.openbb_read_only_research",
       "skill.workflow.plan",
       "skill.workflow.automation",
       "skill.workflow.orchestrate",

@@ -319,6 +319,11 @@ enabled_tools = [
   "append_research_artifact_version",
   "export_research_artifact_md",
   "record_source_snapshot",
+  "search_datasets",
+  "get_dataset_manifest",
+  "get_source_snapshot",
+  "get_dataset_rows",
+  "export_dataset_csv",
   "record_audit_event"
 ]
 default_tools_approval_mode = "approve"

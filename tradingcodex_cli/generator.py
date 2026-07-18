@@ -93,6 +93,7 @@ GENERATED_INDEX_PATHS = frozenset({
     SKILL_INDEX_PATH.as_posix(),
     ".tradingcodex/generated/capability-index.json",
     ".tradingcodex/generated/component-index.json",
+    ".tradingcodex/generated/openbb-projection.json",
 })
 BOOTSTRAP_WRITE_PATHS = frozenset({
     ".gitignore",
@@ -103,6 +104,24 @@ BOOTSTRAP_WRITE_PATHS = frozenset({
     ".tradingcodex/workspace.json",
 })
 MANAGED_PYTHON_RUNTIME_ROOT = Path("runtime/python")
+RUNTIME_SUBPROCESS_ENV_ALLOWLIST = frozenset(
+    {
+        "COMSPEC",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "PATH",
+        "PATHEXT",
+        "SSL_CERT_DIR",
+        "SSL_CERT_FILE",
+        "SystemRoot",
+        "TEMP",
+        "TMP",
+        "TMPDIR",
+        "TZ",
+        "WINDIR",
+    }
+)
 CALCULATION_RUNTIME_SCHEMA_VERSION = 2
 CALCULATION_RUNNER_SOURCE = Path(__file__).with_name("calculation_runner.py")
 CALCULATION_RUNTIME_LOCK = Path(__file__).with_name("calculation-runtime-lock.json")
@@ -279,6 +298,13 @@ def bootstrap_workspace(
             current_generated_paths,
         )
         project_agent_configuration(target, applied_by="bootstrap", generated_at=context["GENERATED_AT"])
+        from tradingcodex_service.application.data_sources import write_openbb_projection_receipt
+
+        write_openbb_projection_receipt(
+            target,
+            generated_at=context["GENERATED_AT"],
+            command=context["TRADINGCODEX_PYTHON"],
+        )
         write_generated_indexes(target, modules, context, set(rendered), previous_lock)
         write_server_status_snapshot(target)
     result["workspace_id"] = workspace_id
@@ -389,6 +415,10 @@ def _generation_context(
         "TRADINGCODEX_WORKSPACE_LAUNCHER": workspace_launcher_command(),
     }
     context = serialized_template_context(raw)
+    from tradingcodex_service.application.data_sources import openbb_projection_template_values
+
+    context.update(openbb_projection_template_values(target))
+    context["OPENBB_MCP_COMMAND_TOML"] = context["TRADINGCODEX_PYTHON_TOML"]
     scratch_aliases = sorted(
         str(alias)
         for alias in workspace_scratch_permission_aliases(workspace_id, scratch_path)
@@ -435,13 +465,97 @@ def resolve_generated_git_command() -> str:
 
 
 def _workspace_scratch_display_path(workspace_id: str) -> Path:
-    if os.name == "nt":
+    test_root_value = str(os.environ.get("TRADINGCODEX_TEST_SCRATCH_ROOT") or "").strip()
+    if test_root_value:
+        if any(ord(character) < 32 or ord(character) == 127 for character in test_root_value):
+            raise ValueError("TRADINGCODEX_TEST_SCRATCH_ROOT contains control characters")
+        test_root = Path(test_root_value).expanduser()
+        if not test_root.is_absolute():
+            raise ValueError("TRADINGCODEX_TEST_SCRATCH_ROOT must be absolute")
+        if any(
+            component in {".", ".."}
+            for component in re.split(r"[\\/]", test_root_value)
+        ):
+            raise ValueError(
+                "TRADINGCODEX_TEST_SCRATCH_ROOT must not contain dot path components"
+            )
+        test_root = test_root.absolute()
+        temp_root = _trusted_test_temp_root()
+        if test_root == temp_root or not test_root.is_relative_to(temp_root):
+            raise ValueError(
+                "TRADINGCODEX_TEST_SCRATCH_ROOT must be a private descendant of the OS temp root"
+            )
+        resolved_test_root = test_root.resolve(strict=False)
+        for candidate in _path_components_after(test_root, temp_root):
+            if _path_is_link_or_reparse_point(candidate):
+                raise ValueError(
+                    "TRADINGCODEX_TEST_SCRATCH_ROOT must not traverse a symlink or reparse point"
+                )
+            if candidate.exists() and not candidate.is_dir():
+                raise ValueError(
+                    "TRADINGCODEX_TEST_SCRATCH_ROOT ancestors must be real directories"
+                )
+        if (
+            resolved_test_root != test_root
+            or not resolved_test_root.is_relative_to(temp_root)
+        ):
+            raise ValueError(
+                "TRADINGCODEX_TEST_SCRATCH_ROOT must be a canonical no-link temp path"
+            )
+        cache_base = resolved_test_root
+    elif os.name == "nt":
         cache_base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "TradingCodexScratch"
     elif sys.platform == "darwin":
         cache_base = Path.home() / "Library" / "Caches" / "TradingCodex"
     else:
         cache_base = Path(os.environ.get("XDG_CACHE_HOME") or (Path.home() / ".cache")) / "tradingcodex"
     return cache_base.expanduser().absolute() / "scratch-v1" / workspace_id
+
+
+def _trusted_test_temp_root() -> Path:
+    """Return an environment-selected temp root only under an OS-owned anchor."""
+
+    temp_root = Path(tempfile.gettempdir()).expanduser().resolve(strict=True)
+    if sys.platform == "darwin":
+        anchors = (Path("/private/var/folders"), Path("/private/tmp"))
+    elif os.name == "nt":
+        lowered_parts = tuple(part.lower() for part in temp_root.parts)
+        trusted_shape = (
+            temp_root.name.lower() == "temp"
+            and (
+                "windows" in lowered_parts
+                or ("appdata" in lowered_parts and "local" in lowered_parts)
+            )
+        )
+        if not trusted_shape:
+            raise ValueError(
+                "TRADINGCODEX_TEST_SCRATCH_ROOT requires a trusted OS temp root"
+            )
+        anchors = (temp_root,)
+    else:
+        anchors = (Path("/tmp"), Path("/var/tmp"), Path("/usr/tmp"))
+
+    canonical_anchors: list[Path] = []
+    for anchor in anchors:
+        try:
+            canonical = anchor.resolve(strict=True)
+        except OSError:
+            continue
+        if canonical not in canonical_anchors:
+            canonical_anchors.append(canonical)
+    if not any(
+        temp_root == anchor or temp_root.is_relative_to(anchor)
+        for anchor in canonical_anchors
+    ):
+        raise ValueError(
+            "TRADINGCODEX_TEST_SCRATCH_ROOT requires a trusted OS temp root"
+        )
+    for candidate in _path_components_after(temp_root, None):
+        if _path_is_link_or_reparse_point(candidate):
+            raise ValueError(
+                "TRADINGCODEX_TEST_SCRATCH_ROOT OS temp root must not traverse a symlink or reparse point"
+            )
+    return temp_root
 
 
 def _calculation_runtime_cache_root() -> Path:
@@ -528,9 +642,9 @@ def calculation_runtime_paths(
             )
             return runtime_root, runtime_python, runtime_runner
         staging = Path(tempfile.mkdtemp(prefix=f".{runtime_root.name}.", dir=runtime_parent))
-        environment = os.environ.copy()
-        for key in ("PYTHONHOME", "PYTHONPATH", "VIRTUAL_ENV", "PYTHONSTARTUP"):
-            environment.pop(key, None)
+        environment = _runtime_subprocess_environment(
+            uv_cache_dir=_default_uv_cache_dir()
+        )
         try:
             _run_runtime_provision_command(
                 [
@@ -910,7 +1024,7 @@ def _workspace_scratch_paths(
     protected_paths: dict[str, Path | str] | None = None,
 ) -> tuple[Path, Path]:
     scratch_display_path = _workspace_scratch_display_path(workspace_id)
-    scratch_path, provider_sources_path = _validated_workspace_scratch_location(
+    scratch_path, _, _ = _validated_workspace_scratch_location(
         scratch_display_path,
         protected_paths=protected_paths,
     )
@@ -918,7 +1032,7 @@ def _workspace_scratch_paths(
         return scratch_display_path, scratch_path
 
     scratch_display_path.mkdir(parents=True, exist_ok=True)
-    scratch_path, provider_sources_path = _validated_workspace_scratch_location(
+    scratch_path, _, _ = _validated_workspace_scratch_location(
         scratch_display_path,
         protected_paths=protected_paths,
     )
@@ -929,14 +1043,19 @@ def _workspace_scratch_paths(
 
     provider_sources_display_path = scratch_display_path / "provider-sources"
     provider_sources_display_path.mkdir(parents=False, exist_ok=True)
-    scratch_path, provider_sources_path = _validated_workspace_scratch_location(
-        scratch_display_path,
-        protected_paths=protected_paths,
+    research_downloads_display_path = scratch_display_path / "research-downloads"
+    research_downloads_display_path.mkdir(parents=False, exist_ok=True)
+    scratch_path, provider_sources_path, research_downloads_path = (
+        _validated_workspace_scratch_location(
+            scratch_display_path,
+            protected_paths=protected_paths,
+        )
     )
-    try:
-        provider_sources_path.chmod(0o700)
-    except OSError:
-        pass
+    for private_directory in (provider_sources_path, research_downloads_path):
+        try:
+            private_directory.chmod(0o700)
+        except OSError:
+            pass
     return scratch_display_path, scratch_path
 
 
@@ -944,8 +1063,9 @@ def _validated_workspace_scratch_location(
     scratch_display_path: Path,
     *,
     protected_paths: dict[str, Path | str] | None,
-) -> tuple[Path, Path]:
+) -> tuple[Path, Path, Path]:
     provider_sources_display_path = scratch_display_path / "provider-sources"
+    research_downloads_display_path = scratch_display_path / "research-downloads"
     if _path_is_link_or_reparse_point(scratch_display_path.parent):
         raise ValueError(
             "TradingCodex scratch parent must be a real directory, not a symlink or reparse point"
@@ -959,31 +1079,37 @@ def _validated_workspace_scratch_location(
             "TradingCodex provider source staging path must be a real directory, "
             "not a symlink or reparse point"
         )
+    if _path_is_link_or_reparse_point(research_downloads_display_path):
+        raise ValueError(
+            "TradingCodex research download staging path must be a real directory, "
+            "not a symlink or reparse point"
+        )
     if scratch_display_path.exists() and not scratch_display_path.is_dir():
         raise ValueError("TradingCodex scratch path must be a real directory")
     if provider_sources_display_path.exists() and not provider_sources_display_path.is_dir():
         raise ValueError("TradingCodex provider source staging path must be a real directory")
+    if research_downloads_display_path.exists() and not research_downloads_display_path.is_dir():
+        raise ValueError("TradingCodex research download staging path must be a real directory")
 
     trusted_alias_prefix = _workspace_scratch_trusted_alias_prefix(scratch_display_path)
-    for candidate in _path_components_after(
-        scratch_display_path / "provider-sources",
-        trusted_alias_prefix,
-    ):
-        if _path_is_link_or_reparse_point(candidate):
-            raise ValueError(
-                "TradingCodex scratch ancestors must be real directories, "
-                "not symlinks or reparse points"
-            )
-        if candidate.exists() and not candidate.is_dir():
-            raise ValueError("TradingCodex scratch ancestors must be real directories")
+    for child_path in (provider_sources_display_path, research_downloads_display_path):
+        for candidate in _path_components_after(child_path, trusted_alias_prefix):
+            if _path_is_link_or_reparse_point(candidate):
+                raise ValueError(
+                    "TradingCodex scratch ancestors must be real directories, "
+                    "not symlinks or reparse points"
+                )
+            if candidate.exists() and not candidate.is_dir():
+                raise ValueError("TradingCodex scratch ancestors must be real directories")
 
     scratch_path = scratch_display_path.resolve(strict=False)
     provider_sources_path = scratch_path / "provider-sources"
+    research_downloads_path = scratch_path / "research-downloads"
     for label, raw_path in (protected_paths or {}).items():
         protected_path = Path(raw_path).expanduser().resolve(strict=False)
         if _paths_overlap(scratch_path, protected_path):
             raise ValueError(f"TradingCodex scratch path must not overlap {label}")
-    return scratch_path, provider_sources_path
+    return scratch_path, provider_sources_path, research_downloads_path
 
 
 def _path_is_link_or_reparse_point(path: Path) -> bool:
@@ -1082,11 +1208,7 @@ def _validate_generated_python(candidate: Path, *, pythonpath: str = "") -> None
         raise ValueError(f"generated TradingCodex Python does not exist or is not a file: {candidate}")
     if generated_python_path_is_ephemeral(candidate):
         raise ValueError(f"generated TradingCodex Python is under a disposable uv cache: {candidate}")
-    probe_environment = os.environ.copy()
-    probe_environment.pop("PYTHONHOME", None)
-    probe_environment.pop("PYTHONPATH", None)
-    if pythonpath:
-        probe_environment["PYTHONPATH"] = pythonpath
+    probe_environment = _runtime_subprocess_environment(pythonpath=pythonpath)
     try:
         probe = subprocess.run(
             [
@@ -1177,15 +1299,9 @@ def ensure_managed_python_runtime(
                     prefix=f".{runtime_environment.name}.source.",
                 )
                 install_spec = str(source_snapshot)
-        environment = os.environ.copy()
-        for key in (
-            "PYTHONHOME",
-            "PYTHONPATH",
-            "UV_NO_CACHE",
-            "VIRTUAL_ENV",
-            PRIOR_RUNTIME_PYTHON_ENV,
-        ):
-            environment.pop(key, None)
+        environment = _runtime_subprocess_environment(
+            uv_cache_dir=_default_uv_cache_dir()
+        )
         try:
             _run_runtime_provision_command(
                 [uv, "venv", "--no-project", "--python", str(base_python), str(staging)],
@@ -1254,9 +1370,7 @@ def _bootstrap_python_is_usable(
     if not candidate.is_file() or generated_python_path_is_ephemeral(candidate):
         return False
     try:
-        probe_environment = os.environ.copy()
-        probe_environment.pop("PYTHONHOME", None)
-        probe_environment.pop("PYTHONPATH", None)
+        probe_environment = _runtime_subprocess_environment()
         probe_source = (
             "import sys; "
             "sys.exit(2) if not ((3, 11) <= sys.version_info < (3, 15)) else None; "
@@ -1299,6 +1413,34 @@ def _run_runtime_provision_command(argv: list[str], environment: dict[str, str])
         raise ValueError("TradingCodex managed Python runtime provisioning failed") from exc
     if result.returncode != 0:
         raise ValueError("TradingCodex managed Python runtime provisioning failed")
+
+
+def _runtime_subprocess_environment(
+    *,
+    pythonpath: str = "",
+    uv_cache_dir: Path | None = None,
+) -> dict[str, str]:
+    """Build a minimal runtime environment without forwarding ambient secrets."""
+
+    environment = {
+        key: value
+        for key in RUNTIME_SUBPROCESS_ENV_ALLOWLIST
+        if (value := os.environ.get(key))
+    }
+    if pythonpath:
+        environment["PYTHONPATH"] = pythonpath
+    if uv_cache_dir is not None:
+        environment["UV_CACHE_DIR"] = str(uv_cache_dir.absolute())
+        environment["UV_NO_CONFIG"] = "1"
+    return environment
+
+
+def _default_uv_cache_dir() -> Path:
+    if os.name == "nt":
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        base = Path(local_app_data) if local_app_data else Path.home() / "AppData" / "Local"
+        return base / "uv" / "cache"
+    return Path.home() / ".cache" / "uv"
 
 
 def _managed_python_runtime_key(package_spec: str) -> str:
@@ -1535,6 +1677,12 @@ def serialized_template_context(raw: dict[str, str]) -> dict[str, str]:
         if raw.get("TRADINGCODEX_MCP_PYTHONPATH")
         else ""
     )
+    context.setdefault(
+        "OPENBB_MCP_COMMAND_TOML",
+        context["TRADINGCODEX_PYTHON_TOML"],
+    )
+    context.setdefault("OPENBB_MCP_ENABLED_TOML", "false")
+    context.setdefault("OPENBB_MCP_ENV_VARS_TOML", "[]")
     context["TRADINGCODEX_DB_ENV_SHELL"] = (
         "if [ -z \"${TRADINGCODEX_DB_NAME:-}\" ]; then\n"
         f"  export TRADINGCODEX_DB_NAME={context['TRADINGCODEX_DB_PATH_SHELL']}\n"

@@ -30,11 +30,23 @@ of truth.
   units/currency, timezone/frequency, adjustment policy, vintage/cutoff,
   freshness, and license terms fit the assignment.
 
+Use only the Dataset column types accepted by the service: `string`, `bool`,
+`int64`, `float64`, `date32`, `timestamp`, or `decimal128(p,s)` with valid
+precision and scale. Do not guess JSON-schema labels such as `date`, `number`,
+`float`, or `integer`. A materialized time filter requires a Dataset column of
+type `timestamp` plus timezone-aware RFC 3339 `start` and `end` values. A
+`date32` or string date column cannot be used as `time_column`; omit the time
+selector or create a governed derived Dataset with a real timestamp column.
+
 ## Prepare and record calculations
 
 - Declare calculation kind/version, script, normalized parameters, output
   schema, Dataset materializations, private-input hashes, and cutoff through
   `prepare_calculation`.
+- Each declared input `kind` is exactly one of `dataset_slice`,
+  `private_account`, `private_ledger`, or `private_portfolio`. A Dataset
+  materialization uses `dataset_slice`; do not invent labels such as
+  `dataset_materialization`.
 - Accept automatic reuse only for a successful exact fingerprint match. Bind
   the new workflow's reuse Run and its source Run; never convert similarity
   search into automatic reuse.
@@ -49,6 +61,55 @@ of truth.
 - Store tabular or time-series outputs as derived Datasets. Keep a Calculation
   Run card and summary compact; retrieve full diagnostics or logs only for
   review and reproduction.
+
+### Emit the exact typed result
+
+`tcx_emit_result` is a global injected by the prepared runner. Do not import it
+from `tcx_calculation` or any other module, and do not call it with keyword
+arguments. Copy this shape and keep metric order and declared metadata aligned
+with `prepare_calculation.output_schema.metrics`:
+
+```python
+tcx_emit_result({
+    "metrics": [
+        {
+            "name": "return_20d",
+            "value": 0.125,
+            "value_type": "number",
+            "unit": "ratio",
+            "currency": None,
+            "precision": 6,
+        }
+    ],
+    "diagnostics": {"observations": 21},
+    "assumptions": [],
+    "warnings": [],
+    "output_files": [],
+})
+```
+
+The top-level object may contain only `metrics`, `diagnostics`, `assumptions`,
+`warnings`, and `output_files`. `metrics` must be a non-empty array. Every
+metric must contain exactly `name`, `value`, `value_type`, `unit`, `currency`,
+and `precision`, even when the last three are `None`. Use an exact finite string
+for `decimal`; use ordinary finite JSON values for the other declared types.
+
+### Correct and retry a failed run
+
+1. Record the failed envelope with `record_calculation_run`; do not discard it.
+2. Read the returned `error_code` and static `error_message`. Never infer a
+   missing package from `ValueError` alone or expose input-bearing exception
+   text.
+3. Correct the indicated script contract, input schema/window, arithmetic, or
+   declared I/O issue. Keep the method, governed inputs, and cutoff unchanged
+   unless the error proves one of them invalid.
+4. Stage the correction under a new `.py` basename, increment the calculation
+   version when method code changed, call `prepare_calculation` again, execute
+   the new generated command, and record the new Run.
+5. Retry only after a concrete correction. If the same `error_code` repeats
+   once, stop the loop, preserve both failed Runs, lower readiness, and hand off
+   the exact code/message as `waiting`. Bind only a successful or exact-reused
+   Run to a conclusion.
 
 ## Stay within the runtime boundary
 
