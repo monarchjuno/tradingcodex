@@ -13,7 +13,11 @@ from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application.agents import AGENT_SPECS, EXPECTED_SUBAGENTS
 from tradingcodex_service.application.analysis_runs import begin_analysis_run, read_analysis_run
 from tradingcodex_service.application.runtime import ensure_workspace_manifest
-from tradingcodex_service.mcp_runtime import TOOL_REGISTRY, call_mcp_tool
+from tradingcodex_service.mcp_runtime import (
+    RESEARCH_ARTIFACT_METADATA_FIELDS,
+    TOOL_REGISTRY,
+    call_mcp_tool,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -146,6 +150,20 @@ def test_mcp_surface_has_one_lightweight_run_tool_and_no_server_orchestrator() -
     artifact_properties = TOOL_REGISTRY["create_research_artifact"].input_schema[
         "properties"
     ]
+    append_properties = TOOL_REGISTRY["append_research_artifact_version"].input_schema[
+        "properties"
+    ]
+    assert set(RESEARCH_ARTIFACT_METADATA_FIELDS) <= set(artifact_properties)
+    assert set(RESEARCH_ARTIFACT_METADATA_FIELDS) <= set(append_properties)
+    artifact_schema = TOOL_REGISTRY["create_research_artifact"].input_schema
+    assert artifact_schema["$defs"]["antiOverfitCheck"]["required"] == [
+        "status",
+        "reason",
+        "evidence_refs",
+    ]
+    assert artifact_properties["anti_overfit_checks"]["properties"]["leakage"] == {
+        "$ref": "#/$defs/antiOverfitCheck"
+    }
     follow_up_item = artifact_properties["follow_up_requests"]["items"]
     assert follow_up_item["type"] == "object"
     assert follow_up_item["additionalProperties"] is False
@@ -178,6 +196,21 @@ def test_mcp_surface_has_one_lightweight_run_tool_and_no_server_orchestrator() -
         "sample_size",
         "selection_rule",
     ]
+
+    standard_annotations = {
+        "title",
+        "readOnlyHint",
+        "destructiveHint",
+        "idempotentHint",
+        "openWorldHint",
+    }
+    assert set(tool.public_definition()["annotations"]) == standard_annotations
+    assert len(
+        json.dumps(
+            TOOL_REGISTRY["create_research_artifact"].public_definition(),
+            separators=(",", ":"),
+        )
+    ) < 9_000
 
 
 def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:

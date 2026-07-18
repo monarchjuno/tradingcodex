@@ -465,10 +465,12 @@ Native Codex exposes enabled skills, plugins, apps, and MCP tools directly to
 the task. TradingCodex does not add a second MCP discovery call for Head
 Manager.
 
-Every MCP tool definition includes stable name, description, input schema,
-category, risk level, role allowlist, approval requirement, audit requirement,
-and standard MCP hints for read-only, destructive, idempotent, and open-world
-behavior. `tools/list` returns this metadata as tool annotations.
+Every MCP tool definition includes a stable name, concise description, complete
+input contract, and the standard MCP hints for read-only, destructive,
+idempotent, and open-world behavior. Internal category, risk, role, approval,
+audit, and turn-gate metadata remains service-side enforcement state rather
+than repeated custom `tools/list` annotations. Reusable JSON Schema definitions
+compact repeated structures without removing fields or validation.
 Recognized `tools/call` execution failures return an MCP tool result with
 `isError: true` and a bounded JSON payload containing `error_type`, a redacted
 message, and `same_arguments_retryable`. Deterministic validation and permission

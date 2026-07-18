@@ -133,15 +133,6 @@ class McpToolSpec:
                 "destructiveHint": self._destructive_hint(),
                 "idempotentHint": self._idempotent_hint(),
                 "openWorldHint": self._open_world_hint(),
-                "category": self.category,
-                "risk_level": self.risk_level,
-                "requires_approval": self.requires_approval,
-                "audit_required": self.audit_required,
-                "allowed_roles": sorted(self.allowed_roles),
-                "experimental": self.experimental,
-                "requires_build_turn": self.name in BUILD_PROTECTED_MCP_TOOLS,
-                "requires_workspace_turn": self.name in WORKSPACE_PROTECTED_MCP_TOOLS,
-                "workspace_turn_scope": WORKSPACE_PROTECTED_MCP_TOOL_SCOPES.get(self.name, ""),
             },
         }
 
@@ -231,14 +222,15 @@ CALCULATION_OUTPUT_SCHEMA = json_object_schema(
     additional_properties=False,
 )
 ANTI_OVERFIT_CHECKS_SCHEMA = json_object_schema(
-    {key: ANTI_OVERFIT_CHECK_SCHEMA for key in ANTI_OVERFIT_CHECK_KEYS},
+    {key: {"$ref": "#/$defs/antiOverfitCheck"} for key in ANTI_OVERFIT_CHECK_KEYS},
     list(ANTI_OVERFIT_CHECK_KEYS),
     additional_properties=False,
 )
-STRING_LIST_SCHEMA = {
+STRING_LIST_DEFINITION = {
     "type": "array",
     "items": {"type": "string", "minLength": 1},
 }
+STRING_LIST_SCHEMA = {"$ref": "#/$defs/stringList"}
 PROBABILITY_RANGE_SCHEMA = {
     "type": ["array", "string"],
     "description": (
@@ -331,23 +323,14 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
     "knowledge_cutoff": {
         "type": "string",
         "format": "date-time",
-        "description": (
-            "Optional RFC 3339 timestamp with an explicit timezone, for example "
-            "2026-07-13T00:00:00Z; omit it rather than sending a date-only value. "
-            "It must not be later than the service receipt time; omit it instead "
-            "of guessing an end-of-day or other future timestamp. "
-            "When source_snapshot_ids are supplied, it must be at or after the "
-            "maximum service-returned snapshot known_at timestamp. It must also "
-            "cover every bound Dataset knowledge_cutoff; prefer the exact maximum "
-            "lineage timestamp."
-        ),
+        "description": "Optional RFC 3339 cutoff with an explicit timezone. It must not be later than the service receipt time and must cover every bound Dataset cutoff; with source_snapshot_ids, use at least the maximum service-returned snapshot known_at. Omit rather than guess.",
     },
     "context_summary": {"type": "string"},
     "reader_summary": {"type": "string"},
     "handoff_state": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
     "confidence": {
         "type": ["string", "number"],
-        "description": "Prefer one of low, medium, or high; numeric confidence is also accepted for compatibility.",
+        "description": "Prefer low, medium, or high; numeric values remain supported.",
     },
     "missing_evidence": {"type": "array"},
     "next_recipient": {"type": "string"},
@@ -361,19 +344,13 @@ RESEARCH_ARTIFACT_METADATA_FIELDS = {
             "type": "string",
             "pattern": r"^dataset-[0-9a-f]{24}$",
         },
-        "description": (
-            "Immutable Dataset ids used by the artifact. Manifest hashes are "
-            "authenticated and derived by the service."
-        ),
+        "description": "Immutable Dataset IDs consumed by the artifact.",
     },
     "calculation_run_ids": {
         "type": "array",
         "maxItems": 50,
         "items": {"type": "string", "minLength": 1, "maxLength": 180},
-        "description": (
-            "Current-workflow successful or reused CalculationRun ids used in the conclusion. "
-            "Run hashes and reuse origins are service-derived."
-        ),
+        "description": "Current-workflow Calculation Run IDs used in the conclusion.",
     },
     "evidence_lane": {"type": "string", "enum": ["historical_replay", "historical_holdout", "live_forward"]},
     "research_spec_id": {"type": "string"},
@@ -431,6 +408,19 @@ RESEARCH_ARTIFACT_WORKFLOW_FIELDS = {
         "items": {"type": "string", "minLength": 1, "maxLength": 180},
     },
 }
+RESEARCH_ARTIFACT_SCHEMA_DEFS = {
+    "antiOverfitCheck": ANTI_OVERFIT_CHECK_SCHEMA,
+    "stringList": STRING_LIST_DEFINITION,
+}
+
+
+def research_artifact_schema(
+    properties: dict[str, Any],
+    required: list[str] | None = None,
+) -> dict[str, Any]:
+    schema = object_schema(properties, required)
+    schema["$defs"] = RESEARCH_ARTIFACT_SCHEMA_DEFS
+    return schema
 RESEARCH_SPEC_FIELDS = {
     "spec_id": {"type": "string"},
     "created_at": {"type": "string"},
@@ -779,7 +769,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="register_broker_connector",
-        description="Register or update a native broker connector profile using a credential_ref, without exposing raw broker tools or secrets.",
+        description="In a current $tcx-build turn, register or update a native broker connector profile using a credential_ref without exposing secrets.",
         category="brokers",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("register_broker_connector"),
@@ -821,7 +811,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="validate_broker_connector_build",
-        description="Explicitly validate provider-driven connector health and registration metadata, persisting validation state and eligible trade scopes without submitting an order.",
+        description="In a current $tcx-build turn, validate connector health, registration metadata, and eligible trade scopes without submitting an order.",
         category="brokers",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("validate_broker_connector_build"),
@@ -1029,18 +1019,12 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="create_research_artifact",
-        description=(
-            "Store markdown research as a workspace-native file. For an analysis run, pass workflow_run_id and any exact "
-            "input_artifact_ids and dataset_ids consumed. "
-            "The service derives producer identity, verifies run-local lineage, and computes content hashes; "
-            "it does not require a server plan or task binding. Include a non-empty readiness_label. When "
-            "decision_quality_required=true, thesis_lifecycle.state and its state-specific evidence are required."
-        ),
+        description="Store authenticated workspace-native research. Head Manager uses artifact_type=synthesis_report. Pass run and consumed IDs; the service derives identity, lineage, hashes, and quality state.",
         category="research",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("create_research_artifact"),
         handler_name="create_research_artifact",
-        input_schema=object_schema({
+        input_schema=research_artifact_schema({
             "artifact_id": {"type": "string"},
             "artifact_type": {"type": "string"},
             "universe": {"type": "string"},
@@ -1059,14 +1043,12 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="append_research_artifact_version",
-        description=(
-            "Append a workspace-file version for an existing research artifact; recorded workflow bindings remain service-derived."
-        ),
+        description="Append an authenticated version while the service preserves workflow lineage.",
         category="research",
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("append_research_artifact_version"),
         handler_name="append_research_artifact_version",
-        input_schema=object_schema({
+        input_schema=research_artifact_schema({
             "artifact_id": {"type": "string"},
             "workflow_type": {"type": "string"},
             "markdown": {"type": "string"},
@@ -1080,12 +1062,7 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
     ),
     McpToolSpec(
         name="get_research_artifact",
-        description=(
-            "Fetch a hash-verified workspace-native research artifact by artifact_id. "
-            "detail_level defaults to full for the backwards-compatible response; review keeps "
-            "review/synthesis provenance, quality, and lineage while pruning empty/noisy fields; "
-            "card returns compact routing metadata and always omits markdown."
-        ),
+        description="Fetch a hash-verified artifact. Use review for synthesis context or card for routing metadata.",
         category="research",
         risk_level="read",
         allowed_roles=roles_with_mcp_tool("get_research_artifact"),
@@ -1096,35 +1073,22 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
                 "detail_level": {
                     "type": "string",
                     "enum": ["full", "review", "card"],
-                    "description": (
-                        "Response projection: full preserves the existing complete response; review "
-                        "keeps review/synthesis provenance, quality, and lineage; card returns only "
-                        "compact routing fields and forces include_markdown=false."
-                    ),
+                    "description": "full is complete; review is synthesis-ready; card is metadata-only.",
                 },
                 "include_markdown": {
                     "type": "boolean",
-                    "description": (
-                        "Include the Markdown body for full or review responses. Defaults to true; "
-                        "card responses always omit Markdown."
-                    ),
+                    "description": "Include Markdown for full/review; card always omits it.",
                 },
                 "markdown_start": {
                     "type": "integer",
                     "minimum": 0,
-                    "description": (
-                        "Character offset for a deterministic Markdown window. Use only with "
-                        "include_markdown=true and full or review detail; follow markdown_window.next_start."
-                    ),
+                    "description": "Markdown character offset; continue from markdown_window.next_start.",
                 },
                 "markdown_max_chars": {
                     "type": "integer",
                     "minimum": 1,
                     "maximum": RESEARCH_ARTIFACT_MARKDOWN_WINDOW_MAX_CHARS,
-                    "description": (
-                        "Maximum Markdown characters returned in this window; bounded by the service. "
-                        "When either window argument is supplied, omitted markdown_start defaults to 0."
-                    ),
+                    "description": "Bounded Markdown window size; markdown_start defaults to 0.",
                 },
             },
             ["artifact_id"],
@@ -3073,10 +3037,24 @@ def _principal_bound_research_args(
 
 
 def validate_input_schema(tool: McpToolSpec, args: dict[str, Any]) -> None:
-    _validate_schema_value(tool.input_schema, args, tool.name)
+    _validate_schema_value(tool.input_schema, args, tool.name, tool.input_schema)
 
 
-def _validate_schema_value(schema: dict[str, Any], value: Any, path: str) -> None:
+def _validate_schema_value(
+    schema: dict[str, Any],
+    value: Any,
+    path: str,
+    root_schema: dict[str, Any],
+) -> None:
+    ref = schema.get("$ref")
+    if isinstance(ref, str):
+        prefix = "#/$defs/"
+        key = ref.removeprefix(prefix) if ref.startswith(prefix) else ""
+        resolved = root_schema.get("$defs", {}).get(key)
+        if not isinstance(resolved, dict):
+            raise ValueError(f"{path} uses an unsupported schema reference")
+        _validate_schema_value(resolved, value, path, root_schema)
+        return
     alternatives = schema.get("oneOf")
     if isinstance(alternatives, list):
         matches = 0
@@ -3084,7 +3062,7 @@ def _validate_schema_value(schema: dict[str, Any], value: Any, path: str) -> Non
             if not isinstance(alternative, dict):
                 continue
             try:
-                _validate_schema_value(alternative, value, path)
+                _validate_schema_value(alternative, value, path, root_schema)
             except (TypeError, ValueError):
                 continue
             matches += 1
@@ -3106,7 +3084,7 @@ def _validate_schema_value(schema: dict[str, Any], value: Any, path: str) -> Non
                 raise ValueError(f"{path} does not allow additional properties: {', '.join(extra)}")
         for field, child_schema in properties.items():
             if field in value and value[field] is not None:
-                _validate_schema_value(child_schema, value[field], f"{path}.{field}")
+                _validate_schema_value(child_schema, value[field], f"{path}.{field}", root_schema)
     if isinstance(value, list):
         if "minItems" in schema and len(value) < int(schema["minItems"]):
             raise ValueError(f"{path} must contain at least {schema['minItems']} items")
@@ -3114,7 +3092,7 @@ def _validate_schema_value(schema: dict[str, Any], value: Any, path: str) -> Non
             raise ValueError(f"{path} must contain at most {schema['maxItems']} items")
         if isinstance(schema.get("items"), dict):
             for index, item in enumerate(value):
-                _validate_schema_value(schema["items"], item, f"{path}[{index}]")
+                _validate_schema_value(schema["items"], item, f"{path}[{index}]", root_schema)
     if isinstance(value, str):
         if "minLength" in schema and len(value) < int(schema["minLength"]):
             raise ValueError(f"{path} is too short")

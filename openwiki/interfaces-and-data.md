@@ -35,6 +35,9 @@ models. Check actual callers before changing a schema.
 
 - Keep MCP and API registries small and purpose-specific; do not expose every
   internal service method automatically.
+- Keep every supported MCP field and validator, but express repeated schema
+  shapes once with standard JSON Schema references and expose only standard MCP
+  annotations. Enforcement metadata stays in the service registry.
 - Prefer one application function shared by MCP, API, CLI, Admin actions, and
   hooks.
 - Return stable IDs and compact cards by default. Retrieve large payloads only
