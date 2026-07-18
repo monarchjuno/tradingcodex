@@ -1557,7 +1557,7 @@ Codex-native bootstrap verification:
   workspace. The canonical workspace must
   either be interactively trusted or receive the one-run `projects={...}` trust
   override shown in `AGENTS.md`. A full fixed-role lifecycle smoke must use
-  persisted trust for all eight generated project hooks. Codex 0.144.4 does not
+  persisted trust for all seven generated project hooks. Codex 0.144.4 does not
   carry the one-run `--dangerously-bypass-hook-trust` flag through the role
   config reload used by an exact V2 child, so that flag may be used only for
   root/config diagnostics and is not lifecycle acceptance. It also does not

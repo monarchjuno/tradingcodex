@@ -53,7 +53,7 @@ python tests/codex_cli_contract.py --workspace "$SMOKE_ROOT/workspace" --require
 ```
 
 Before a real V2 child lifecycle smoke, open the disposable workspace in a
-dedicated maintainer `CODEX_HOME`, persistently trust all eight generated
+dedicated maintainer `CODEX_HOME`, persistently trust all seven generated
 project hooks, and rerun the preflight with `--require-hook-trust`. The
 one-run hook-trust bypass is suitable for root diagnostics only, not child
 lifecycle acceptance.

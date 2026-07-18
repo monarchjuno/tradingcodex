@@ -812,7 +812,7 @@ claim based only on the fake subprocess test.
 Reference acceptance uses Codex CLI 0.144.4. Run
 `python tests/codex_cli_contract.py --workspace <workspace>
 --require-reference --require-hook-trust` first, after opening the disposable
-workspace in interactive Codex and persistently trusting all eight generated
+workspace in interactive Codex and persistently trusting all seven generated
 hooks in a dedicated maintainer `CODEX_HOME`. The preflight requires the exact
 reference version, strict Codex config loading, locally consistent MCP
 configuration, readable sandbox settings, the expected enabled/disabled

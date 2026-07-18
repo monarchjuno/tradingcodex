@@ -38,7 +38,6 @@ REQUIRED_FEATURE_STATES = {
 }
 REQUIRED_PROJECT_HOOK_EVENTS = {
     "permissionRequest",
-    "postToolUse",
     "preToolUse",
     "sessionStart",
     "stop",
