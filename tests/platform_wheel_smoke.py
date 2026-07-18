@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
 import re
@@ -133,27 +132,6 @@ def platform_environment(root: Path) -> tuple[dict[str, str], Path]:
         expected_home = xdg_data / "tradingcodex"
     env["TRADINGCODEX_DISABLE_LATEST_RELEASE_CHECK"] = "1"
     return env, expected_home.resolve(strict=False)
-
-
-def generated_git_command_from_hook(path: Path) -> Path:
-    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    values: list[str] = []
-    for node in module.body:
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
-            continue
-        if not isinstance(node.value.value, str):
-            continue
-        if any(isinstance(target, ast.Name) and target.id == "GENERATED_GIT_COMMAND" for target in node.targets):
-            values.append(node.value.value)
-    if len(values) != 1:
-        raise AssertionError(f"expected exactly one generated Git command in {path}, found {len(values)}")
-    command = Path(values[0])
-    assert command.is_absolute(), f"generated Git command is not absolute: {command}"
-    assert command.is_file(), f"generated Git command is missing: {command}"
-    assert os.access(command, os.X_OK), f"generated Git command is not executable: {command}"
-    if sys.platform == "darwin":
-        assert os.path.normcase(os.path.abspath(command)) != os.path.normcase("/usr/bin/git")
-    return command
 
 
 def main() -> None:
@@ -406,7 +384,6 @@ def main() -> None:
         assert root_codex_config["features"]["hooks"] is True
         expected_hook = r".\tcx.cmd __hook session-start" if os.name == "nt" else "./tcx __hook session-start"
         assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"] == expected_hook
-        generated_git_command_from_hook(workspace / ".codex/hooks/tradingcodex_hook.py")
         shell_hook = run(
             launcher_argv(workspace, "__hook", "session-start"),
             cwd=workspace,

@@ -392,7 +392,6 @@ def _generation_context(
         "TRADINGCODEX_WORKSPACE_ROOT": str(target.resolve()),
         "TRADINGCODEX_SCRATCH_PATH": str(scratch_path),
         "TRADINGCODEX_NULL_DEVICE": os.devnull,
-        "TRADINGCODEX_GIT_COMMAND": resolve_generated_git_command(),
         "CODEX_HOME_PATH": str(codex_home),
         "CODEX_HOME_PROXY_PATH": str(codex_home / "proxy"),
         "CODEX_HOME_STANDALONE_PATH": str(codex_home / "packages" / "standalone"),
@@ -417,40 +416,6 @@ def _generation_context(
         for alias in scratch_aliases
     )
     return context
-
-
-def resolve_generated_git_command() -> str:
-    """Resolve a real Git executable that is safe to invoke inside Codex.
-
-    On macOS, ``/usr/bin/git`` is an Xcode shim that attempts to populate an
-    OS-temporary xcrun cache before launching the developer-tool binary. The
-    generated Build profile intentionally denies broad OS temp roots, so pin
-    the selected developer directory's real Git binary instead.
-    """
-
-    candidate = shutil.which("git") or ""
-    if sys.platform == "darwin":
-        selected = ""
-        if Path("/usr/bin/xcode-select").is_file():
-            try:
-                selected = subprocess.run(
-                    ["/usr/bin/xcode-select", "-p"],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                    env={"PATH": "/usr/bin:/bin", "LC_ALL": "C"},
-                ).stdout.strip()
-            except (OSError, subprocess.SubprocessError):
-                pass
-        selected_git = Path(selected) / "usr" / "bin" / "git" if selected else Path()
-        if selected and selected_git.is_file() and not selected_git.is_symlink() and os.access(selected_git, os.X_OK):
-            candidate = str(selected_git)
-        elif Path(candidate).absolute() == Path("/usr/bin/git"):
-            candidate = ""
-    if not candidate:
-        return ""
-    return str(Path(candidate).expanduser().absolute()).replace("\\", "/")
 
 
 def _workspace_scratch_display_path(workspace_id: str) -> Path:
@@ -1602,8 +1567,6 @@ def serialized_template_context(raw: dict[str, str]) -> dict[str, str]:
     )
     raw.setdefault("TRADINGCODEX_MCP_PYTHONPATH", "")
     raw.setdefault("TRADINGCODEX_PACKAGE_RUNNER", package_runner)
-    if "TRADINGCODEX_GIT_COMMAND" not in raw:
-        raw["TRADINGCODEX_GIT_COMMAND"] = resolve_generated_git_command()
     context = dict(raw)
     for key, value in raw.items():
         literal = json.dumps(str(value), ensure_ascii=False)

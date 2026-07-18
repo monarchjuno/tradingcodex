@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import hashlib
 import json
 import os
@@ -199,29 +198,6 @@ def read_json(path: Path) -> dict[str, object]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(payload, dict), f"expected a JSON object: {path}")
     return payload
-
-
-def generated_git_command_from_hook(path: Path) -> Path:
-    module = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    values: list[str] = []
-    for node in module.body:
-        if not isinstance(node, ast.Assign) or not isinstance(node.value, ast.Constant):
-            continue
-        if not isinstance(node.value.value, str):
-            continue
-        if any(isinstance(target, ast.Name) and target.id == "GENERATED_GIT_COMMAND" for target in node.targets):
-            values.append(node.value.value)
-    require(len(values) == 1, f"expected exactly one generated Git command in {path}, found {len(values)}")
-    command = Path(values[0])
-    require(command.is_absolute(), f"generated Git command is not absolute: {command}")
-    require(command.is_file(), f"generated Git command is missing: {command}")
-    require(os.access(command, os.X_OK), f"generated Git command is not executable: {command}")
-    if sys.platform == "darwin":
-        require(
-            os.path.normcase(os.path.abspath(command)) != os.path.normcase("/usr/bin/git"),
-            "generated Git command must bypass the macOS /usr/bin/git shim",
-        )
-    return command
 
 
 def same_path(left: object, right: Path) -> bool:
@@ -1022,8 +998,7 @@ def assert_candidate_projection(
     )
     hook_path = workspace / ".codex/hooks/tradingcodex_hook.py"
     hook_text = hook_path.read_text(encoding="utf-8")
-    generated_git_command_from_hook(hook_path)
-    for marker in ("def public_fetch_command_reason(", "def provider_sources_shell_command_reason("):
+    for marker in ("def native_tool_block_reason(", "def handle_workspace_proof_tool("):
         require(marker in hook_text, f"new Build fetch hook marker is missing: {marker}")
     generated_files = lock.get("generated_files")
     hook_lock = generated_files.get(hook_path.relative_to(workspace).as_posix()) if isinstance(generated_files, dict) else None

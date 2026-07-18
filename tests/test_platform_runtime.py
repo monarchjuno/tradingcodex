@@ -1134,11 +1134,6 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     expected_hook = r".\tcx.cmd __hook session-start" if os.name == "nt" else "./tcx __hook session-start"
     assert hooks["hooks"]["SessionStart"][0]["hooks"][0]["command"] == expected_hook
     assert hooks["hooks"]["PreToolUse"][0]["matcher"] == ".*"
-    generated_git = generator.resolve_generated_git_command()
-    hook_source = (workspace / ".codex/hooks/tradingcodex_hook.py").read_text(encoding="utf-8")
-    assert f"GENERATED_GIT_COMMAND = {json.dumps(generated_git)}" in hook_source
-    if sys.platform == "darwin":
-        assert generated_git and generated_git != "/usr/bin/git"
     module_lock = json.loads((workspace / ".tradingcodex" / "generated" / "module-lock.json").read_text(encoding="utf-8"))
     assert module_lock["tradingcodex_home"] == str(home.resolve())
     assert module_lock["home_source"] == "environment_override"
@@ -1888,86 +1883,6 @@ def test_template_rendering_is_single_pass_and_cmd_values_are_quoted() -> None:
     assert context["X_CMD"].startswith('"') and context["X_CMD"].endswith('"')
     assert "foo&bar|baz^qux%%TEMP%%" in context["X_CMD_SET"]
     assert workspace_launcher_command("win32") == r".\tcx.cmd"
-
-
-def test_resolve_generated_git_command_prefers_real_xcode_binary(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    developer = tmp_path / "Xcode Developer"
-    selected_git = developer / "usr" / "bin" / "git"
-    selected_git.parent.mkdir(parents=True)
-    selected_git.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    selected_git.chmod(0o755)
-    original_is_file = Path.is_file
-
-    monkeypatch.setattr(generator.sys, "platform", "darwin")
-    monkeypatch.setattr(generator.shutil, "which", lambda _name: "/usr/bin/git")
-    monkeypatch.setattr(
-        Path,
-        "is_file",
-        lambda path: True if path == Path("/usr/bin/xcode-select") else original_is_file(path),
-    )
-    monkeypatch.setattr(
-        generator.subprocess,
-        "run",
-        lambda *_args, **_kwargs: SimpleNamespace(stdout=f"{developer}\n"),
-    )
-
-    assert generator.resolve_generated_git_command() == str(selected_git.absolute())
-
-
-def test_resolve_generated_git_command_rejects_macos_shim_when_xcode_selection_fails(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    original_is_file = Path.is_file
-
-    monkeypatch.setattr(generator.sys, "platform", "darwin")
-    monkeypatch.setattr(generator.shutil, "which", lambda _name: "/usr/bin/git")
-    monkeypatch.setattr(
-        Path,
-        "is_file",
-        lambda path: True if path == Path("/usr/bin/xcode-select") else original_is_file(path),
-    )
-    monkeypatch.setattr(
-        generator.subprocess,
-        "run",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(subprocess.CalledProcessError(1, "xcode-select")),
-    )
-
-    assert generator.resolve_generated_git_command() == ""
-
-
-def test_resolve_generated_git_command_keeps_nonshim_macos_git_fallback(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    fallback = tmp_path / "Homebrew Tools" / "bin" / "git"
-    fallback.parent.mkdir(parents=True)
-    fallback.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-    fallback.chmod(0o755)
-
-    monkeypatch.setattr(generator.sys, "platform", "darwin")
-    monkeypatch.setattr(generator.shutil, "which", lambda _name: str(fallback))
-    monkeypatch.setattr(Path, "is_file", lambda path: False if path == Path("/usr/bin/xcode-select") else path.exists())
-
-    assert generator.resolve_generated_git_command() == str(fallback.absolute())
-
-
-def test_serialized_template_context_preserves_supplied_git_command(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    supplied = "/opt/trusted tools/git"
-    monkeypatch.setattr(
-        generator,
-        "resolve_generated_git_command",
-        lambda: (_ for _ in ()).throw(AssertionError("resolver should not run")),
-    )
-
-    context = serialized_template_context({"TRADINGCODEX_GIT_COMMAND": supplied})
-
-    assert context["TRADINGCODEX_GIT_COMMAND"] == supplied
-    assert context["TRADINGCODEX_GIT_COMMAND_PYTHON"] == json.dumps(supplied)
 
 
 def test_explicit_db_override_is_projected_into_launchers_and_mcp(
