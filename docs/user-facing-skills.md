@@ -73,10 +73,11 @@ repair generated skill folders, fixed-role TOML, or root projection blocks.
 management. Source actions create, inspect, revise, validate, or explicitly
 delete a user-owned workspace-local bundle; managed actions list, inspect,
 install, update, activate, deactivate, rollback, or remove through the
-proof-protected `manage_investment_brain` application service. Tool-using management starts in a root
-native `trading-research` turn whose first meaningful invocation is
-`$tcx-brain`, and the actual Codex sandbox must
-permit workspace-local source writes. Authoring uses only exact user-selected
+`manage_investment_brain` application service. Natural-language requests may
+author sources and use proof-free list, inspect, and validation. Installed-state
+mutations start in a fresh root native `trading-research` turn whose first
+meaningful invocation is `$tcx-brain`; the actual Codex sandbox must permit
+workspace-local source writes. Authoring uses only exact user-selected
 memory evidence and counterexamples, performs privacy review, and abstracts
 general heuristics without copying private cases. Source create and revise run
 non-mutating local validation, then create, revise, and delete all stop before
@@ -159,11 +160,12 @@ unit, smoke, and build validation runs from an explicit user or maintainer
 terminal rather than the active Build turn. Generated
 core harness files, hooks,
 templates, fixed-role configuration, and service-owned projection blocks are
-not direct Build edit targets. Brain and Strategy management instead begin
-with their own first-meaningful-line invocation in `trading-research`; each current-turn
-grant is limited to its matching native source/staging path and protected MCP
-tool. The generated lifecycle launcher and attached runtime remain denied in
-Research. Brain management always uses an explicit
+not direct Build edit targets. State-changing Brain, community Wiki, and
+Strategy lifecycle management instead begins with its own
+first-meaningful-line invocation in `trading-research`; each current-turn grant
+is limited to its protected MCP tool. Source authoring and read-only list,
+inspect, and validate actions do not need that marker. The generated lifecycle
+launcher and attached runtime remain denied in Research. Brain management always uses an explicit
 workspace-local source or public credential-free HTTPS Git source and
 never implies global config, raw credential access, user capability management,
 source-repository or Git-publication actions. It may create live-capable

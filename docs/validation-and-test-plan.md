@@ -157,6 +157,13 @@ Keep source tests small and contract-focused:
 
 - the source-routing skill documents the canonical order and says not to repeat an
   unchanged source request;
+- a hook contract can compare repeated external `PreToolUse` observations by
+  exact tool FQN, secret-free canonical argument hash, and opaque scope hash
+  when a session and turn are present; unknown scope remains unclassified, and
+  the observation neither becomes a result nor blocks changed retries;
+- an offline regression assertion over the emitted JSONL counts only an exact
+  opaque-scope repeat candidate; it excludes unknown scopes, changed arguments,
+  other scopes, and any claim about outcome or terminal status;
 - SourceSnapshots retain provider, locator, timing, hashes, and a bounded
   payload/excerpt;
 - Datasets retain all used structured rows and can be queried in bounded pages;
@@ -525,12 +532,14 @@ Scenarios should include:
   proofs are one-time, an unstarted reservation lease releases after two
   minutes, service-started revocation is deferred until finish, and the grant
   never widens the actual Codex sandbox
-- matching first-meaningful-line `$tcx-brain` and `$tcx-strategy` prompts issue separate
-  `brain` and `strategy` scopes in `trading-research`; each admits only its own
-  canonical native source/staging path and injects proof only into
-  `manage_investment_brain` or `manage_strategy`; Research runtime/launcher
-  access remains denied, Build cannot substitute for either, mixed markers and
-  cross-scope commands fail, and Plan/subagent contexts remain blocked
+- matching first-meaningful-line `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy`
+  prompts issue separate `brain`, `wiki`, and `strategy` scopes in
+  `trading-research`; each admits only its own canonical native source/staging
+  path and injects proof only into state-changing calls to
+  `manage_investment_brain`, `manage_knowledge_wiki`, or `manage_strategy`;
+  list, inspect, and validate remain proof-free, Research runtime/launcher
+  access remains denied, Build cannot substitute for any scope, mixed markers
+  and cross-scope commands fail, and Plan/subagent mutation remains blocked
 - user-installed Codex capabilities remain callable through native Codex and
   cannot mint TradingCodex principals, grants, reserved namespace entries, or
   order proof; a prompt naming a read-only test provider inspects current-task
@@ -783,6 +792,9 @@ their checkout-scoped projected address. Verify:
   horizontal content loss
 - Library and Skills use a list-or-detail transition at narrow widths with
   a visible Back action and no stale detail body during selection changes
+- Wiki search, type/status filters, nested page paths, sanitized Markdown,
+  internal wikilinks, outgoing links, backlinks, local/community origin, and
+  traversal rejection work at desktop and narrow widths
 - keyboard-only section navigation, visible focus, labeled controls, and
   logical focus after section changes, detail transitions, dialogs/errors, and
   workspace and section changes
@@ -824,10 +836,11 @@ appear untrusted.
 
 Run native CLI smokes that inspect observable tool calls and child lifecycle
 results from Codex. Cover the direct fast path, one exact profile, a same-owner
-`followup_task`, and a bounded generic fallback when a profile is unavailable.
-Briefs must stay compact, children must inherit the user's native model defaults
-and the project-wide `trading-research` profile, and no child may recursively
-delegate. Run a sequential two-child smoke plus one artifact-to-synthesis
+`followup_task`, and a bounded evidence-role generic fallback when a profile is
+unavailable. Briefs must stay compact, generated TOML must retain the fixed
+model settings and the project-wide `trading-research` profile, and no child may
+recursively delegate. A missing independent risk or judgment profile must remain
+explicit rather than becoming a generic review. Run a sequential two-child smoke plus one artifact-to-synthesis
 workflow because lifecycle failures may appear only after the first child exits.
 
 For a full research smoke, inspect root and child JSONL as observable behavior,
@@ -849,9 +862,10 @@ answers need no artifact. Maximum visible silence should remain near 60 seconds
 when timestamps are observable; a wait timeout alone must not be reported as
 progress.
 
-Do not maintain a trace auditor, a JavaScript mini-parser for source routing, or
-hook replicas of native shell, network, workdir, spawn, model, or calculation
-validation.
+Do not maintain a runtime trace auditor, a JavaScript mini-parser for source
+routing, or hook replicas of native shell, network, workdir, spawn, model, or
+calculation validation. The small offline repeat assertion consumes only the
+already-redacted observation fields and does not mirror lifecycle state.
 For harness changes, use the generated-workspace native smoke and inspect the
 observed compact artifact/Snapshot/Dataset handoff. Keep hook tests focused on
 real secret, account, order, service-owned-state, and lifecycle-proof boundaries
@@ -860,6 +874,33 @@ plus bounded output; do not recreate child lifecycle auditing.
 Research-source validation covers Snapshot/Dataset provenance and bounded row
 reads. Source routing remains a skill procedure; it has no promotion receipt,
 DataNeed, or service-side retry contract.
+
+## Knowledge Wiki Verification
+
+Validate strict manifest fields, stable versions, public repository and page
+citations, UTF-8, bounded file count/size/depth, traversal, symlinks,
+executables/scripts, raw documents, private/local references, broken shared
+wikilinks, immutable same-version content, higher-version update, rollback, and
+projection digest detection. Test local and public Git materialization without
+executing repository code.
+
+Attach must create one empty local Wiki. Update must preserve local pages,
+local index, source packages, registry, immutable versions, and active
+projections; `doctor` validates scaffold and registry/projection digests.
+`.obsidian/` and `.trash/` remain ignored.
+
+Agent and Hook contracts must show that ordinary research does not write Wiki
+or Brain content, only an explicit destination request authorizes local/source
+writing, and Brain promotion stops after a generalized source revision plus
+validation. Brain/Wiki list, inspect, and validate are proof-free. Lifecycle
+mutations require a matching first-line root marker and reject mixed markers,
+Plan mode, subagents, and model-supplied proof.
+
+Native Codex smoke covers relevant automatic Wiki read without mutation,
+explicit material ingest, Artifact-to-Wiki promotion without Artifact changes,
+Wiki-to-Brain abstraction without activation changes, and explicit
+`$tcx-wiki` community projection lifecycle. Record the Wiki pages and indexes
+changed and confirm no research schema or run binding changed.
 
 ## Release-Sensitive Validation
 

@@ -8,7 +8,7 @@ Canonical behavior: [Interfaces And Surfaces](../docs/interfaces-and-surfaces.md
 
 | Surface | Source | Boundary |
 | --- | --- | --- |
-| Viewer shell and read API | `tradingcodex_service/web.py`, `viewer_api.py`, `application/viewer.py` | Read-only workspace inspection. |
+| Viewer shell and read API | `tradingcodex_service/web.py`, `viewer_api.py`, `application/viewer.py`, `application/wiki_viewer.py` | Read-only workspace inspection, including bounded Wiki search/detail/backlinks. |
 | Frontend source | `frontend/` | Maintainer build only; no generated-workspace Node runtime. |
 | Django Admin | `apps/*/admin.py` | Local/staff inspection through canonical models. |
 | Local API | `tradingcodex_service/api.py` | Thin caller of application services. |
@@ -24,12 +24,19 @@ execution, research, or audit implementation.
 | --- | --- |
 | Policy, portfolio, approval, order, broker, execution, audit | Central Django ledger. |
 | Source snapshots, datasets, calculations, artifacts | Workspace files written through application services. |
+| Local Wiki and shareable sources | User-owned Markdown under `wikis/local` and `wiki-packages`; explicit destination requests only. |
+| Installed Wiki versions and projections | Type-specific `application/knowledge_wikis.py` service under `.tradingcodex/knowledge-wikis` and `wikis/knowledge-wiki-*`. |
 | Search indexes and viewer snapshots | Rebuildable projections. |
 | Credentials | External environment/secret store; never persisted or returned. |
 
 Important source modules include `application/research.py`, `datasets.py`,
 `calculations.py`, `research_object_catalog.py`, and the relevant `apps/*`
 models. Check actual callers before changing a schema.
+
+Knowledge Wikis add no model or migration. Lifecycle is in
+`application/knowledge_wikis.py`, shared safe source materialization is in
+`application/managed_package_sources.py`, CLI is `commands/wikis.py`, MCP is
+`manage_knowledge_wiki`, and Viewer routes are under `/api/viewer/wiki-pages/`.
 
 ## Interface Rules
 

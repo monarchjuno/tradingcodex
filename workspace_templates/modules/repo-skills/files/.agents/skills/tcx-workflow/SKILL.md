@@ -27,29 +27,33 @@ that needs fresh evidence or more than one distinct expertise.
    not choose a team or create a server-side plan.
 3. Apply one explicitly selected Investment Brain or Strategy only as sealed
    context. Do not infer, blend, inspect, or change one during the run.
-4. Choose the smallest useful set of available role profiles. Dispatch a child
-   only when its specialty is distinct from Head Manager's coordination work or
-   an independent challenge is necessary. Use `risk-manager` and
+4. Frame the request into the smallest decision-relevant unknowns using
+   Research Framing below, then choose the smallest useful set of available
+   role profiles. Dispatch a child only when its specialty is distinct from Head
+   Manager's coordination work or an independent challenge is necessary. Use `risk-manager` and
    `judgment-reviewer` for recommendations, portfolio decisions,
    high-impact risk judgment, or material unresolved conflict—not for a narrow
    fact.
-5. Use an exact fixed role when one is available. Otherwise a generic child may
-   perform the same narrowly bounded research brief. Preserve its allowed scope,
-   prohibited actions, evidence standard, and no-order boundary; never let it
-   approve, execute, access secrets, or act as a broker.
+5. Use an exact fixed role when one is available. Only an unavailable
+   evidence-producing role may use a generic child, and only for the same
+   narrowly bounded research brief. Preserve its allowed scope, prohibited
+   actions, evidence standard, and no-order boundary; never let it approve,
+   execute, access secrets, or act as a broker. Do not replace an independent
+   `risk-manager` or `judgment-reviewer` review with a generic child: return an
+   explicit missing-profile gap and `blocked` or `waiting` status instead.
    For an exact profile, call `spawn_agent` with that `agent_type`, a compact
-   `message`, a `task_name`, and `fork_turns="none"`; omit `model` and
-   `reasoning_effort` so native defaults apply. Treat the spawn as successful
-   only when the tool returns a live target. Correct a rejected spawn only when
-   the error identifies the change; otherwise report the blocked delegation.
-6. Give each external data family one evidence-producing owner and tell that
-   role to load `$tcx-source-gate`. The role should reuse adequate existing
-   Snapshot/Dataset evidence, try one relevant enabled user Skill, Plugin, or
-   MCP capability, then optional direct OpenBB, official-source-first native
-   research, another credible source, and finally return an explicit gap.
-   Retain a partial result and fetch only what is missing. Do not repeat an
-   unchanged call after success or a terminal failure. Pass returned
-   Snapshot/Dataset/Artifact IDs rather than raw source output.
+   `message`, a `task_name`, and `fork_turns="none"`; let its role TOML supply
+   the fixed model settings. Treat the spawn as successful only when the tool
+   returns a live target. Correct a rejected spawn only when the error
+   identifies the change; otherwise report the blocked delegation.
+6. Before refetching a data family with material reuse value, check only
+   current-workflow Snapshot/Dataset candidates through available artifact cards
+   and Dataset manifests. Give the producing role the exact reusable ID and
+   needed slice; it does not search the whole catalog. Keep a valid partial
+   slice when an existing record is stale, incomplete, or mismatched, and brief
+   the owner only on missing coverage. Give each family one owner and tell it to
+   load `$tcx-source-gate`; pass returned Snapshot/Dataset/Artifact IDs rather
+   than raw source output.
 7. Reuse a live child's session with `followup_task` for a correction or
    clarification while it still owns the question. Start another child only for
    a new independent specialty, an unavailable session, or independent review.
@@ -60,14 +64,59 @@ that needs fresh evidence or more than one distinct expertise.
    targetless because it waits for any child; do not treat an empty target list
    as failure by itself. Update the user when observable work materially changes;
    a timeout alone is not progress.
-9. Save an authenticated research artifact when the result will support a
-   decision, reuse, audit, or downstream handoff. Otherwise return the bounded
-   answer directly. Read only the exact artifact needed and keep its provenance
-   and content hash with the handoff.
-10. Reassess after useful evidence arrives: synthesize, ask the owner to correct
-    its work, add a distinct perspective, request independent review, or stop
+9. Save an authenticated research artifact when external evidence changes a
+   conclusion; supports a forecast, recommendation, valuation, portfolio, or
+   risk judgment; feeds a downstream handoff; records a material source conflict
+   or decision-relevant gap; or informs order/execution readiness. Otherwise
+   return the bounded answer or discard the intermediate thought. Read only the
+   exact artifact needed and keep its provenance and content hash with the
+   handoff.
+10. Reassess by updating the provisional causal map after useful evidence.
+    Each accepted result may confirm or weaken a link, distinguish competing
+    explanations, or expose the next material unknown. Ask its owner to correct
+    or deepen the work; when another specialty owns the unknown, dispatch that
+    role with the exact artifact ID, causal question, and missing evidence, then
+    reassess again. Otherwise synthesize, request independent review, or stop
     for insufficient evidence. A synthesis consumes only accepted,
     authenticated, run-local artifacts.
+
+## Research Framing
+
+Frame research as a provisional causal map, not a request-shaped checklist.
+Preserve the requested outcome, explicit scope, and exclusions. When coverage
+is underspecified, include only causally adjacent factors that could materially
+change the answer or readiness, including important points the user may not
+know to ask about; never widen the outcome or action authority.
+
+Find the causal cruxes: links whose truth would materially strengthen, weaken,
+or reverse the conclusion. Route unresolved cruxes rather than a preset role
+checklist. Use only relevant lenses as question generators:
+
+- inside-out economics, operating drivers, incentives, and constraints;
+- outside-in peers, substitutes, industry structure, and applicable base rates;
+- system position such as upstream inputs and suppliers, downstream customers
+  and distribution, complements, bottlenecks, and bargaining power;
+- time and expectations, separating structural from cyclical, leading from
+  lagging, and temporary states from durable transitions while considering what
+  is priced in, regime shifts, and second-order effects; and
+- competing explanations and disconfirmation through contrary evidence, the
+  main falsifier, or a missing observation.
+
+These are examples, not mandatory coverage. Compare live explanations and
+prefer evidence that distinguishes them. Judge corroboration by independence,
+diagnostic value, and position in the causal chain—not source count. Trace
+repeated claims to their origin; dependent repetition is not confirmation.
+
+Turn each material uncertainty into an observable update: what observation
+would affect which causal link and in which direction. Separate unresolved but
+observable gaps from fundamentally unknowable ones. Research quality and
+decision relevance take priority over resource economy. Continue while a
+material uncertainty remains and relevant evidence is obtainable within the
+user's scope and authority. Tool-call count, context size, and latency alone are
+not stop conditions; manage them with deduplicated calls, compact artifact
+handoffs, and parallel independent work. Stop only when no remaining in-scope
+question is likely to change the answer or readiness, the needed evidence is
+unavailable, or an explicit user scope or deadline requires it.
 
 ## Evidence And Decisions
 
@@ -76,6 +125,18 @@ that needs fresh evidence or more than one distinct expertise.
 - Keep provider, as-of time, coverage, warnings, conflicts, uncertainty, and
   missing evidence visible. Distinguish sourced facts, analysis, and scenario
   assumptions in natural prose where that distinction matters.
+- For a final synthesis, recommendation, portfolio/risk result, or other
+  high-consequence judgment, use a short natural structure that separately
+  identifies verified facts and sources, analysis and implications, key
+  assumptions, and uncertainty, gaps, disagreements, or blocked actions. Do
+  not require per-sentence tags or impose this structure on narrow factual
+  answers or intermediate role output.
+- For a forecast, recommendation, valuation, portfolio decision, or other
+  high-consequence judgment, add only what the structure needs: a relevant base
+  rate or comparison (or the gap), base/upside/downside or appropriate
+  alternatives, key assumptions and the main falsifier, contrary evidence or
+  material disagreement, and an update trigger plus current action/readiness
+  limit.
 - Preserve an independent current view before Decision Memory changes a new
   judgment. Memory is evidence, not authority.
 - Persist a synthesis only when a workflow produced decision-relevant evidence.

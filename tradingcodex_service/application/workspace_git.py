@@ -51,6 +51,8 @@ GITIGNORE_RULES = """# Runtime databases and journals
 /trading/research/datasets/objects/
 /.tradingcodex/**/*.lock
 /trading/**/*.lock
+/wikis/.obsidian/
+/wikis/.trash/
 .DS_Store
 
 # Private Investor Context (hash bindings remain versionable)

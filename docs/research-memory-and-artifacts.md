@@ -7,6 +7,11 @@ Research memory is part of the harness Improvement subsystem; see
 historical replay, lessons, strategy snapshots, and generated Wiki/graph views
 are defined in [decision-memory.md](./decision-memory.md).
 
+Agent-maintained reusable background knowledge is not Research Memory. It lives
+under `wikis/` and follows [Knowledge Wikis](knowledge-wikis.md). Research
+completion never auto-promotes an Artifact, Snapshot, or Dataset into that
+Wiki; explicit promotion reads the source without modifying or binding it.
+
 ## File-Native Research Memory
 
 Research handoff memory is workspace-file-native. Codex agents and humans must

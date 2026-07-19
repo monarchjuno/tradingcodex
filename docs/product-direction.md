@@ -59,6 +59,7 @@ for recommendations, portfolio decisions, and other high-consequence work.
 | Reasoning, research strategy, delegation, tool selection | Native Codex |
 | Reusable research procedure | One concise skill |
 | Source snapshots, datasets, artifacts, provenance hashes | Workspace files |
+| Reusable background knowledge | Agent-maintained Markdown under `wikis/`; package integrity and projection state remain TradingCodex-owned |
 | Policy, portfolio, approval, order, broker, execution, audit | Django service ledger |
 | Final broker effect | Deterministic service path after explicit authority |
 | Read-only inspection | Workspace viewer, Admin, and bounded read interfaces |
@@ -71,6 +72,11 @@ Research is persisted when it has reuse, provenance, decision, or audit value.
 A narrow answer does not require a research artifact. Stored analysis should be
 professional free-form writing with sources, assumptions, confidence, and gaps;
 large frontmatter schemas and regex-enforced claim prose are not product goals.
+
+Knowledge Wikis are a separate, non-authoritative background layer. Native
+Codex may search them automatically, but writes require an explicit user
+request naming Wiki or Brain as the destination. They do not replace current
+evidence or Decision Memory. See [Knowledge Wikis](knowledge-wikis.md).
 
 ## Research Source Posture
 

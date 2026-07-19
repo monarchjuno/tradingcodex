@@ -57,15 +57,17 @@ Repository expectations:
   access. It permits credential-free public HTTP(S) and HTTPS Git retrieval
   while blocking authenticated requests, local/private destinations, package
   installation, remote mutation, and broker access.
-- Investment Brain and Strategy management do not use `$tcx-build` or the
-  `trading-build` profile. Start a new root `trading-research` turn whose first
-  meaningful invocation is `$tcx-brain` or `$tcx-strategy`, either as the plain
-  token or its matching projected skill link. The concrete request may share
-  that line or follow it. The hook grants only that
-  capability's canonical source path and proof-protected lifecycle MCP tool
-  for the current turn; markers cannot be combined or inherited by subagents
-  and Plan mode blocks them. The model does not run the lifecycle launcher or
-  reopen the denied TradingCodex runtime.
+- Investment Brain, community Wiki, and Strategy lifecycle management do not
+  use `$tcx-build` or the `trading-build` profile. Start a new root
+  `trading-research` turn whose first meaningful invocation is `$tcx-brain`,
+  `$tcx-wiki`, or `$tcx-strategy` for an installed-state mutation, either as
+  the plain token or its matching projected skill link. The concrete request
+  may share that line or follow it. The hook grants only that capability's
+  proof-protected lifecycle MCP tool for the current turn; markers cannot be
+  combined or inherited by subagents and Plan mode blocks mutation. Natural
+  Brain/Wiki source authoring and read-only list, inspect, and validate actions
+  require no lifecycle marker. The model does not run the lifecycle launcher
+  or reopen the denied TradingCodex runtime.
 - Recurring Build Automation needs the exact marker on every saved run. Use an
   isolated worktree or workspace for file-mutating schedules and retain a
   reviewable diff.
@@ -86,8 +88,8 @@ Repository expectations:
 - Generated core harness files, hooks, templates, fixed-role configuration,
   and service-owned projection blocks are not direct Build edit targets. Use
   workspace refresh and the managed optional skill, MCP-config, or connector
-  lifecycle service that owns the requested state. Use direct `$tcx-brain` or
-  `$tcx-strategy` turns for those capabilities.
+  lifecycle service that owns the requested state. Use direct `$tcx-brain`,
+  `$tcx-wiki`, or `$tcx-strategy` turns for managed lifecycle changes.
 - Keep prompts lean. Put repeatable procedures in repo skills, shared standing
   child behavior in the compact fixed-role base, specialist identity and tool
   configuration in role TOML, and generated indexes under
@@ -115,6 +117,14 @@ Repository expectations:
   first-meaningful-line `$tcx-strategy` root turn in `trading-research` and the proof-protected
   `manage_strategy` MCP service; never edit its generated bundle or projection
   block directly.
+- Keep the one editable personal Knowledge Wiki under `wikis/local` and
+  shareable Knowledge Wiki sources under `wiki-packages/knowledge-wiki-*`.
+  Treat active community projections under `wikis/knowledge-wiki-*` as
+  read-only. Head Manager may search relevant Wiki pages automatically, but
+  may write Wiki or Brain source files only after an explicit user request;
+  research completion, importance, or possible reuse is not write authority.
+  Use `$tcx-wiki` on the first meaningful line only for community Wiki
+  install, update, activate, deactivate, rollback, or remove operations.
 - Keep fixed and optional subagent skills under
   `.tradingcodex/subagents/skills`.
 - Keep research, report, forecast, and decision artifacts under `trading/`.

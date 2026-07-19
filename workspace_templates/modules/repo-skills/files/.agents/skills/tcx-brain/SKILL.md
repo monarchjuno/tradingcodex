@@ -1,6 +1,6 @@
 ---
 name: tcx-brain
-description: "Author and manage TradingCodex Investment Brains. Use when the user wants to create, inspect, revise, validate, install, update, activate, deactivate, roll back, remove, or delete a user-owned `investment-brain-*` source or managed plugin. Start tool-using management with `$tcx-brain` on the first meaningful line of a root turn; do not wrap it in `$tcx-build`."
+description: "Author and manage TradingCodex Investment Brains. Use when the user asks to put principles or a Wiki insight into a Brain; create, inspect, revise, or validate a user-owned `investment-brain-*` source; or install, update, activate, deactivate, roll back, or remove a managed Brain. Natural-language source authoring is allowed, while lifecycle mutations require `$tcx-brain` on the first meaningful line of a root turn."
 ---
 
 # TCX Brain
@@ -33,30 +33,18 @@ projection and marks the plugin removed while retaining immutable versions for
 run provenance. It does not delete a user-owned source directory. A source
 deletion is a separate, explicitly named action.
 
-## Managed Turn Admission
+## Admission
 
-1. Require `$tcx-brain` on the first meaningful line of the original root
-   prompt before using file or lifecycle tools. Accept the plain token or a
-   Markdown skill link only when its label and target match this workspace's
-   projected `tcx-brain/SKILL.md`. Leading blank lines and normalized
-   line-ending variants are harmless; the concrete non-empty request may share
-   the invocation line or follow it. Do not combine it with `$tcx-build`,
-   `$tcx-strategy`, or an order marker.
-2. Use the normal `trading-research` profile. The marker creates only a
-   Brain-scoped current-turn grant: it admits canonical `investment-brains/`
-   source edits and the proof-protected `manage_investment_brain` MCP tool, not
-   generic Build, Strategy, order, credential, publication, or global-config
-   authority.
-3. Plan mode, follow-ups without a fresh marker, and subagents have no managed
-   authority. If reviewed confirmation arrives later, return a new root-turn
-   prompt beginning with `$tcx-brain`.
-4. Without managed admission, explain or draft the requested operation in the
-   conversation, or return the exact
-   user-terminal `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investment-brains ...`
-   command. Do not attempt a mutation.
-5. Read-only `list`, `inspect`, and `validate` still use this direct skill turn
-   when Codex calls `manage_investment_brain`. Otherwise return the matching
-   launcher command for the user to run in a terminal.
+Natural-language requests may create or revise a user-owned source below
+`investment-brains/`, then run read-only validation. `list`, `inspect`, and
+`validate` require no lifecycle proof. Use the normal `trading-research`
+profile for both source and lifecycle work.
+
+Require `$tcx-brain` on the first meaningful line of a fresh root turn only for
+managed `install`, `update`, `activate`, `deactivate`, `rollback`, or `remove`.
+Do not combine it with `$tcx-build`, `$tcx-wiki`, `$tcx-strategy`, or an order
+marker. The marker grants only the matching current-turn lifecycle service
+call. Plan mode and subagents cannot perform managed lifecycle mutations.
 
 ## Source Procedure
 
@@ -69,9 +57,11 @@ deletion is a separate, explicitly named action.
    `.agents/skills/investment-brain-*`, a third-party package, an external
    source, or an upstream repository. Adapt third-party ideas only under a new
    user-owned id with a compatible license and original wording.
-3. For create or revise, ask the user to select the exact Decision Memory
-   episodes, forecasts, postmortems, validated lessons, and contrary cases. Do
-   not sweep all memory or infer consent from relevance.
+3. Use only material the user explicitly selected, including named Wiki pages,
+   Decision Memory episodes, forecasts, postmortems, validated lessons, and
+   contrary cases. Do not sweep memory or Wiki content or infer consent from
+   relevance. Ask for the target Brain when no single user-owned source is
+   unambiguous.
 4. Require counterexamples and scope limits. Perform a privacy review that
    excludes private Investor Context, account or holding details, personal
    constraints, confidential sources, issuer-specific cases, and verbatim
@@ -79,7 +69,8 @@ deletion is a separate, explicitly named action.
 5. Abstract the selected evidence into general hypotheses, inquiry priorities,
    interpretation principles, causal frames, scenarios, falsifiers,
    applicability limits, and abstention heuristics. Do not copy private cases,
-   names, tickers, account facts, or memory text into the bundle.
+   names, tickers, account facts, memory text, or factual Wiki prose into the
+   bundle.
 6. Before writing, state the abstraction, counterexamples, limitations,
    excluded private material, id, version, publisher, license, destination, and
    requested source action. An exact create or revise request with sufficient
@@ -94,11 +85,13 @@ deletion is a separate, explicitly named action.
    historical provenance remain. Delete only the exact confirmed user-owned
    source files; do not translate source deletion into managed plugin removal or
    vice versa.
-9. After create or revise, call `manage_investment_brain` with
+9. After create or revise, call the proof-free `manage_investment_brain` with
    `action="validate"` and `local_source=<source-directory>`. Changed content
    already represented by an installed
    version requires a version higher than every installed version.
-10. Stop after any source create, revise, or delete action. Do not install,
+10. Choose the minimum valid patch version greater than every installed version
+    unless the user selected another higher version. Stop after any source
+    create, revise, or delete action. Do not install,
     update, activate, remove, stage, commit, configure a remote, push, publish,
     or open a pull request in the same turn. A reviewed lifecycle action starts
     in a fresh explicit `$tcx-brain` turn.
@@ -113,7 +106,8 @@ deletion is a separate, explicitly named action.
    source posture, content digest, and skill digest.
 3. Install inactive first, then inspect the registry result. Activate only when
    the user explicitly requested that exact validated id and version.
-4. Use only the proof-protected `manage_investment_brain` MCP tool; never edit
+4. Use only `manage_investment_brain`; its lifecycle mutations are
+   proof-protected. Never edit
    registry, package, projection, generated index, or Head Manager config files
    directly. Select one exact action and only its matching fields:
 

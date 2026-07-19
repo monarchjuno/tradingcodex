@@ -47,6 +47,7 @@ WORKSPACE_COMMANDS = {
     "skills": _lazy_command("tradingcodex_cli.commands.skills", "skills"),
     "strategies": _lazy_command("tradingcodex_cli.commands.strategies", "strategies"),
     "investment-brains": _lazy_command("tradingcodex_cli.commands.investment_brains", "investment_brains"),
+    "wikis": _lazy_command("tradingcodex_cli.commands.wikis", "wikis"),
     "policy": _lazy_command("tradingcodex_cli.commands.policy", "policy"),
     "mcp": _lazy_command("tradingcodex_cli.commands.mcp", "mcp"),
     "db": _lazy_command("tradingcodex_cli.commands.db", "db"),
@@ -155,6 +156,7 @@ Usage:
   tcx skills optional list|inspect|create|update|activate|archive|delete
   tcx strategies list|inspect|create|update|activate|archive|delete
   tcx investment-brains list|inspect|validate|install|update|activate|deactivate|rollback|remove
+  tcx wikis list|inspect|validate|install|update|activate|deactivate|rollback|remove
   tcx db path|status|migrate
   tcx research list|get|search|export|create|append|run-card|validation-card|source|get|dataset|spec|replay|experiment|causal-analysis|judgment-prior|judgment-review|index|catalog
   tcx forecast issue|revise|resolve|score ... --principal <role> | get|list|calibration

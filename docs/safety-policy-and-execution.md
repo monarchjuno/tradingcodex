@@ -195,23 +195,25 @@ executed. The hook does not parse ordinary shell or network commands.
 Plan mode blocks
 grant issuance and use entirely. Start a new root Build turn in the required
 profile rather than treating the grant as elevation.
-### Brain and Strategy management
+### Brain, Wiki, and Strategy management
 
-Investment Brain and Strategy management are separate capability-scoped
-operate-plane actions. They start directly with `$tcx-brain` or
-`$tcx-strategy` on the first meaningful line in `trading-research`; the plain
-token or matching projected link is accepted and the concrete request may
-share the line or follow it. The shared DB grant records `brain` or
-`strategy` scope and the hook permits only the matching source/lifecycle
-operation. Brain source editing and Strategy body staging remain native
-workspace-file work; registry and generated projection changes use only
-`manage_investment_brain` or `manage_strategy`, with a hook-owned one-time
-proof. Build, Brain, Strategy, and order markers cannot be combined. A scope
-cannot authorize another scope, Plan mode blocks issuance and use, and
-subagents cannot inherit a grant. The Research profile keeps the generated
-launcher, attached runtime, DB, registry, and projections denied. A model-side
-`tcx strategies` or `tcx investment-brains` command is blocked with a precise
-MCP/user-terminal handoff instead of reopening that runtime.
+Investment Brain, community Wiki, and Strategy lifecycle management are
+separate capability-scoped operate-plane actions. State-changing operations
+start directly with `$tcx-brain`, `$tcx-wiki`, or `$tcx-strategy` on the first
+meaningful line in `trading-research`; the plain token or matching projected
+link is accepted and the concrete request may share the line or follow it.
+The shared DB grant records `brain`, `wiki`, or `strategy` scope and the hook
+permits only the matching lifecycle operation. Brain and Wiki source authoring
+and Strategy body staging remain native workspace-file work; registry and
+generated projection changes use only `manage_investment_brain`,
+`manage_knowledge_wiki`, or `manage_strategy`, with a hook-owned one-time proof
+for mutations. Their list, inspect, and validate actions are proof-free and
+read-only. Build, Brain, Wiki, Strategy, and order markers cannot be combined.
+A scope cannot authorize another scope, Plan mode blocks lifecycle mutation,
+and subagents cannot inherit a grant. The Research profile keeps the generated
+launcher, attached runtime, DB, registry, and projections denied. Model-side
+managed lifecycle CLI commands are blocked with a precise MCP/user-terminal
+handoff instead of reopening that runtime.
 Build cannot authorize global Codex config changes,
 raw credential access, Git push/publication, direct edits
 to hooks, grants, the managed `.gitignore`, credential files,

@@ -32,6 +32,7 @@ from tradingcodex_service.application.skill_invocations import (
 BUILD_SKILL = "$tcx-build"
 MANAGED_SKILL_SCOPES = {
     "$tcx-brain": "brain",
+    "$tcx-wiki": "wiki",
     "$tcx-strategy": "strategy",
 }
 AUTHORITY_SCOPE_MARKERS = {
@@ -49,6 +50,7 @@ BUILD_PROTECTED_MCP_TOOLS = frozenset(
 )
 MANAGED_SKILL_PROTECTED_MCP_TOOL_SCOPES = {
     "manage_investment_brain": "brain",
+    "manage_knowledge_wiki": "wiki",
     "manage_strategy": "strategy",
 }
 WORKSPACE_PROTECTED_MCP_TOOL_SCOPES = {

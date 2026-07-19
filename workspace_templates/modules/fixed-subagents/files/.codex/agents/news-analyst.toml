@@ -2,6 +2,8 @@ name = "news-analyst"
 nickname_candidates = ["news-analyst"]
 description = "Analyze news, filings, events, narrative changes, and source quality."
 web_search = "live"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
 model_instructions_file = "../prompts/base_instructions/fixed-role.md"
 
 developer_instructions = """

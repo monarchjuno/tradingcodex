@@ -360,6 +360,33 @@ summary { cursor: pointer; color: var(--ink-2); font-weight: 650; padding: 14px 
 .evidence-gap h3 { font-size: 15px; }
 .artifact-provenance { margin-top: 42px; }
 
+/* Knowledge Wiki */
+.wiki-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) repeat(3, minmax(140px, .42fr)); gap: 10px; margin-bottom: 16px; }
+.wiki-toolbar label { display: grid; gap: 5px; }
+.wiki-layout { display: grid; grid-template-columns: minmax(310px, .78fr) minmax(0, 1.42fr); min-height: 720px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.wiki-index { min-width: 0; border-right: 1px solid var(--line); background: color-mix(in srgb, var(--surface-raised) 35%, var(--surface)); outline: none; }
+.wiki-page-list { display: grid; }
+.wiki-row { display: grid; gap: 7px; width: 100%; min-height: 148px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; padding: 16px 17px; text-align: left; }
+.wiki-row:hover { background: var(--surface-hover); }
+.wiki-row.selected { background: var(--surface); box-shadow: inset 3px 0 var(--accent); }
+.wiki-folder { overflow: hidden; color: var(--accent); font-size: 10px; font-weight: 750; letter-spacing: .05em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+.wiki-row strong { font-size: 15px; line-height: 1.4; }
+.wiki-row p { display: -webkit-box; overflow: hidden; margin: 0; color: var(--ink-3); font-size: 12px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.wiki-row-meta { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--ink-3); font-size: 11px; }
+.wiki-row-meta .status-pill { min-height: 22px; padding: 2px 7px; font-size: 10px; }
+.wiki-reader { min-width: 0; scroll-margin-top: calc(var(--header-height) + 12px); padding: clamp(26px, 4vw, 48px); outline: none; }
+.wiki-trust-note { border-left: 3px solid var(--caution); background: var(--caution-soft); margin-top: 22px; padding: 12px 14px; color: var(--caution); font-size: 12px; }
+.wiki-markdown { max-width: 780px; border-top: 1px solid var(--line); margin-top: 30px; padding-top: 30px; color: var(--ink-2); overflow-wrap: anywhere; }
+.wiki-markdown h1, .wiki-markdown h2, .wiki-markdown h3 { color: var(--ink); margin-top: 1.5em; }
+.wiki-markdown pre { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--canvas-deep); padding: 14px; }
+.wiki-markdown table { width: 100%; border-collapse: collapse; }
+.wiki-markdown th, .wiki-markdown td { border: 1px solid var(--line); padding: 8px; text-align: left; }
+.wiki-links-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; border-top: 1px solid var(--line); margin-top: 40px; padding-top: 28px; }
+.wiki-links-grid section { min-width: 0; }
+.wiki-links-grid h3 { font-size: 14px; }
+.wiki-links-grid ul { margin: 0; padding-left: 18px; }
+.wiki-links-grid li, .wiki-links-grid p { overflow-wrap: anywhere; color: var(--ink-3); font-size: 12px; }
+
 /* Approaches */
 .local-tabs { display: inline-flex; gap: 3px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-raised); margin-bottom: 22px; padding: 3px; }
 .local-tabs button { min-height: 38px; border-color: transparent; background: transparent; padding: 7px 14px; }
@@ -438,11 +465,13 @@ summary { cursor: pointer; color: var(--ink-2); font-weight: 650; padding: 14px 
   .page-header h1 { font-size: clamp(30px, 4vw, 38px); }
   .page-header p { font-size: 15px; }
   .page-count { font-size: 24px; }
-  .library-layout, .method-layout { display: block; min-height: 0; }
-  .artifact-index, .method-index { border-right: 0; }
-  .artifact-reader, .method-detail { display: none; }
+  .library-layout, .method-layout, .wiki-layout { display: block; min-height: 0; }
+  .artifact-index, .method-index, .wiki-index { border-right: 0; }
+  .artifact-reader, .method-detail, .wiki-reader { display: none; }
   .library-layout.reader-open .artifact-index, .method-layout.detail-open .method-index { display: none; }
   .library-layout.reader-open .artifact-reader, .method-layout.detail-open .method-detail { display: block; }
+  .wiki-layout.reader-open .wiki-index { display: none; }
+  .wiki-layout.reader-open .wiki-reader { display: block; }
   .mobile-back { display: inline-flex; align-items: center; min-height: 38px; border: 0; background: transparent; margin: -8px 0 24px; color: var(--accent); padding: 0; }
   .artifact-row { min-height: 132px; }
   .extensions-intro { grid-template-columns: 1fr; gap: 18px; margin-bottom: 30px; }
@@ -514,7 +543,9 @@ summary { cursor: pointer; color: var(--ink-2); font-weight: 650; padding: 14px 
   .forecast-lists, .artifact-card-grid { grid-template-columns: 1fr; }
   .follow-up-row { grid-template-columns: 1fr; }
   .library-toolbar { grid-template-columns: 1fr; }
-  .artifact-reader, .method-detail { padding: 22px 18px; }
+  .wiki-toolbar { grid-template-columns: 1fr 1fr; }
+  .artifact-reader, .method-detail, .wiki-reader { padding: 22px 18px; }
+  .wiki-links-grid { grid-template-columns: 1fr; }
   .reader-summary { font-size: 18px; }
   .local-tabs { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
   .extension-row { align-items: flex-start; }

@@ -1,6 +1,7 @@
 default_permissions = "trading-research"
-# Model and reasoning settings inherit the user's Codex defaults. TradingCodex
-# does not pin a model because policy and execution authority live in services.
+# Keep coordination quality stable without introducing a model-policy registry.
+model = "gpt-5.6-sol"
+model_reasoning_effort = "xhigh"
 approval_policy = { granular = { sandbox_approval = true, rules = true, mcp_elicitations = true, request_permissions = false, skill_approval = false } }
 approvals_reviewer = "user"
 allow_login_shell = false
@@ -263,6 +264,10 @@ path = "../.agents/skills/tcx-brain/SKILL.md"
 enabled = true
 
 [[skills.config]]
+path = "../.agents/skills/tcx-wiki/SKILL.md"
+enabled = true
+
+[[skills.config]]
 path = "../.agents/skills/tcx-order-allow/SKILL.md"
 enabled = true
 
@@ -292,6 +297,7 @@ enabled_tools = [
   "get_update_status",
   "manage_strategy",
   "manage_investment_brain",
+  "manage_knowledge_wiki",
   "begin_analysis_run",
   "simulate_policy",
   "get_order_status",

@@ -182,6 +182,18 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     assert "Dataset" in source_gate
     assert "OpenBB" in source_gate
     assert "company IR and filings" in source_gate
+    assert "issuer identity and instrument/venue" in source_gate
+    assert "first-release/vintage" in source_gate
+    assert "references/openbb-mcp.md" in source_gate
+    openbb_reference = (
+        skill_root / "shared/tcx-source-gate/references/openbb-mcp.md"
+    ).read_text(encoding="utf-8")
+    assert "current\ntask" in openbb_reference
+    assert "Do not install, configure, provision, or start OpenBB." in openbb_reference
+    assert "requested provider" in openbb_reference
+    assert "returned provider" in openbb_reference
+    assert "authentication, entitlement, rate-limit, empty, or stale" in openbb_reference
+    assert "SourceSnapshot" in openbb_reference and "Dataset" in openbb_reference
     for field in ("snapshot_id", "retrieved_at", "recorded_at", "known_at"):
         assert f"`{field}`" in collect_evidence
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Keep native Codex work native; guard only TradingCodex safety boundaries."""
 
+import hashlib
 import json
 import os
 import re
@@ -54,6 +55,7 @@ NATIVE_EXECUTION_MARKERS = frozenset({
     "$execute-paper-order",
 })
 AUTHORITY_MARKERS = frozenset({BUILD_SKILL, *MANAGED_SKILL_MARKERS, *NATIVE_EXECUTION_MARKERS})
+PROOF_FREE_MANAGED_ACTIONS = frozenset({"list", "inspect", "validate"})
 SECRET_PATH = re.compile(
     r"(?:^|[\\/])(?:\.env(?:\.|$)|\.netrc$|id_(?:rsa|ecdsa|ed25519)$|"
     r"credentials?(?:\.json)?$|secrets?(?:\.json)?$|\.aws[\\/])",
@@ -72,6 +74,13 @@ DIRECT_ORDER_OR_BROKER = re.compile(
     re.I,
 )
 SERVICE_OWNED_PATH = re.compile(r"(?:^|[\\/])trading[\\/](?:audit|approvals|orders)(?:[\\/]|$)", re.I)
+SENSITIVE_ARGUMENT_KEY = re.compile(
+    r"(?:api[_-]?key|token|secret|password|passphrase|credential|authorization|cookie|private[_-]?key)",
+    re.I,
+)
+SENSITIVE_ARGUMENT_TEXT = re.compile(
+    r"(?i)((?:api[_-]?key|token|secret|password|credential|authorization|cookie)\s*[:=]\s*)([^\s,;&]+)"
+)
 
 
 def main() -> None:
@@ -383,6 +392,9 @@ def policy_gate(event: str, payload: dict) -> None:
             "redacted": True,
         })
         block(reason)
+        return
+    if event == "pre-tool-use" and is_external_evidence_tool(tool_name):
+        observe_external_tool_call(tool_name, payload)
 
 
 def build_protected_mcp_tool_name(tool_name: str) -> str:
@@ -394,6 +406,14 @@ def build_protected_mcp_tool_name(tool_name: str) -> str:
 
 def handle_workspace_proof_tool(event: str, payload: dict) -> None:
     identifier = build_protected_mcp_tool_name(payload_tool_name(payload))
+    tool_input = payload["tool_input"]
+    if (
+        identifier in {"manage_investment_brain", "manage_knowledge_wiki"}
+        and str(tool_input.get("action") or "") in PROOF_FREE_MANAGED_ACTIONS
+    ):
+        if BUILD_TURN_GRANT_PROOF_FIELD in tool_input:
+            block("Workspace lifecycle proof is hook-owned and is not accepted for read-only management actions")
+        return
     if payload.get("agent_type") or payload.get("subagent_type"):
         block("Only root Head Manager may use proof-protected TradingCodex lifecycle MCP tools")
         return
@@ -402,7 +422,6 @@ def handle_workspace_proof_tool(event: str, payload: dict) -> None:
         return
     session_id = str(payload.get("session_id") or "").strip()
     turn_id = str(payload.get("turn_id") or "").strip()
-    tool_input = payload["tool_input"]
     if event == "permission-request":
         if not session_id or not turn_id:
             block("Proof-protected MCP permission requires current Codex session and turn bindings")
@@ -504,6 +523,85 @@ def native_tool_block_reason(payload: dict) -> str:
     return ""
 
 
+def is_external_evidence_tool(tool_name: str) -> bool:
+    lowered = tool_name.lower()
+    return (
+        (lowered.startswith("mcp__") and not lowered.startswith("mcp__tradingcodex__"))
+        or lowered.startswith("web__")
+    )
+
+
+def observe_external_tool_call(tool_name: str, payload: dict) -> None:
+    canonical = json.dumps(
+        secret_free_tool_input(payload["tool_input"]),
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+    scope = external_tool_scope(payload)
+    append_hook_audit({
+        "event": "external-tool-observed",
+        "tool_name": tool_name,
+        "arguments_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        **scope,
+        "outcome": "unknown",
+        "redacted": True,
+    })
+
+
+def external_tool_scope(payload: dict) -> dict:
+    session_id = payload_scope_value(payload, "session_id", "sessionId")
+    turn_id = payload_scope_value(payload, "turn_id", "turnId")
+    if not session_id or not turn_id:
+        return {"scope": "unknown"}
+    scope = {"session_id": session_id, "turn_id": turn_id}
+    for key, aliases in (
+        ("agent_id", ("agent_id", "agentId")),
+        ("child_id", ("child_id", "childId", "subagent_id", "subagentId")),
+        ("agent_type", ("agent_type", "subagent_type")),
+    ):
+        if value := payload_scope_value(payload, *aliases):
+            scope[key] = value
+    canonical = json.dumps(scope, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return {"scope": "opaque", "scope_sha256": hashlib.sha256(canonical.encode("utf-8")).hexdigest()}
+
+
+def payload_scope_value(payload: dict, *keys: str) -> str:
+    for key in keys:
+        if value := str(payload.get(key) or "").strip():
+            return value
+    return ""
+
+
+def secret_free_tool_input(value):
+    if isinstance(value, dict):
+        return {
+            str(key): "<redacted>" if sensitive_argument_key(str(key)) else secret_free_tool_input(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        redacted = []
+        redact_next = False
+        for item in value:
+            if redact_next:
+                redacted.append("<redacted>")
+                redact_next = False
+                continue
+            redacted.append(secret_free_tool_input(item))
+            redact_next = isinstance(item, str) and sensitive_argument_key(item.lstrip("-"))
+        return redacted
+    if isinstance(value, tuple):
+        return secret_free_tool_input(list(value))
+    if isinstance(value, str):
+        return SENSITIVE_ARGUMENT_TEXT.sub(r"\1<redacted>", re.sub(r"(?i)(bearer\s+)[^\s,;]+", r"\1<redacted>", value))
+    return value
+
+
+def sensitive_argument_key(key: str) -> bool:
+    return key.lower() == "env" or bool(SENSITIVE_ARGUMENT_KEY.search(key))
+
+
 def revoke_stopped_order_grant(payload: dict) -> None:
     session_id = str(payload.get("session_id") or "").strip()
     if not session_id:
@@ -530,7 +628,7 @@ def revoke_stopped_order_grant(payload: dict) -> None:
 
 
 def payload_tool_name(payload: dict) -> str:
-    return str(payload.get("tool_name") or "")[:180]
+    return str(payload.get("tool_name") or "")
 
 
 def is_order_turn_grant_tool(tool_name: str) -> bool:

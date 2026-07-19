@@ -120,6 +120,11 @@ does not establish truth.
 
 ### Wiki and graph posture
 
+This section describes rebuildable views over Decision Memory. It does not own
+the separate agent-maintained background vault defined by
+[Knowledge Wikis](knowledge-wikis.md). Knowledge Wiki pages never become the
+canonical decision ledger or gain automatic promotion from it.
+
 LLM-maintained Markdown is useful for navigation, synthesis, and progressive
 disclosure. It is unsuitable as the only investment memory because free-form
 pages do not reliably preserve observation time, contradicted claims, abandoned
@@ -364,13 +369,13 @@ Memory remains independent of the Brain that produced a decision:
 - a different Brain or Strategy starts a new run rather than mutating sealed
   provenance.
 
-Learning from memory into a Brain is a separate user-controlled curation path.
-Writing requires a root native Codex prompt whose first meaningful invocation
-is `$tcx-brain`, an explicit source-authoring request on that line or below it, an
-actual Codex sandbox that permits the required workspace-local writes, exact
-user-selected source episodes, and counterexamples. The Brain-scoped grant is
-bound to that turn, cannot authorize Build or Strategy work, and does not carry
-into follow-ups or subagents; the browser viewer has no management path.
+Learning from memory or a selected Wiki page into a Brain is a separate
+user-controlled curation path. Natural language may explicitly authorize a
+user-owned source revision and proof-free validation; it does not authorize a
+managed lifecycle change. Exact `$tcx-brain` first-line admission is required
+only for install, update, activation, deactivation, rollback, or removal. The
+Brain lifecycle grant cannot authorize Build, Wiki, or Strategy work and does
+not carry into follow-ups or subagents; the browser viewer has no mutation path.
 It abstracts general heuristics into a privacy-reviewed user-owned local source
 without copying private cases or changing Decision Memory, installed packages,
 or third-party sources. It validates a created or revised local source without

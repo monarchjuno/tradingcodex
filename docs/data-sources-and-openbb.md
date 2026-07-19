@@ -27,6 +27,15 @@ TradingCodex does not install, classify, proxy, approve, or audit a user-owned
 capability. The normal research safety boundaries still apply: never expose a
 secret or mix research retrieval with account, order, or other mutation work.
 
+The procedure adds point-in-time context only when structured or historical
+evidence matters to a conclusion. It preserves issuer identity and
+instrument/venue, unit/currency/timezone, raw-versus-adjusted price policy,
+filing timing/period/amendment posture, and macro first-release or vintage
+posture versus a current revision. It also makes as-of/known-at/freshness,
+empty/partial/stale/authentication/entitlement/rate-limit warnings, material
+conflicts, and remaining coverage gaps visible. Narrow facts do not carry a
+full evidence checklist.
+
 ## Evidence records
 
 Every used external document or response is recorded as a content-addressed
@@ -71,6 +80,15 @@ TradingCodex never wraps, provisions, supervises, validates, or proxies that
 server. The configuration stores environment-variable *names* only; values are
 inherited from the process that starts Codex and must not appear in workspace
 files, prompts, APIs, MCP output, artifacts, or logs.
+
+Only a role that actually selects this direct route reads the short OpenBB
+procedure. It discovers the smallest needed upstream route, names and verifies
+the provider when available, verifies returned identifiers/venue/time posture
+and data units or adjustments, and treats access or empty-result warnings as
+coverage gaps. A partial response remains usable while another source fills
+only the missing coverage. Used responses become SourceSnapshots immediately;
+reused structured rows also become Datasets. The procedure deliberately avoids
+tool-name or version coupling.
 
 From a workspace terminal, use only the small projection controls:
 

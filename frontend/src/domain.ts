@@ -1,5 +1,5 @@
 export type RecordValue = Record<string, unknown>;
-export type Section = "skills" | "library" | "system";
+export type Section = "skills" | "library" | "wiki" | "system";
 export type Theme = "auto" | "dark" | "light";
 
 export type Skill = {
@@ -29,6 +29,38 @@ export type Artifact = {
   detailPath: string;
   raw: RecordValue;
 };
+
+export type WikiPageCard = {
+  wikiId: string;
+  path: string;
+  title: string;
+  summary: string;
+  type: string;
+  status: string;
+  aliases: string[];
+  tags: string[];
+  updatedAt: string;
+  sourceCount: number;
+  backlinkCount: number;
+  raw: RecordValue;
+};
+
+export function normalizeWikiPage(value: RecordValue): WikiPageCard {
+  return {
+    wikiId: asText(value.wiki_id),
+    path: asText(value.path),
+    title: asText(value.title, "Untitled page"),
+    summary: asText(value.summary),
+    type: asText(value.type, "concept"),
+    status: asText(value.status, "draft"),
+    aliases: asStringList(value.aliases),
+    tags: asStringList(value.tags),
+    updatedAt: asText(value.updated_at),
+    sourceCount: Number(value.source_count || 0),
+    backlinkCount: Number(value.backlink_count || 0),
+    raw: value,
+  };
+}
 
 export function asRecord(value: unknown): RecordValue {
   return value !== null && typeof value === "object" && !Array.isArray(value) ? value as RecordValue : {};
@@ -138,7 +170,7 @@ export function statusTone(status: string): "good" | "warn" | "bad" | "neutral" 
   const normalized = status.toLowerCase();
   if (["complete", "completed", "succeeded", "accepted", "ready", "active", "valid", "local"].includes(normalized)) return "good";
   if (["blocked", "error", "failed", "denied", "invalid", "timed_out"].includes(normalized)) return "bad";
-  if (["waiting", "revise", "needs_review", "pending", "running", "starting", "queued"].includes(normalized)) return "warn";
+  if (["waiting", "revise", "needs_review", "pending", "running", "starting", "queued", "draft", "contested", "superseded"].includes(normalized)) return "warn";
   return "neutral";
 }
 

@@ -64,11 +64,40 @@ def test_viewer_routes_are_get_only_and_old_workbench_routes_are_gone(
             "/api/viewer/artifacts/example/",
             "/api/viewer/datasets/dataset-example/",
             "/api/viewer/calculations/calc-run-example/",
+            "/api/viewer/wiki-pages/",
+            "/api/viewer/wiki-pages/local/pages/example.md/",
         ):
             response = client.generic(method, path, data=b"{}", content_type="application/json")
             assert response.status_code == 405
             assert response.headers["Allow"] == "GET"
     assert client.get("/api/workbench/").status_code == 404
+
+
+def test_wiki_viewer_api_searches_and_reads_sanitized_pages(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "viewer-wiki"
+    bootstrap_workspace(workspace)
+    page = workspace / "wikis/local/pages/material.md"
+    page.write_text(
+        "---\ntitle: Example Material\ntype: material\nsummary: Scientific background.\n"
+        "aliases: [Material X]\ntags: [science]\nstatus: current\nupdated_at: 2026-07-19\n"
+        "sources: [https://example.com/material]\n---\n\n# Example Material\n\n"
+        "<script>alert(1)</script> Stable chemistry.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TRADINGCODEX_WORKSPACE_ROOT", str(workspace))
+    client = Client(REMOTE_ADDR="127.0.0.1")
+
+    response = client.get("/api/viewer/wiki-pages/?wiki=local&q=material&type=material&status=current")
+    assert response.status_code == 200
+    assert response.json()["pages"][0]["title"] == "Example Material"
+    detail = client.get("/api/viewer/wiki-pages/local/pages/material.md/")
+    assert detail.status_code == 200
+    assert detail.json()["origin"] == "local"
+    assert "<script" not in detail.json()["html"]
+    assert client.get("/api/viewer/wiki-pages/local/../secret.md/").status_code in {400, 404}
 
 
 def test_invalid_workspace_renders_in_spa_without_fallback(

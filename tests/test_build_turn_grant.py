@@ -39,6 +39,7 @@ EXPECTED_BUILD_MCP_TOOLS = frozenset(
 )
 EXPECTED_MANAGED_MCP_TOOL_SCOPES = {
     "manage_investment_brain": "brain",
+    "manage_knowledge_wiki": "wiki",
     "manage_strategy": "strategy",
 }
 
@@ -161,7 +162,7 @@ def test_windows_drive_skill_links_require_the_lexical_projected_path() -> None:
 
 @pytest.mark.parametrize(
     ("marker", "scope"),
-    [("$tcx-brain", "brain"), ("$tcx-strategy", "strategy")],
+    [("$tcx-brain", "brain"), ("$tcx-wiki", "wiki"), ("$tcx-strategy", "strategy")],
 )
 def test_managed_skill_parser_and_grant_are_exact_and_capability_scoped(
     workspace: Path,
@@ -929,7 +930,7 @@ def test_managed_skill_mcp_tools_are_scope_bound_and_consume_proof(workspace: Pa
             "strategy-mcp-turn",
             "wrong-managed-scope",
             "manage_investment_brain",
-            {"action": "list"},
+            {"action": "deactivate", "brain_id": "investment-brain-example"},
             permission_mode="trading-research",
         )
     proof = reserve_build_turn_use(
@@ -955,37 +956,11 @@ def test_managed_skill_mcp_tools_are_scope_bound_and_consume_proof(workspace: Pa
     assert strategy_grant.use_count == 1
     assert strategy_grant.reservation_proof_hash == ""
 
-    brain_prompt = "$tcx-brain\nList the managed Investment Brains."
-    issued = issue_managed_skill_turn_grant(
-        workspace,
-        brain_prompt,
-        session_id="brain-mcp-session",
-        turn_id="brain-mcp-turn",
-        cwd=workspace,
-        permission_mode="trading-research",
-    )
-    assert issued is not None and issued["authority_scope"] == "brain"
     brain_args = {"action": "list"}
-    with pytest.raises(BuildInvocationError, match=r"\$tcx-brain turn proof is required"):
-        call_mcp_tool(
-            workspace,
-            "manage_investment_brain",
-            brain_args,
-            transport_principal="head-manager",
-        )
-    brain_proof = reserve_build_turn_use(
-        workspace,
-        "brain-mcp-session",
-        "brain-mcp-turn",
-        "brain-managed-tool",
-        "manage_investment_brain",
-        brain_args,
-        permission_mode="trading-research",
-    )
     brain_result = call_mcp_tool(
         workspace,
         "manage_investment_brain",
-        {**brain_args, BUILD_TURN_PROOF_FIELD: brain_proof},
+        brain_args,
         transport_principal="head-manager",
     )
     assert brain_result["action"] == "list"
@@ -1007,22 +982,107 @@ def test_managed_brain_mcp_rejects_private_git_sources_before_network(workspace:
         "action": "validate",
         "git_source": "https://127.0.0.1/private/brain.git",
     }
-    proof = reserve_build_turn_use(
-        workspace,
-        "brain-private-source-session",
-        "brain-private-source-turn",
-        "brain-private-source-tool",
-        "manage_investment_brain",
-        args,
-        permission_mode="trading-research",
-    )
     with pytest.raises(ValueError, match="public host"):
         call_mcp_tool(
             workspace,
             "manage_investment_brain",
-            {**args, BUILD_TURN_PROOF_FIELD: proof},
+            args,
             transport_principal="head-manager",
         )
+
+
+def test_managed_wiki_mcp_validation_is_read_only_and_install_consumes_proof(
+    workspace: Path,
+) -> None:
+    from tradingcodex_service.mcp_runtime import call_mcp_tool
+
+    wiki_id = "knowledge-wiki-permission"
+    locator = f"wiki-packages/{wiki_id}"
+    source = workspace / locator
+    wiki = source / wiki_id
+    (source / ".tradingcodex").mkdir(parents=True)
+    (wiki / "pages").mkdir(parents=True)
+    (source / ".tradingcodex/plugin.json").write_text(
+        json.dumps(
+            {
+                "format": "tradingcodex.knowledge-wiki",
+                "schema_version": 1,
+                "type": "knowledge-wiki",
+                "id": wiki_id,
+                "version": "1.0.0",
+                "wiki": wiki_id,
+                "source": {
+                    "publisher": "Permission Test",
+                    "repository": "https://example.com/public/wiki-permission",
+                    "license": "MIT",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (wiki / "purpose.md").write_text("# Purpose\n", encoding="utf-8")
+    (wiki / "index.md").write_text(
+        f"# Index\n\n- [[{wiki_id}/pages/example]]\n",
+        encoding="utf-8",
+    )
+    (wiki / "pages/example.md").write_text(
+        "---\ntitle: Example\ntype: concept\nsummary: Permission test page.\n"
+        "aliases: []\ntags: [test]\nstatus: current\nupdated_at: 2026-07-19\n"
+        "sources: [https://example.com/public/wiki-permission/page]\n---\n\n# Example\n",
+        encoding="utf-8",
+    )
+    args = {"action": "validate", "local_source": locator}
+
+    validated = call_mcp_tool(
+        workspace,
+        "manage_knowledge_wiki",
+        args,
+        transport_principal="head-manager",
+    )
+    assert validated["action"] == "validate"
+    assert validated["record"]["registry_mutated"] is False
+    assert call_mcp_tool(
+        workspace,
+        "manage_knowledge_wiki",
+        {"action": "list"},
+        transport_principal="head-manager",
+    )["records"] == []
+
+    install_args = {"action": "install", "local_source": locator}
+    with pytest.raises(BuildInvocationError, match=r"\$tcx-wiki turn proof is required"):
+        call_mcp_tool(
+            workspace,
+            "manage_knowledge_wiki",
+            install_args,
+            transport_principal="head-manager",
+        )
+    issued = issue_managed_skill_turn_grant(
+        workspace,
+        "$tcx-wiki\nInstall the validated permission Wiki as inactive.",
+        session_id="wiki-mcp-session",
+        turn_id="wiki-mcp-turn",
+        cwd=workspace,
+        permission_mode="trading-research",
+    )
+    assert issued is not None and issued["authority_scope"] == "wiki"
+    proof = reserve_build_turn_use(
+        workspace,
+        "wiki-mcp-session",
+        "wiki-mcp-turn",
+        "wiki-managed-tool",
+        "manage_knowledge_wiki",
+        install_args,
+        permission_mode="trading-research",
+    )
+    installed = call_mcp_tool(
+        workspace,
+        "manage_knowledge_wiki",
+        {**install_args, BUILD_TURN_PROOF_FIELD: proof},
+        transport_principal="head-manager",
+    )
+    assert installed["record"]["status"] == "inactive"
+    assert not (workspace / f"wikis/{wiki_id}").exists()
 
 
 def test_completed_protected_call_is_revoked_if_normal_finish_fails(

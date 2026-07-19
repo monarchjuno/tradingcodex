@@ -5,8 +5,9 @@ import { readFile } from "node:fs/promises";
 import { hashForSection, matchesSearch, sectionFromHash } from "./navigation.js";
 import { collectionViewState, sectionData, snapshotSections } from "./viewer-data.js";
 
-test("hash navigation stays inside the three viewer sections", () => {
+test("hash navigation stays inside the viewer sections", () => {
   assert.equal(sectionFromHash("#/skills"), "skills");
+  assert.equal(sectionFromHash("#/wiki/local/pages/example.md"), "wiki");
   assert.equal(sectionFromHash("#library?artifact=a"), "library");
   assert.equal(sectionFromHash("#/work"), "library");
   assert.equal(sectionFromHash("#/unknown"), "library");
@@ -61,14 +62,17 @@ test("system status labels wrap at every viewport width", async () => {
 });
 
 test("narrow detail transitions preserve keyboard focus", async () => {
-  const [skills, library] = await Promise.all([
+  const [skills, library, wiki] = await Promise.all([
     readFile(new URL("./features/SkillsPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("./features/LibraryPage.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./features/WikiPage.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(skills, /detailRef\.current\?\.focus\(\)/);
   assert.match(skills, /indexRef\.current\?\.focus\(\)/);
   assert.match(library, /readerRef\.current\?\.focus\(\)/);
   assert.match(library, /indexRef\.current\?\.focus\(\)/);
+  assert.match(wiki, /setQuery\(""\)/);
+  assert.match(wiki, /hashKey !== selectedKey/);
 });
 
 test("workspace switching returns focus to the updated main view", async () => {
@@ -87,8 +91,8 @@ test("half-width desktop uses the compact workspace and single-pane reader layou
   const compact = css.slice(compactStart, mobileStart);
   assert.match(compact, /\.viewer-layout\s*\{\s*display:\s*block/);
   assert.match(compact, /\.workspace-mobile-select\s*\{\s*display:\s*grid/);
-  assert.match(compact, /\.library-layout, \.method-layout\s*\{\s*display:\s*block/);
-  assert.match(compact, /\.artifact-reader, \.method-detail\s*\{\s*display:\s*none/);
+  assert.match(compact, /\.library-layout, \.method-layout, \.wiki-layout\s*\{\s*display:\s*block/);
+  assert.match(compact, /\.artifact-reader, \.method-detail, \.wiki-reader\s*\{\s*display:\s*none/);
   assert.doesNotMatch(compact, /--header-height:\s*118px/);
   assert.match(app, /workspace-compact-meta/);
 });

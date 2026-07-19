@@ -70,6 +70,35 @@ def test_fixed_role_prompts_use_natural_evidence_distinctions() -> None:
         assert "Artifact handoff:" not in prompt
         assert "Narrative evidence discipline:" not in prompt
 
+    workflow = (ROOT / "workspace_templates/modules/repo-skills/files/.agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
+    flat_workflow = " ".join(workflow.split())
+    assert "verified facts and sources, analysis and implications, key" in workflow
+    assert "Do not require per-sentence tags" in " ".join(workflow.split())
+    assert "relevant base\n  rate or comparison" in workflow
+    assert "current action/readiness\n  limit" in workflow
+    assert "Frame research as a provisional causal map, not a request-shaped checklist" in workflow
+    assert "outside-in peers, substitutes, industry structure" in workflow
+    assert "upstream inputs and suppliers, downstream customers" in workflow
+    assert "These are examples, not mandatory coverage" in workflow
+    assert "Preserve the requested outcome, explicit scope, and exclusions" in flat_workflow
+    assert "important points the user may not know to ask about" in flat_workflow
+    assert "never widen the outcome or action authority" in flat_workflow
+    assert "Find the causal cruxes" in flat_workflow
+    assert "Route unresolved cruxes rather than a preset role checklist" in flat_workflow
+    assert "Each accepted result may confirm or weaken a link" in flat_workflow
+    assert "when another specialty owns the unknown" in flat_workflow
+    assert "exact artifact ID, causal question, and missing evidence" in flat_workflow
+    assert "structural from cyclical, leading from lagging" in flat_workflow
+    assert "Compare live explanations and prefer evidence that distinguishes them" in flat_workflow
+    assert "Judge corroboration by independence, diagnostic value, and position in the causal chain" in flat_workflow
+    assert "dependent repetition is not confirmation" in flat_workflow
+    assert "Turn each material uncertainty into an observable update" in flat_workflow
+    assert "fundamentally unknowable ones" in flat_workflow
+    assert "Research quality and decision relevance take priority over resource economy" in flat_workflow
+    assert "Tool-call count, context size, and latency alone are not stop conditions" in flat_workflow
+    assert "deduplicated calls, compact artifact handoffs" in flat_workflow
+    assert "explicit user scope or deadline requires it" in flat_workflow
+
 
 def test_korean_request_creates_only_lightweight_analysis_provenance(tmp_path: Path) -> None:
     ensure_workspace_manifest(tmp_path)
@@ -377,7 +406,7 @@ def test_generated_hook_leaves_native_child_lifecycle_to_codex(workspace: Path) 
     assert not (workspace / "trading/audit/codex-hooks.jsonl").exists()
 
 
-def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(workspace: Path) -> None:
+def test_generated_contract_pins_models_and_keeps_role_profiles_optional(workspace: Path) -> None:
     config = (workspace / ".codex/config.toml").read_text(encoding="utf-8")
     head = (workspace / ".codex/prompts/base_instructions/head-manager.md").read_text(encoding="utf-8")
     fixed_role_path = workspace / ".codex/prompts/base_instructions/fixed-role.md"
@@ -387,9 +416,9 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     skill = (workspace / ".agents/skills/tcx-workflow/SKILL.md").read_text(encoding="utf-8")
     flat_head = " ".join(head.split())
     flat_skill = " ".join(skill.split())
-    assert "Model and reasoning settings inherit the user's Codex defaults" in config
-    assert "model =" not in config
-    assert "model_reasoning_effort" not in config
+    config_values = tomllib.loads(config)
+    assert config_values["model"] == "gpt-5.6-sol"
+    assert config_values["model_reasoning_effort"] == "xhigh"
     assert not (workspace / ".tradingcodex/generated/model-policy-manifest.json").exists()
     assert 'model_instructions_file = "prompts/base_instructions/head-manager.md"' in config
     assert '[features.multi_agent_v2]' in config
@@ -401,8 +430,8 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     assert '"begin_analysis_run"' in config
     assert "record_workflow_plan" not in config
     assert "record_artifact_supervisor_loop" not in config
-    assert "model =" not in role
-    assert "model_reasoning_effort" not in role
+    assert tomllib.loads(role)["model"] == "gpt-5.6-terra"
+    assert tomllib.loads(role)["model_reasoning_effort"] == "high"
     assert "required = true" in role
     assert len(fixed_role.encode("utf-8")) <= 7_000
     assert len(fixed_role.encode("utf-8")) < len(head.encode("utf-8")) // 4
@@ -418,21 +447,32 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
     assert "server-generated DAG" in head
     assert "Answer narrow" in head
     assert "Load\n`$tcx-workflow`" in head
+    assert "research-framing" in head
     assert "Use `followup_task` to correct or clarify" in head
-    assert "generic fallback" in flat_head.lower()
+    assert "$tcx-workflow` before using any fallback" in head
     assert len(head.encode("utf-8")) <= 12_000
+    assert "causal crux" not in flat_head.lower()
+    assert "dependent repetition" not in flat_head.lower()
     assert '`fork_turns="none"`' not in head
     assert "Native wait may be targetless" not in flat_head
     assert "## Fast Path" in skill
-    assert "Otherwise a generic child may" in skill
+    assert "Only an unavailable\n   evidence-producing role may use a generic child" in skill
+    assert "Do not replace an independent\n   `risk-manager` or `judgment-reviewer` review" in skill
     assert "followup_task" in skill
     assert '`fork_turns="none"`' in skill
-    assert "omit `model` and" in skill
+    assert "let its role TOML supply\n   the fixed model settings" in skill
     assert "native wait may be targetless because it waits for any child" in flat_skill.lower()
     assert "child-lifecycle results in this run" in flat_skill
-    assert "Save an authenticated research artifact when the result will support" in skill
+    assert "Save an authenticated research artifact when external evidence changes" in skill
     assert "$tcx-source-gate" in skill
-    assert "optional direct OpenBB" in skill
+    assert "current-workflow Snapshot/Dataset candidates" in skill
+    assert "order/execution readiness" in skill
+    assert len(skill.encode("utf-8")) <= 10_000
+    assert "provisional causal map" in flat_skill
+    assert "coverage is underspecified" in flat_skill
+    assert "causal cruxes" in flat_skill
+    assert "dependent repetition is not confirmation" in flat_skill
+    assert "likely to change the answer or readiness" in flat_skill
     assert "ALL_TOOLS.filter" not in head + fixed_role + skill
     assert "record_workflow_plan" not in head + role + skill
 
@@ -441,6 +481,8 @@ def test_generated_contract_inherits_models_and_keeps_role_profiles_optional(wor
         role_instructions = role_path.read_text(encoding="utf-8")
         role_config = tomllib.loads(role_instructions)
         enabled_tools = set(role_config["mcp_servers"]["tradingcodex"]["enabled_tools"])
+        assert role_config["model"] == "gpt-5.6-terra"
+        assert role_config["model_reasoning_effort"] == "high"
         assert "get_research_artifact" in enabled_tools
         assert ARTIFACT_DISCOVERY_TOOLS.isdisjoint(enabled_tools)
         assert role_config["model_instructions_file"] == FIXED_ROLE_MODEL_INSTRUCTIONS

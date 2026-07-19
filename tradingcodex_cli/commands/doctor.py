@@ -147,9 +147,43 @@ def _guidance_checks(root: Path) -> list[dict[str, Any]]:
         text_check(root, "guidance", "research profile keeps runtime state denied", ".codex/config.toml", '".tradingcodex" = "deny"', True),
         text_check(root, "guidance", "strategy lifecycle MCP configured", ".codex/config.toml", '"manage_strategy"', True),
         text_check(root, "guidance", "brain lifecycle MCP configured", ".codex/config.toml", '"manage_investment_brain"', True),
+        text_check(root, "guidance", "wiki management skill installed", ".agents/skills/tcx-wiki/SKILL.md", "Write `wikis/local` only when the user explicitly names Wiki", True),
+        text_check(root, "guidance", "wiki lifecycle MCP configured", ".codex/config.toml", '"manage_knowledge_wiki"', True),
+        *_knowledge_wiki_checks(root),
         text_check(root, "guidance", "compact context discipline configured", ".codex/prompts/base_instructions/head-manager.md", "# Context Discipline", True),
         *_fixed_role_dispatch_checks(root),
     ]
+
+
+def _knowledge_wiki_checks(root: Path) -> list[dict[str, Any]]:
+    from tradingcodex_service.application.knowledge_wikis import read_knowledge_wiki_records
+
+    checks = [
+        path_check(root, "guidance", "knowledge wiki vault index", "wikis/index.md", True),
+        path_check(root, "guidance", "local knowledge wiki purpose", "wikis/local/purpose.md", True),
+        path_check(root, "guidance", "local knowledge wiki index", "wikis/local/index.md", True),
+        path_check(root, "guidance", "local knowledge wiki pages", "wikis/local/pages", True),
+    ]
+    try:
+        records = read_knowledge_wiki_records(root, include_removed=True)
+        blocked = [record["wiki_id"] for record in records if record["validation_status"] != "valid"]
+    except Exception as exc:
+        checks.append({
+            "layer": "guidance",
+            "name": "knowledge wiki registry and projections",
+            "ok": False,
+            "codexNative": True,
+            "detail": str(exc),
+        })
+    else:
+        checks.append({
+            "layer": "guidance",
+            "name": "knowledge wiki registry and projections",
+            "ok": not blocked,
+            "codexNative": True,
+            "detail": "valid" if not blocked else f"blocked: {', '.join(blocked)}",
+        })
+    return checks
 
 
 def _codex_cli_runtime_check() -> dict[str, Any]:
@@ -345,7 +379,8 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
     dispatch_contract = all(
         marker in workflow
         for marker in (
-            "Otherwise a generic child may",
+            "Only an unavailable\n   evidence-producing role may use a generic child",
+            "Do not replace an independent\n   `risk-manager` or `judgment-reviewer` review",
             "`followup_task`",
             "`risk-manager` and",
         )
@@ -369,7 +404,7 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
             "name": "role-profile fallback boundary",
             "ok": dispatch_contract,
             "codexNative": True,
-            "detail": "generic fallback retains the role brief boundary" if dispatch_contract else "missing generic fallback boundary instructions",
+            "detail": "generic fallback is evidence-only and preserves independent review" if dispatch_contract else "missing generic fallback boundary instructions",
         },
     ]
 
@@ -1002,7 +1037,7 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(path_check(root, "improvement", "agent index projected", ".tradingcodex/generated/agent-index.json", False))
     checks.append(path_check(root, "improvement", "skill index projected", ".tradingcodex/generated/skill-index.json", False))
     checks.append(path_check(root, "improvement", "projection manifest projected", ".tradingcodex/generated/projection-manifest.json", False))
-    checks.append(text_check(root, "improvement", "bounded generic fallback installed", ".agents/skills/tcx-workflow/SKILL.md", "Otherwise a generic child may", False))
+    checks.append(text_check(root, "improvement", "bounded evidence fallback installed", ".agents/skills/tcx-workflow/SKILL.md", "Only an unavailable\n   evidence-producing role may use a generic child", False))
     checks.append(text_check(root, "improvement", "decision quality review installed", ".agents/skills/tcx-workflow/SKILL.md", "high-impact risk judgment", False))
     checks.append(text_check(root, "improvement", "method profile routing installed", ".codex/prompts/base_instructions/head-manager.md", "listed-equity FCFF DCF", False))
     checks.append(text_check(root, "improvement", "Codex-native workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "## Fast Path", False))
@@ -1050,7 +1085,8 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
         })
     checks.append(path_check(root, "improvement", "forecast ledger directory installed", "trading/forecasts", False))
     checks.append(text_check(root, "improvement", "build skill installed", ".agents/skills/tcx-build/SKILL.md", "its first meaningful line", False))
-    checks.append(text_check(root, "improvement", "brain skill uses direct managed turn", ".agents/skills/tcx-brain/SKILL.md", "do not wrap it in `$tcx-build`", False))
+    checks.append(text_check(root, "improvement", "brain skill keeps Build separate", ".agents/skills/tcx-brain/SKILL.md", "Do not use `$tcx-build` as a wrapper", False))
+    checks.append(text_check(root, "improvement", "wiki skill keeps Build separate", ".agents/skills/tcx-wiki/SKILL.md", "Do not combine it with `$tcx-build`", False))
     checks.append(text_check(root, "improvement", "strategy skill uses direct managed turn", ".agents/skills/tcx-strategy/SKILL.md", "do not wrap it in `$tcx-build`", False))
     checks.append(text_check(root, "improvement", "strategy root skill config installed", ".codex/config.toml", "# BEGIN TradingCodex strategy skills", True))
     try:

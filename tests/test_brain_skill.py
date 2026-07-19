@@ -39,13 +39,14 @@ def test_tcx_brain_covers_private_source_crud_and_managed_lifecycle() -> None:
     assert "normal `trading-research` profile" in flat_skill
     assert "Source actions create, inspect, revise, validate, or explicitly delete" in flat_skill
     assert "Plugin actions list, inspect, install, update, activate, deactivate" in flat_skill
-    assert "select the exact Decision Memory episodes" in flat_skill
+    assert "Use only material the user explicitly selected" in flat_skill
     assert "Require counterexamples and scope limits" in flat_skill
     assert "Do not copy private cases" in flat_skill
     assert "investment-brains/<investment-brain-id>" in skill
     assert ".tradingcodex/investment-brains" in skill
     assert "Stop after any source create, revise, or delete action" in flat_skill
-    assert "proof-protected `manage_investment_brain` MCP tool" in flat_skill
+    assert "its lifecycle mutations are proof-protected" in flat_skill
+    assert "`list`, `inspect`, and `validate` require no lifecycle proof" in flat_skill
     assert "Install always starts inactive" in flat_skill
     for action_snippet in (
         "action=list",
@@ -65,11 +66,11 @@ def test_tcx_brain_covers_private_source_crud_and_managed_lifecycle() -> None:
     assert "allow_implicit_invocation: false" in reference
     assert "No install, activation, Git, or publication action occurred during source" in _flat(reference)
     assert "manage_investment_brain action=validate" in _flat(reference)
-    assert metadata["policy"]["allow_implicit_invocation"] is False
+    assert metadata["policy"]["allow_implicit_invocation"] is True
     assert metadata["interface"]["default_prompt"].startswith("$tcx-brain\n")
     assert "$tcx-build" not in metadata["interface"]["default_prompt"]
     assert "$tcx-brain" in head_manager
-    assert "single management entrypoint" in _flat(head_manager)
+    assert "Natural language may authorize user-owned Wiki or Brain source authoring" in _flat(head_manager)
     assert "$tcx-brain-create" not in head_manager
 
 
@@ -82,7 +83,7 @@ def test_tcx_brain_projects_only_to_head_manager_without_legacy_alias(tmp_path: 
     assert skill["owner_roles"] == ["head-manager"]
     assert skill["scope"] == "mainagent"
     assert skill["user_visible"] is True
-    assert skill["implicit_invocation"] is False
+    assert skill["implicit_invocation"] is True
     assert "tcx-brain" in state["agents"]["head-manager"]["effective_skills"]
     assert "tcx-brain" in state["agents"]["head-manager"]["projected_skills"]
     assert "tcx-brain-create" not in state["skills"]

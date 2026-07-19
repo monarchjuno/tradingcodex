@@ -140,7 +140,7 @@ Control-plane maintainability depends on clear ownership:
 - `.codex/hooks/*` owns compact session health and analysis-start hints, exact
   explicit extension syntax reporting, safety-gate audit, and deterministic interception of
   the three root-native execution skills plus normalized first-meaningful-line
-  `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` contracts. It does not classify natural language, select roles,
+  `$tcx-build`, `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy` contracts. It does not classify natural language, select roles,
   or build a DAG. The two complete immediate action
   protocols create a mandate and call the service-owned execution gateway
   before a model runs. Exact first-meaningful-line `$tcx-order-allow` instead issues/revokes a
@@ -151,12 +151,12 @@ Control-plane maintainability depends on clear ownership:
   issue/reservation/consumption/revocation, `native-user` authorization, safe
   result projection, and dispatch into the canonical order services.
 - `tradingcodex_service/application/build_gateway.py` owns exact `$tcx-build`,
-  `$tcx-brain`, and `$tcx-strategy` parsing, DB-canonical scoped
+  `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy` parsing, DB-canonical scoped
   workspace/session/turn/cwd/prompt grants, protected-call
   proof reservation and consumption, expiry/revocation, and redacted audit. It
   does not elevate the Codex sandbox or grant execution authority. The
-  compatibility-named `BuildTurnGrant` records `build`, `brain`, or `strategy`
-  authority scope.
+  compatibility-named `BuildTurnGrant` records `build`, `brain`, `wiki`, or
+  `strategy` authority scope.
 - `.tradingcodex/config.yaml` owns the exact workspace execution-policy input;
   `.tradingcodex/policies/restricted-list.yaml` adds the file-native restricted
   list to the canonical DB list. There are no generated principal, role,

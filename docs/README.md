@@ -32,6 +32,7 @@ into every layer. If two layers disagree, fix the owning `docs/` page first.
 | Understand runtime and source ownership | [System Architecture](system-architecture.md) | [Interfaces And Surfaces](interfaces-and-surfaces.md) |
 | Change Head Manager, roles, skills, or research flow | [Roles, Skills, And Workflows](roles-skills-and-workflows.md) | [Codex-Native Orchestration](codex-native-orchestration.md) |
 | Work with research evidence, datasets, and artifacts | [Research Memory And Artifacts](research-memory-and-artifacts.md) | [Data Sources And OpenBB](data-sources-and-openbb.md) |
+| Work with reusable company, product, technology, science, industry, or value-chain knowledge | [Knowledge Wikis](knowledge-wikis.md) | [Investment Brain Plugins](investment-brain-plugins.md) |
 | Understand saved decisions and improvement | [Decision Memory](decision-memory.md) | [Improvement Loop](improvement-loop.md) |
 | Change policy, approvals, brokers, or execution | [Safety, Policy, And Execution](safety-policy-and-execution.md) | [Guardrails](guardrails.md) |
 | Change attach/update or generated workspace files | [Generated Workspaces](generated-workspaces.md) | [Deployment](deployment.md) |
@@ -55,6 +56,9 @@ into every layer. If two layers disagree, fix the owning `docs/` page first.
   boundary and why Django is not an agent scheduler.
 - [Research Memory And Artifacts](research-memory-and-artifacts.md) — file-native
   evidence, datasets, calculations, artifacts, and provenance.
+- [Knowledge Wikis](knowledge-wikis.md) — agent-maintained Obsidian-compatible
+  background knowledge, explicit write admission, community packages, and the
+  read-only Viewer.
 - [Data Sources And OpenBB](data-sources-and-openbb.md) — source fallback,
   optional direct OpenBB MCP, and third-party terms.
 - [Decision Memory](decision-memory.md) and [Improvement Loop](improvement-loop.md)

@@ -2,6 +2,8 @@ name = "macro-analyst"
 nickname_candidates = ["macro-analyst"]
 description = "Analyze macro, rates, FX, commodities, policy, liquidity, and cross-asset transmission."
 web_search = "live"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
 model_instructions_file = "../prompts/base_instructions/fixed-role.md"
 
 developer_instructions = """

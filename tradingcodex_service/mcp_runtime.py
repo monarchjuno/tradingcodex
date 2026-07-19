@@ -102,6 +102,14 @@ RETIRED_PUBLIC_MCP_TOOLS = frozenset(
 ORDER_TURN_GRANT_TOOL = "use_order_turn_grant"
 _ORDER_TURN_GRANT_PROOF_FIELD = "_execution_turn_proof"
 _BUILD_TURN_PROOF_FIELD = "_build_turn_proof"
+_PROOF_FREE_MANAGED_ACTIONS = frozenset({"list", "inspect", "validate"})
+
+
+def _workspace_tool_requires_proof(name: str, args: Mapping[str, Any]) -> bool:
+    return not (
+        name in {"manage_investment_brain", "manage_knowledge_wiki"}
+        and str(args.get("action") or "") in _PROOF_FREE_MANAGED_ACTIONS
+    )
 
 
 def roles_with_mcp_tool(tool_name: str) -> frozenset[str]:
@@ -615,7 +623,8 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         name="manage_investment_brain",
         description=(
             "Perform one exact Investment Brain validation or lifecycle action through the canonical service. "
-            "Requires a current root $tcx-brain turn; local_source stays below investment-brains/."
+            "List, inspect, and validate are read-only; lifecycle mutations require a current root $tcx-brain turn. "
+            "local_source stays below investment-brains/."
         ),
         category="customization",
         risk_level="write",
@@ -631,6 +640,36 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
                     ],
                 },
                 "brain_id": {"type": "string", "maxLength": 80},
+                "local_source": {"type": "string", "maxLength": 240},
+                "git_source": {"type": "string", "maxLength": 2048},
+                "ref": {"type": "string", "maxLength": 240},
+                "version": {"type": "string", "maxLength": 40},
+                "active_only": {"type": "boolean"},
+            },
+            ["action"],
+            additional_properties=False,
+        ),
+    ),
+    McpToolSpec(
+        name="manage_knowledge_wiki",
+        description=(
+            "Validate or manage one immutable community Knowledge Wiki package. "
+            "List, inspect, and validate are read-only; lifecycle mutations require a current root $tcx-wiki turn."
+        ),
+        category="customization",
+        risk_level="write",
+        allowed_roles=frozenset({"head-manager"}),
+        handler_name="manage_knowledge_wiki",
+        input_schema=object_schema(
+            {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "list", "inspect", "validate", "install", "update",
+                        "activate", "deactivate", "rollback", "remove",
+                    ],
+                },
+                "wiki_id": {"type": "string", "maxLength": 80},
                 "local_source": {"type": "string", "maxLength": 240},
                 "git_source": {"type": "string", "maxLength": 2048},
                 "ref": {"type": "string", "maxLength": 240},
@@ -2127,7 +2166,7 @@ def call_mcp_tool(
     if name in WORKSPACE_PROTECTED_MCP_TOOLS:
         internal_context["build_turn_proof"] = str(args.pop(_BUILD_TURN_PROOF_FIELD, "") or "")
     build_grant_id = ""
-    if name in WORKSPACE_PROTECTED_MCP_TOOLS:
+    if name in WORKSPACE_PROTECTED_MCP_TOOLS and _workspace_tool_requires_proof(name, args):
         build_grant_id = str(
             begin_reserved_build_turn_use(
                 workspace_root,
@@ -2338,6 +2377,40 @@ def _managed_brain_sources(
     return resolved, None
 
 
+def _managed_wiki_sources(
+    workspace_root: Path | str,
+    args: Mapping[str, Any],
+) -> tuple[Path | None, str | None]:
+    raw_local = str(args.get("local_source") or "")
+    raw_git = str(args.get("git_source") or "")
+    if bool(raw_local) == bool(raw_git):
+        raise ValueError("select exactly one of local_source or git_source")
+    if raw_git:
+        from tradingcodex_service.application.managed_package_sources import validate_public_https_url
+
+        validate_public_https_url(raw_git, label="git_source")
+        return None, raw_git
+    root = Path(workspace_root).resolve()
+    source_root = root / "wiki-packages"
+    supplied = Path(raw_local)
+    try:
+        lexical = supplied.relative_to(root) if supplied.is_absolute() else supplied
+        resolved = supplied.resolve(strict=False) if supplied.is_absolute() else (root / supplied).resolve(strict=False)
+        resolved.relative_to(source_root.resolve(strict=False))
+    except (OSError, RuntimeError, ValueError) as exc:
+        raise ValueError("local_source must stay below wiki-packages/") from exc
+    if lexical.parts[:1] != ("wiki-packages",) or any(part in {"", ".", ".."} for part in lexical.parts):
+        raise ValueError("local_source must be a canonical path below wiki-packages/")
+    current = root
+    for part in lexical.parts:
+        current /= part
+        if current.is_symlink():
+            raise ValueError("local_source cannot traverse a symlink")
+    if not resolved.is_dir():
+        raise ValueError("local_source must identify an existing Knowledge Wiki package directory")
+    return resolved, None
+
+
 def raw_call_tool(
     workspace_root: Path | str,
     tool: McpToolSpec,
@@ -2360,6 +2433,7 @@ def raw_call_tool(
         forecasting,
         investment_analysis,
         investment_brains,
+        knowledge_wikis,
         orders,
         policy,
         portfolio,
@@ -2726,6 +2800,96 @@ def raw_call_tool(
             }
         raise ValueError(f"unsupported Investment Brain management action: {action}")
 
+    def manage_knowledge_wiki() -> dict[str, Any]:
+        action = str(args["action"])
+        if action == "list":
+            _require_only_action_args(args, {"active_only"})
+            records = knowledge_wikis.read_knowledge_wiki_records(
+                workspace_root,
+                include_removed=not bool(args.get("active_only")),
+            )
+            if args.get("active_only"):
+                records = [record for record in records if record.get("status") == "active"]
+            return {"action": action, "records": records}
+        wiki_id = str(args.get("wiki_id") or "")
+        if action == "inspect":
+            _require_only_action_args(args, {"wiki_id"})
+            if not wiki_id:
+                raise ValueError("manage_knowledge_wiki inspect requires wiki_id")
+            return {
+                "action": action,
+                "record": knowledge_wikis.get_knowledge_wiki_record(workspace_root, wiki_id),
+            }
+        if action in {"validate", "install"}:
+            _require_only_action_args(args, {"local_source", "git_source", "ref"})
+            local_source, git_source = _managed_wiki_sources(workspace_root, args)
+            operation = (
+                knowledge_wikis.validate_knowledge_wiki_source(
+                    workspace_root,
+                    local_source=local_source,
+                    git_source=git_source,
+                    ref=str(args.get("ref") or ""),
+                )
+                if action == "validate"
+                else knowledge_wikis.install_knowledge_wiki(
+                    workspace_root,
+                    local_source=local_source,
+                    git_source=git_source,
+                    ref=str(args.get("ref") or ""),
+                    active=False,
+                    actor=principal_id,
+                )
+            )
+            return {"action": action, "record": operation}
+        if not wiki_id:
+            raise ValueError(f"manage_knowledge_wiki {action} requires wiki_id")
+        if action == "update":
+            _require_only_action_args(args, {"wiki_id", "local_source", "git_source", "ref"})
+            local_source = None
+            git_source = None
+            if args.get("local_source") or args.get("git_source"):
+                local_source, git_source = _managed_wiki_sources(workspace_root, args)
+            record = knowledge_wikis.update_knowledge_wiki(
+                workspace_root,
+                wiki_id,
+                local_source=local_source,
+                git_source=git_source,
+                ref=str(args["ref"]) if "ref" in args else None,
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action in {"activate", "deactivate"}:
+            _require_only_action_args(args, {"wiki_id"})
+            record = knowledge_wikis.set_knowledge_wiki_status(
+                workspace_root,
+                wiki_id,
+                "active" if action == "activate" else "inactive",
+                actor=principal_id,
+            )
+            return {"action": action, "record": record}
+        if action == "rollback":
+            _require_only_action_args(args, {"wiki_id", "version"})
+            return {
+                "action": action,
+                "record": knowledge_wikis.rollback_knowledge_wiki(
+                    workspace_root,
+                    wiki_id,
+                    version=str(args.get("version") or ""),
+                    actor=principal_id,
+                ),
+            }
+        if action == "remove":
+            _require_only_action_args(args, {"wiki_id"})
+            return {
+                "action": action,
+                "record": knowledge_wikis.remove_knowledge_wiki(
+                    workspace_root,
+                    wiki_id,
+                    actor=principal_id,
+                ),
+            }
+        raise ValueError(f"unsupported Knowledge Wiki management action: {action}")
+
     with_principal = {**args, "principal_id": principal_id}
     internal_context = dict(internal_context or {})
     handlers: dict[str, Callable[[], dict[str, Any]]] = {
@@ -2733,6 +2897,7 @@ def raw_call_tool(
         "get_update_status": get_update_status,
         "manage_strategy": manage_strategy,
         "manage_investment_brain": manage_investment_brain,
+        "manage_knowledge_wiki": manage_knowledge_wiki,
         "begin_analysis_run": begin_agent_analysis_run,
         "simulate_policy": lambda: policy.simulate_policy(workspace_root, with_principal),
         "validate_approval_receipt": lambda: orders.validate_approval_receipt(workspace_root, with_principal),

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiErrorText, requestJSON } from "./api";
 import { asRecord, asText, normalizeArtifact, normalizeCalculation, normalizeDataset, normalizeSkill, recordsFrom, Section, sectionError, Theme } from "./domain";
 import { LibraryPage } from "./features/LibraryPage";
+import { WikiPage } from "./features/WikiPage";
 import { SkillsPage } from "./features/SkillsPage";
 import { SystemPage } from "./features/SystemPage";
 import { hashForSection, sectionFromHash } from "./navigation.js";
@@ -11,6 +12,7 @@ import { sectionData, snapshotSections } from "./viewer-data.js";
 
 const PRIMARY_NAV: Array<{ id: Section; label: string }> = [
   { id: "library", label: "Library" },
+  { id: "wiki", label: "Wiki" },
   { id: "skills", label: "Skills" },
   { id: "system", label: "System" },
 ];
@@ -61,7 +63,7 @@ export default function App() {
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   useEffect(() => {
-    const labels: Record<Section, string> = { library: "Library", skills: "Skills", system: "System" };
+    const labels: Record<Section, string> = { library: "Library", wiki: "Wiki", skills: "Skills", system: "System" };
     document.title = `${labels[section]} · TradingCodex`;
     window.scrollTo(0, 0);
     requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
@@ -116,6 +118,7 @@ export default function App() {
           {stateError && <div className="global-notice"><ErrorNotice retry={() => void loadState()}>{stateError}</ErrorNotice></div>}
           {stateLoading && !hasSnapshot ? <div className="initial-loading"><LoadingState label="Opening the selected workspace…" /></div> : stateError && !hasSnapshot ? null : <div key={workspaceId}>
             {section === "library" && <LibraryPage artifacts={libraryItems} error={[sectionError(state, "artifacts"), sectionError(state, "datasets"), sectionError(state, "calculations")].filter(Boolean).join(" · ")} loading={stateLoading} />}
+            {section === "wiki" && <WikiPage loading={stateLoading} />}
             {section === "skills" && <SkillsPage state={state} skills={skills.filter((skill) => skill.visible)} error={sectionError(state, "skills")} selectedSkillId={selectedSkillId} setSelectedSkillId={setSelectedSkillId} loading={stateLoading} />}
             {section === "system" && <SystemPage state={state} />}
           </div>}

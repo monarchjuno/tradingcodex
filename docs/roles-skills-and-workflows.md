@@ -10,6 +10,7 @@ orchestration, handoffs, overlays, and execution separation.
 | Head Manager prompt | concise coordinator identity, plane routing, stable authority, and hard stops | reusable workflow mechanics, role methods, execution authorization |
 | `tcx-workflow` skill | request interpretation, smallest-team judgment, parallel waves, artifact-driven revision, synthesis procedure | durable role eligibility, MCP capability, approval |
 | Investment Brain plugin | platform-neutral hypotheses, inquiry priorities, causal frames, interpretation, falsifiers, and abstention heuristics | role selection, tools, workflow, memory, policy, approval, execution |
+| Knowledge Wiki | reusable untrusted factual background and explicit agent-maintained Markdown links | current evidence, reasoning instructions, automatic writes, or investment conclusions |
 | Fixed-role base prompt | shared child safety, evidence/handoff invariants, compact artifact reads, and gap handling | provider procedure, specialist identity, cross-role scheduling |
 | Fixed-role TOML | concise specialist identity, unique boundary, web posture, tools, and MCP principal | shared evidence procedure, cross-role scheduling, or model policy |
 | Role skills | domain procedure and output quality | role identity or authority |
@@ -53,10 +54,10 @@ characters.
 
 A plain `$skill-id` and a Markdown link are equivalent only when the link label
 is that exact id and its target resolves to the matching projected
-`SKILL.md` in the current workspace. Build, Brain, and Strategy management
-requires the invocation on the first meaningful line; the concrete non-empty
-request may share that line or follow it. Mixed or distinct managed markers
-remain invalid. Brain and Strategy selection accepts a plain token or matching
+`SKILL.md` in the current workspace. Build and state-changing Brain, Wiki, and
+Strategy lifecycle management requires the invocation on the first meaningful
+line; the concrete non-empty request may share that line or follow it. Mixed or
+distinct managed markers remain invalid. Brain and Strategy selection accepts a plain token or matching
 projected link, deduplicates repeated references to the same id, and rejects
 distinct multiple ids.
 
@@ -86,8 +87,11 @@ There is no execution subagent.
 | `risk-manager` | downside, restrictions, policy/approval readiness | drafting or executing orders |
 | `judgment-reviewer` | independent challenge, source trust, conflicts, forecast judgment | producing the original analysis |
 
-TradingCodex does not pin models or reasoning effort; Head Manager and children
-inherit the user's current Codex defaults. All use the shared
+Generated Codex TOML pins `head-manager` to `gpt-5.6-sol` with `xhigh`
+reasoning and all nine fixed roles to `gpt-5.6-terra` with `high` reasoning.
+This preserves Head Manager synthesis quality while keeping specialist cost and
+latency balanced. The direct TOML settings are not a model-policy registry,
+manifest, rollout control, or doctor availability state. All use the shared
 `trading-research` profile: ordinary
 user-owned paths outside `trading/` may be used as workflow inputs or outputs,
 while `trading/`, generated controls, credentials, and runtime state remain
@@ -110,28 +114,64 @@ hook or Django classifier to translate the request into a lane.
    projected skill link, apply it as an inquiry and
    interpretation overlay, then translate its domain questions into role-owned
    work. Use the pristine baseline when none is selected.
-4. Choose the smallest useful set of role profiles by distinct expertise.
-5. Dispatch independent questions in parallel when useful. Reuse a live child
+4. Frame the request as a provisional causal map and identify the causal cruxes
+   that could materially change the answer or its readiness.
+5. Choose the smallest useful set of role profiles by distinct expertise.
+6. Dispatch independent questions in parallel when useful. Reuse a live child
    with `followup_task` for its own correction or clarification.
-6. If an exact profile is unavailable, give a generic child the same bounded
-   research-only brief and prohibitions.
-7. Reassess useful evidence: correct the owner, add a distinct role, request
-   independent judgment, stop, answer directly, or synthesize.
-8. Save a run-local artifact only when the result supports a decision, reuse,
+7. A generic child may cover only an unavailable evidence-producing role with
+   the same bounded research-only brief and prohibitions. If an independent
+   `risk-manager` or `judgment-reviewer` review is needed but unavailable,
+   return the explicit profile gap as `blocked` or `waiting`.
+8. Reassess useful evidence. An accepted result may trigger a correction from
+   its owner or a causal missing-evidence question for another specialty; give
+   that role the exact artifact ID and bounded question, then reassess again.
+   Otherwise request independent judgment, stop, answer directly, or synthesize.
+9. Save a run-local artifact only when the result supports a decision, reuse,
    audit, or downstream handoff.
 
 Head Manager updates when workflow state materially changes. A timeout alone is
 not progress. Updates state only observable progress, evidence gaps, and the next action;
 private model reasoning and unaccepted findings are never surfaced.
 
-Head synthesis is itself a strict research artifact. Its prose clearly
-distinguishes sourced facts, analytical conclusions, and scenario assumptions
-without requiring machine-oriented inline labels.
+For final synthesis, forecasts, recommendations, valuations, portfolio/risk
+results, and high-consequence judgments, the canonical `tcx-workflow` skill
+uses a natural evidence structure plus only the applicable base rate or
+comparison, scenarios, assumptions/falsifier, contrary evidence, and update or
+readiness limits. It does not impose sentence tags or a template on narrow
+answers or intermediate role work.
 
 Broad analysis is not a fixed template. A factual company profile may need one
 fundamental role. A near-term market forecast may begin with macro, technical,
 and news roles. A recommendation or portfolio/risk decision usually needs
 independent judgment. Evidence can change the next role.
+
+The shared workflow treats inside-out economics, outside-in peers and base
+rates, upstream/downstream value-chain position, time and expectations, and
+competing explanations as optional question-generating lenses rather than
+mandatory coverage. A clear narrow scope and explicit exclusions remain
+binding. When coverage is underspecified, Head Manager may inspect causally
+adjacent factors that could materially affect the answer, including important
+points the user may not know to ask about, without widening the outcome or
+action authority.
+
+Head Manager routes unresolved causal cruxes rather than a preset role
+checklist. It distinguishes structural from cyclical drivers, leading evidence
+from lagging outcomes, and temporary states from durable transitions. Evidence
+is judged by independence, diagnostic value, and position in the causal chain,
+not source count; dependent repetition is not corroboration. Plausible competing
+explanations remain live until evidence distinguishes them. Each material
+uncertainty becomes an observable update that names the affected causal link
+and direction, or an explicit unknowable gap.
+
+Research quality and decision relevance take priority over resource economy.
+Head Manager continues while a material uncertainty remains and relevant
+evidence is obtainable within the user's scope and authority. Tool-call count,
+context size, and latency alone never justify stopping decision-relevant
+research; deduplicated calls, compact artifact handoffs, and parallel
+independent work manage those operational concerns. It stops only when another
+in-scope question is unlikely to change the answer or readiness, the needed
+evidence is unavailable, or an explicit user scope or deadline requires it.
 
 Explicit negations and constraints are binding. Ambiguity is resolved by Head
 Manager only when it materially changes the requested outcome or sensitive
@@ -139,12 +179,16 @@ authority. No server candidate-role ceiling or mandatory analytical DAG exists.
 
 ## Source Routing
 
-Head Manager gives an evidence-producing role the smallest missing-data question
-and hands other roles compact SourceSnapshot, Dataset, and ResearchArtifact IDs.
-The role follows the canonical `tcx-source-gate` procedure: reuse supplied
-Snapshot/Dataset evidence, use one relevant enabled user capability, use optional
-direct OpenBB, prefer original public records, then reliable web sources, and
-state a remaining gap.
+Before refetching a data family with material reuse value, Head Manager checks
+only current-workflow artifact candidates and Dataset cards/manifests. It gives
+the producing role exact reusable IDs and needed slices; roles do not browse a
+whole catalog. A stale, incomplete, or mismatched record still contributes its
+valid portion, while the owner retrieves only its missing coverage. Head Manager
+then gives the evidence producer the smallest missing-data question and other
+roles compact SourceSnapshot, Dataset, and ResearchArtifact IDs. The producer
+follows the canonical `tcx-source-gate` procedure: reuse supplied evidence, use
+one relevant enabled user capability, use optional direct OpenBB, prefer
+original public records, then reliable web sources, and state a remaining gap.
 
 This is agent guidance, not a Django routing state machine. The role names the
 provider where possible, does not repeat unchanged calls to the same source,
@@ -167,24 +211,28 @@ and exact upstream IDs it needs. Do not copy the full root history, role manual,
 source output, or unrelated artifacts into the brief.
 
 Spawn an exact profile with its exact `agent_type`, compact `message`,
-`task_name`, and `fork_turns="none"`; omit `model` and `reasoning_effort` so
-the user's native defaults apply. Continue only after the tool returns a live
-target. Correct a rejected spawn only when the error identifies the change.
+`task_name`, and `fork_turns="none"`; its role TOML supplies the fixed model
+and reasoning settings. Continue only after the tool returns a live target.
+Correct a rejected spawn only when the error identifies the change.
 
 Use `followup_task` when a live child still owns the correction or clarification.
 Start a fresh child for a new specialty, an unavailable session, or independent
-review. A generic fallback retains the same research-only scope, evidence
-standard, no-secret boundary, and no-order boundary as the missing profile; it
-cannot approve, execute, access a broker, or act as Head Manager. Children never
-delegate recursively. Wait only while a live child has useful work. Native
+review. The Dynamic Workflow fallback boundary applies here. A generic child
+retains the same research-only scope, evidence standard, no-secret boundary,
+and no-order boundary; it cannot approve, execute, access a broker, or act as
+Head Manager. Children never delegate recursively. Wait only while a live child
+has useful work. Native
 wait-any may serialize without explicit targets; verify lifecycle through the
 native tool result and child session events rather than treating that as failure.
 
 ## Handoffs And Artifacts
 
-Persist a role result through `create_research_artifact` when it supports a
-decision, reuse, audit, or downstream handoff. A narrow bounded answer need not
-create an artifact. Saved work includes source/as-of posture, readiness,
+Persist a role result through `create_research_artifact` when external evidence
+changes a conclusion; it supports a forecast, recommendation, valuation,
+portfolio, or risk judgment; a downstream role consumes it; it records a
+material source conflict or decision-relevant gap; or it informs
+order/execution readiness. A narrow bounded answer and discarded intermediate
+thought need no artifact. Saved work includes source/as-of posture, readiness,
 confidence, missing evidence, next action, blocked actions, consumed IDs, and an
 explicit handoff state; use the service-returned identity rather than inventing
 one.
@@ -248,8 +296,8 @@ Select a method profile that matches the task:
 - `listed_equity_fcff_dcf_v1`
 
 Do not force quant or FCFF contracts onto incompatible questions. Source
-snapshots, point-in-time cutoffs, forecasts, calibration, Decision Quality
-Spine fields, and anti-overfit validation remain available as appropriate.
+snapshots, point-in-time cutoffs, forecasts, calibration, concise decision-
+quality checks, and anti-overfit validation remain available as appropriate.
 In particular, a calibrated forward per-share DCF requires primary or audited
 support for the cash-flow base, reinvestment/CAPEX, working capital, net debt or
 cash, diluted shares, and forecast bridge. When that foundation is absent, the
@@ -391,15 +439,24 @@ overlays so `SKILL.md`, `agents/openai.yaml`, TradingCodex metadata, validation,
 activation, and projection remain aligned. See
 [Investment Brain Plugins](investment-brain-plugins.md).
 
-Every tool-using `$tcx-brain` operation runs in a root native
-`trading-research` prompt whose first meaningful invocation is `$tcx-brain`.
-The hook-issued Brain-scoped grant admits only the canonical source and
-lifecycle paths; it never elevates the sandbox, crosses into Build or Strategy,
-or carries into a follow-up or subagent. Source edits remain native; installed
-registry and projection lifecycle uses only the proof-protected
+`tcx-wiki` is implicit-capable because Head Manager may search relevant active
+Wikis without a marker. Query and lint are read-only. Local ingest and shared
+source authoring require an explicit user request naming Wiki as the
+destination; research completion never writes automatically. Community
+lifecycle mutations require a fresh exact `$tcx-wiki` root turn, while list,
+inspect, and validation are proof-free. Head Manager owns this work directly;
+there is no librarian role. See [Knowledge Wikis](knowledge-wikis.md).
+
+Natural-language requests may author a user-owned Brain source and use
+proof-free list, inspect, and validation actions. Installed-state mutations
+run in a fresh root `trading-research` prompt whose first meaningful invocation
+is `$tcx-brain`. The hook-issued Brain-scoped grant admits only the matching
+lifecycle mutation; it never elevates the sandbox, crosses into Build, Wiki, or
+Strategy, or carries into a follow-up or subagent. Source edits remain native;
+installed registry and projection lifecycle uses only the proof-protected
 `manage_investment_brain` MCP tool, with the Research runtime and launcher
-still denied. The browser viewer has no management
-path. Source authoring curates exact user-selected Decision
+still denied. The browser viewer has no management path. Source authoring
+curates exact user-selected Decision
 Memory evidence and counterexamples into a privacy-reviewed abstraction under
 `investment-brains/<investment-brain-id>` by default. It never copies private
 cases or edits installed or third-party packages. Source create and revise run
@@ -510,7 +567,8 @@ judgment, or mutate state. Operational diagnosis and recovery remain
 Validate the nine-role fixed roster and projections, 34 skill bundles, absence
 of raw public execution-mutation tools, protected grant-tool proof behavior,
 deterministic native-action and `$tcx-order-allow` hook behavior,
-native role-profile dispatch and bounded generic fallback, multilingual analysis requests,
+native role-profile dispatch, bounded evidence fallback, exact independent risk/judgment review,
+multilingual analysis requests,
 principal-bound artifacts, lineage, dynamic revision, viewer read boundaries,
 exact explicit Brain selection/failure behavior, typed conflict
 handling, blind-first memory use, and unchanged execution gates. See

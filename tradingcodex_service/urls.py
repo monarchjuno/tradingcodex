@@ -11,6 +11,12 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/viewer/", viewer_api.snapshot, name="viewer-snapshot"),
     path("api/viewer/skills/<str:skill_id>/", viewer_api.skill_detail, name="viewer-skill-detail"),
+    path("api/viewer/wiki-pages/", viewer_api.wiki_pages, name="viewer-wiki-pages"),
+    path(
+        "api/viewer/wiki-pages/<str:wiki_id>/<path:page_path>/",
+        viewer_api.wiki_page_detail,
+        name="viewer-wiki-page-detail",
+    ),
     path("api/viewer/artifacts/<path:artifact_id>/", viewer_api.artifact_detail, name="viewer-artifact-detail"),
     path("api/viewer/datasets/<str:dataset_id>/", viewer_api.dataset_detail, name="viewer-dataset-detail"),
     path(

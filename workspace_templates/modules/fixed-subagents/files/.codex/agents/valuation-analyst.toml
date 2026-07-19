@@ -2,6 +2,8 @@ name = "valuation-analyst"
 nickname_candidates = ["valuation-analyst"]
 description = "Translate investment story and evidence into valuation ranges and expectation tests."
 web_search = "live"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
 model_instructions_file = "../prompts/base_instructions/fixed-role.md"
 
 developer_instructions = """

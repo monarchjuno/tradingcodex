@@ -19,6 +19,7 @@ validation; durable product behavior belongs in [`docs/`](../docs/README.md).
 | Runtime planes, service ownership, state placement | [Architecture](architecture.md) | [System Architecture](../docs/system-architecture.md) |
 | Head Manager, roles, skills, prompts, research flow | [Workflows And Agents](workflows-and-agents.md) | [Roles, Skills, And Workflows](../docs/roles-skills-and-workflows.md) |
 | Viewer, Admin, API, MCP, CLI, research objects | [Interfaces And Data](interfaces-and-data.md) | [Interfaces And Surfaces](../docs/interfaces-and-surfaces.md) |
+| Knowledge Wiki pages, packages, lifecycle, and Viewer | [Interfaces And Data](interfaces-and-data.md), [Workflows And Agents](workflows-and-agents.md), [Generated Workspaces](generated-workspaces.md) | [Knowledge Wikis](../docs/knowledge-wikis.md) |
 | Attach/update, templates, hooks, projected files | [Generated Workspaces](generated-workspaces.md) | [Generated Workspaces](../docs/generated-workspaces.md) |
 | Policy, approvals, brokers, orders, secrets, audit | [Safety And Execution](safety-and-execution.md) | [Safety, Policy, And Execution](../docs/safety-policy-and-execution.md) |
 | Tests, smoke, docs checks, release validation | [Development And Validation](development-and-validation.md) | [Validation And Test Plan](../docs/validation-and-test-plan.md) |
@@ -60,6 +61,7 @@ skill, not a provider state machine.
 | `tradingcodex_cli/` | Operator CLI and generated workspace lifecycle. |
 | `workspace_templates/modules/*/files/` | Prompts, skills, role profiles, hooks, policies, and launchers projected into workspaces. |
 | `frontend/` | Maintainer-only viewer source; generated workspaces stay Node-free. |
+| `tradingcodex_service/application/knowledge_wikis.py`, `wiki_viewer.py` | Knowledge Wiki package lifecycle and bounded read-only discovery. |
 | `tests/` | Unit, contract, generated-workspace, and native Codex validation. |
 | `docs/` | Canonical product documentation. |
 | `guidebook/` | Task-first public user guide. |

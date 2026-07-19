@@ -2,6 +2,8 @@ name = "judgment-reviewer"
 nickname_candidates = ["judgment-reviewer"]
 description = "Independently challenge accepted investment artifacts before synthesis or downstream action gates."
 web_search = "disabled"
+model = "gpt-5.6-terra"
+model_reasoning_effort = "high"
 model_instructions_file = "../prompts/base_instructions/fixed-role.md"
 
 developer_instructions = """

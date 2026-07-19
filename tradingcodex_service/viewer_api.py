@@ -16,6 +16,7 @@ from tradingcodex_service.application.viewer import (
     get_skill_detail,
     viewer_snapshot,
 )
+from tradingcodex_service.application.wiki_viewer import get_wiki_page_detail, list_wiki_pages
 from tradingcodex_service.application.workspaces import WorkspaceSelectionError, bind_request_workspace
 from tradingcodex_service.runtime_profile import LOCAL_PROFILE
 
@@ -75,6 +76,39 @@ def calculation_detail(request: HttpRequest, calculation_run_id: str) -> JsonRes
         lambda: get_calculation_detail(
             request.tradingcodex_workspace_root,
             calculation_run_id,
+        )
+    )
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def wiki_pages(request: HttpRequest) -> JsonResponse:
+    try:
+        limit = int(request.GET.get("limit", "100"))
+    except (TypeError, ValueError):
+        return _error("invalid_request", "Wiki limit must be an integer.", 400)
+    return _read_response(
+        lambda: list_wiki_pages(
+            request.tradingcodex_workspace_root,
+            wiki=request.GET.get("wiki", "all"),
+            query=request.GET.get("q", ""),
+            page_type=request.GET.get("type", ""),
+            status=request.GET.get("status", ""),
+            limit=limit,
+        )
+    )
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def wiki_page_detail(request: HttpRequest, wiki_id: str, page_path: str) -> JsonResponse:
+    return _read_response(
+        lambda: get_wiki_page_detail(
+            request.tradingcodex_workspace_root,
+            wiki_id,
+            page_path,
         )
     )
 

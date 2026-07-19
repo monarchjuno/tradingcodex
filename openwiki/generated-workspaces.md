@@ -1,6 +1,7 @@
 # Generated Workspaces Source Map
 
-Canonical behavior: [Generated Workspaces](../docs/generated-workspaces.md) and
+Canonical behavior: [Generated Workspaces](../docs/generated-workspaces.md),
+[Knowledge Wikis](../docs/knowledge-wikis.md), and
 [Installation](../installation.md).
 
 ## Primary Sources
@@ -15,6 +16,8 @@ Canonical behavior: [Generated Workspaces](../docs/generated-workspaces.md) and
 | CLI launchers | `workspace_templates/modules/cli/files/` |
 | Agent/skill projection | `tradingcodex_service/application/agents.py` |
 | Workspace provenance | `tradingcodex_service/application/workspaces.py` and harness models |
+| Local Wiki scaffold and active community projection | `tradingcodex_service/application/knowledge_wikis.py` |
+| Wiki/Obsidian Git ignores | `tradingcodex_service/application/workspace_git.py` |
 
 Generated files are projections, not hand-maintained runtime state. Edit their
 template or projection owner and regenerate a disposable workspace.
@@ -27,6 +30,9 @@ template or projection owner and regenerate a disposable workspace.
   identities. Do not hard-code the release port in development diagnostics.
 - `tcx update` preserves user-owned files and durable workspace research while
   refreshing owned generated paths.
+- Attach creates missing `wikis/local` scaffold files outside the module lock;
+  update preserves local pages, local index, Wiki sources, registry, packages,
+  and projections while refreshing only `wikis/index.md`.
 - A moved workspace needs an update so absolute project MCP and runtime bindings
   are regenerated.
 - Attach/update never stage, commit, create a branch, push, publish, or run npm.
@@ -43,8 +49,10 @@ template or projection owner and regenerate a disposable workspace.
   than layering compatibility indefinitely.
 - Treat projection indexes as diagnostics, not authority. Do not add a new
   index when the native config or owning registry already answers the question.
-- Inherit native Codex model and reasoning defaults; do not project a model
-  policy manifest or duplicate model availability checks in `doctor`.
+- Project the direct fixed model fields already defined in
+  [Roles, Skills, And Workflows](../docs/roles-skills-and-workflows.md). Do not
+  project a model policy manifest or duplicate model availability checks in
+  `doctor`.
 - Keep hooks narrow: lifecycle proofs and TradingCodex-owned secret,
   service-state, broker, and order boundaries only. Native Codex owns ordinary
   shell, network, workdir, spawn, and model validation; `tcx-calc` owns its

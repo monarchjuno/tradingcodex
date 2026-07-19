@@ -1,0 +1,6 @@
+interface:
+  display_name: "TCX Wiki"
+  short_description: "Manage agent-maintained Knowledge Wikis"
+  default_prompt: "Use $tcx-wiki to query, ingest, lint, author, or manage the requested reusable knowledge."
+policy:
+  allow_implicit_invocation: true

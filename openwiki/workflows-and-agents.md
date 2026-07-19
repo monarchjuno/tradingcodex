@@ -3,6 +3,8 @@
 Canonical behavior: [Roles, Skills, And Workflows](../docs/roles-skills-and-workflows.md),
 [Codex-Native Orchestration](../docs/codex-native-orchestration.md), and
 [Product Direction](../docs/product-direction.md).
+Knowledge lookup, explicit ingest, and Brain promotion boundaries are owned by
+[Knowledge Wikis](../docs/knowledge-wikis.md).
 
 ## Primary Sources
 
@@ -12,6 +14,7 @@ Canonical behavior: [Roles, Skills, And Workflows](../docs/roles-skills-and-work
 | Shared child boundary | `workspace_templates/modules/codex-base/files/.codex/prompts/base_instructions/fixed-role.md` |
 | Role profiles | `workspace_templates/modules/fixed-subagents/files/.codex/agents/*.toml` |
 | User and role skills | `workspace_templates/modules/repo-skills/files/` |
+| Wiki manager skill | `workspace_templates/modules/repo-skills/files/.agents/skills/tcx-wiki/` |
 | Agent/skill projection metadata | `tradingcodex_service/application/agents.py` |
 | Run identity | `tradingcodex_service/application/analysis_runs.py` |
 | Research artifact persistence | `tradingcodex_service/application/research.py` |
@@ -23,13 +26,14 @@ Canonical behavior: [Roles, Skills, And Workflows](../docs/roles-skills-and-work
 Head Manager interprets the request and takes the smallest useful path. It can
 answer narrow questions directly. Specialist agents are optional profiles used
 for distinct expertise or independent review, not a mandatory workflow. Reuse
-an existing child for correction when practical; a generic child can receive a
-bounded role brief when a profile is unavailable. Head Manager and children
-inherit the user's native Codex model and reasoning defaults.
+an existing child for correction when practical. The fixed model settings and
+fallback boundary are owned by
+[Roles, Skills, And Workflows](../docs/roles-skills-and-workflows.md); generated
+TOML projects them without a model-policy layer.
 
 An exact profile spawn uses its exact `agent_type`, compact task context, and
-`fork_turns="none"` without model overrides. Waiting, follow-up, and lifecycle
-claims require the live target returned by a completed native spawn.
+`fork_turns="none"`. Waiting, follow-up, and lifecycle claims require the live
+target returned by a completed native spawn.
 Native wait-any may serialize with no explicit target list while a child is
 live. Hooks do not record, alter, route, schedule, or choose native child calls.
 

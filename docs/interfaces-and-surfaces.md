@@ -16,8 +16,8 @@ The v1 public routes and imports use the canonical
 | Product web | Read-only workspace selection, artifact/source review, skill projection, and system posture | Launch Codex, mutate workspace/service state, accept arbitrary paths, expose raw reasoning/tool payloads, or bypass policy, approval, and execution gates |
 | Django Admin | Local/staff operations console | Bypass service-layer policy or audit |
 | Django Ninja | Typed authenticated local/staff REST and operator-managed remote control API | Mirror every MCP tool automatically or bypass execution checks |
-| MCP | Agent research, order-preparation, approval, status, one proof-protected current-turn order effect, proof-protected Build services, and scoped Brain/Strategy lifecycle | Expose raw submit/cancel/refresh mutations, accept protected calls without current hook proof, mirror raw REST endpoints, proxy raw broker APIs, or expose the model to runtime credentials |
-| Root native action hook | Exact immediate submit/cancel plus normalized first-meaningful-line `$tcx-order-allow`, `$tcx-build`, `$tcx-brain`, and `$tcx-strategy` current-turn admission with capability scope and proof injection where required | Accept free-form intent, mismatched skill links, combine scopes, run from subagents, elevate the Codex sandbox, or bypass service gates |
+| MCP | Agent research, order-preparation, approval, status, one proof-protected current-turn order effect, proof-protected Build services, and scoped Brain/Strategy/Wiki lifecycle | Expose raw submit/cancel/refresh mutations, accept protected lifecycle mutations without current hook proof, mirror raw REST endpoints, proxy raw broker APIs, or expose the model to runtime credentials |
+| Root native action hook | Exact immediate submit/cancel plus normalized first-meaningful-line `$tcx-order-allow`, `$tcx-build`, `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy` lifecycle admission with capability scope and proof injection where required | Accept free-form lifecycle intent, mismatched skill links, combine scopes, run mutations from subagents, elevate the Codex sandbox, or bypass service gates |
 | CLI | Local operator and generated wrapper interface | Fork durable behavior away from services |
 
 ## Product Web App
@@ -29,11 +29,14 @@ table-first Admin replacement or agent runtime. React 19, TypeScript, and Vite 8
 WhiteNoise. Node 22 is a maintainer build dependency only. Installed packages
 and generated workspaces do not run a Node server or npm.
 
-The SPA keeps three stable hash sections:
+The SPA keeps four stable hash sections:
 
 - **Library** (`#/library`) browses workspace research, reports, sources,
   Dataset and Calculation cards, forecasts, and other accepted artifacts with
   sanitized previews, lineage, payload availability, and source/as-of posture.
+- **Wiki** (`#/wiki`) searches active local and community Markdown by Wiki,
+  path, type, status, and text, then reads sanitized pages, sources, wikilinks,
+  and backlinks. It has no graph or mutation surface.
 - **Skills** (`#/skills`) inspects built-in, optional, and strategy projections
   plus sanitized guidance. It cannot invoke or modify them.
 - **System** (`#/system`) shows workspace, internal paper-account scope,
@@ -356,22 +359,26 @@ behavior. The hook injects proof only for protected lifecycle MCP mutations and
 does not elevate filesystem authority. Broader validation remains an explicit
 user-terminal or maintainer flow when the active profile cannot perform it.
 
-Investment Brain and Strategy management use separate exact invocations on the
-first meaningful line: `$tcx-brain` and `$tcx-strategy`. A plain token or
-matching projected link is accepted and the request may share the line or
-follow it. They stay in `trading-research`, issue a
-DB-canonical grant with only the matching capability scope, and admit only the
-canonical Brain source path plus `manage_investment_brain`, or Strategy body
-staging plus `manage_strategy`. The hook owns and injects the MCP proof;
-Research does not expose the generated CLI or attached runtime. Neither marker
-can be combined with `$tcx-build`, an order marker, or the other managed skill;
-Plan mode and subagents remain blocked.
+Brain, Knowledge Wiki, and Strategy lifecycle mutations use separate exact
+first-line invocations: `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy`. Their
+grants are scope-specific and cannot be combined with Build, order, or another
+managed marker. Brain and Wiki `list`, `inspect`, and `validate` are proof-free;
+natural-language requests may author user-owned Brain/Wiki sources and stop
+after validation. The hook injects proof only for state-changing lifecycle
+calls. Plan mode and subagents remain blocked from those mutations.
+
+Wiki reads use `GET /api/viewer/wiki-pages/` and
+`GET /api/viewer/wiki-pages/<wiki-id>/<page-path>/`. The application performs a
+bounded scan of active Markdown, rejects traversal, renders wikilinks as safe
+internal links, and returns sanitized HTML plus backlinks. It never writes the
+vault or treats page instructions as agent guidance.
 
 This also applies to Codex app Scheduled Tasks. A recurring Build task works
 only when its deliberately saved prompt starts with `$tcx-build`; every run
 gets a fresh grant decision. Controlled `trading/` or optional-role-skill
-lifecycle runs require a `trading-build` Automation runtime. Brain and Strategy
-management starts directly with its matching exact marker in a
+lifecycle runs require a `trading-build` Automation runtime. State-changing
+Brain, community Wiki, and Strategy lifecycle management starts directly with
+its matching exact marker in a
 `trading-research` Automation runtime. A `trading-research` run may read
 and write ordinary user-owned paths outside `trading/`, use temporary
 computation, public evidence retrieval, rendering/inspection, and specifically

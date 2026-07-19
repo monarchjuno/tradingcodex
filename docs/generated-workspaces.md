@@ -130,7 +130,7 @@ paths, reserved namespaces, and managed block markers define the boundary:
 | Class | Representative paths | Update contract |
 | --- | --- | --- |
 | Release-managed generated files | `AGENTS.md`, `pyproject.toml`, `tcx`, `tcx.cmd`, `.codex/config.toml`, `.codex/agents/*.toml`, `.codex/hooks/*`, `.agents/skills/tcx-*`, bundled `.tradingcodex/subagents/skills/**/tcx-*`, schemas, policies, launchers, generated indexes, and protocol-owned workspace identity/status files | Template and projection files are listed and hashed in the module lock. The lock cannot inventory itself; the immutable workspace manifest and rebuildable bootstrap/status files are separately protocol-owned. Update re-renders or re-projects these files from the current package and canonical state. Direct edits are unsupported and may be replaced. |
-| User-selected managed overlays | `.tradingcodex/agent-instructions/*.md`, `.tradingcodex/user/*`, `.agents/skills/strategy-*`, optional role skills, `investment-brains/*` authoring sources, and the installed Brain registry/packages/projections | The owning lifecycle service validates and writes these paths. Update preserves their canonical state and rebuilds only generated projection blocks or indexes from it. |
+| User-selected managed overlays | `.tradingcodex/agent-instructions/*.md`, `.tradingcodex/user/*`, `.agents/skills/strategy-*`, optional role skills, `investment-brains/*` authoring sources, `wiki-packages/*` shareable Wiki sources, `wikis/local`, and installed Brain/Wiki registries, packages, and projections | The owning lifecycle service validates managed state. Update preserves canonical state, user-owned Wiki/Brain sources, local Wiki pages, installed packages, registries, and active projections. |
 | Workflow and research artifacts | `trading/research/`, `trading/reports/`, `trading/forecasts/`, `trading/decisions/`, `trading/evaluations/`, postmortems, lesson state, and per-run provenance | These are workspace state, not release payload. Update preserves them; template-owned `.gitkeep` files in the same directories do not transfer ownership of sibling artifacts. |
 | Local/private runtime state | The external `TRADINGCODEX_HOME`, central DB, ignored session/status/cache/audit files, secrets, credentials, and private Investor Context | These remain outside versionable product state or inside the managed privacy-ignore block. Rebuildable status/cache files may be refreshed; durable authority never moves into the workspace. |
 | Ordinary user files | Any non-reserved path not listed in the generated-file inventory | Update leaves them untouched. A file placed in a reserved managed namespace may be rejected as a collision rather than adopted or deleted. |
@@ -155,6 +155,12 @@ configuration, installed Brain registry/projection state, local Brain overlays,
 user-owned `strategy-*` skills, research, Decision Memory, analysis-run
 provenance, and human-readable guidance remain eligible for version control.
 TradingCodex does not stage or commit any of them automatically.
+
+Attach creates missing `wikis/index.md`, `wikis/local/purpose.md`,
+`wikis/local/index.md`, and `wikis/local/pages/` without adding them to the
+generated-file inventory. Update never overwrites local pages or the local
+index; it refreshes only the root active-Wiki index. `.obsidian/` and `.trash/`
+inside the vault are included in the managed Git-ignore block.
 
 The managed `.gitignore` block excludes local/private state by default:
 
@@ -237,6 +243,8 @@ Generated workspaces contain:
   receive raw OpenBB tools
 - an immutable workspace manifest at `.tradingcodex/workspace.json`
 - root `head-manager` identity loaded from `.codex/prompts/base_instructions/head-manager.md` through `.codex/config.toml` `model_instructions_file`
+- `.codex/config.toml` and fixed-role TOML files project the fixed model
+  settings defined in [Roles, Skills, And Workflows](roles-skills-and-workflows.md)
 - sectioned Markdown base-instruction format for `head-manager`, including `# How you work`, TradingCodex guardrails, and tool guidelines
 - a separate compact `.codex/prompts/base_instructions/fixed-role.md` referenced
   by every fixed-role TOML through its own `model_instructions_file`; this
@@ -285,9 +293,9 @@ Generated workspaces contain:
   and method choices
 - native role-profile delegation: generated config exposes the nine specialist
   profiles through MultiAgent V2. Head Manager prefers the exact profile, uses
-  `followup_task` for owner corrections, and may give a bounded research-only
-  brief to a generic child when the profile is unavailable. Children remain
-  depth one and receive compact context
+  `followup_task` for owner corrections, and follows the canonical role and
+  fallback boundary in [Roles, Skills, And Workflows](roles-skills-and-workflows.md).
+  Children remain depth one and receive compact context
 - role-scoped web search: root `.codex/config.toml` sets `web_search="live"`
   so Head Manager can perform narrow planning reconnaissance before choosing or
   revising the team. Those results are untrusted planning leads, never accepted
@@ -332,11 +340,12 @@ Generated workspaces contain:
   inherit it; Codex Plan mode cannot issue or use it, and the grant is bound to
   its issue-time permission mode
 - deterministic managed-skill admission: a plain or matching projected-link
-  `$tcx-brain` or `$tcx-strategy` on the first meaningful line of a root prompt
-  issues the same DB-canonical grant shape with a
-  distinct `brain` or `strategy` scope. The normal Research profile remains
-  active, source/launcher use is allowlisted to that capability, cross-scope
-  calls fail, and Build or order markers cannot be combined
+  `$tcx-brain`, `$tcx-wiki`, or `$tcx-strategy` on the first meaningful line of
+  a root prompt issues the same DB-canonical grant shape with a distinct
+  `brain`, `wiki`, or `strategy` scope for state-changing lifecycle work. Brain
+  and Wiki list, inspect, and validation remain proof-free. The normal Research
+  profile remains active, cross-scope calls fail, and Build, order, or distinct
+  managed markers cannot be combined
 - native tool containment: project config disables unified execution and
   interactive app/browser/computer features; both `PreToolUse` and
   `PermissionRequest` cover `Bash`, `exec_command`, and `write_stdin`. General
@@ -407,9 +416,9 @@ Generated workspaces contain:
   Manager calls the head-manager-only `begin_analysis_run` tool when durable
   research provenance is needed, then passes its returned ID in bounded briefs
   and authenticated artifact calls without storing the raw request
-- native model inheritance: Head Manager and all child profiles use the user's
-  current Codex model and reasoning defaults. TradingCodex projects no model
-  policy manifest; final provider effects remain deterministic service code
+- direct native model settings are projected from the template TOML without a
+  model policy manifest or doctor model-state check; final provider effects
+  remain deterministic service code
 - fixed subagent `nickname_candidates` set to a single item matching the exact role `name`
 - fixed subagent identities kept in `.codex/agents/*.toml` `developer_instructions`, as required by Codex custom agent files
 - project-local additional agent instructions under `.tradingcodex/agent-instructions/<role>.md`; projection appends them after generated default instructions for `head-manager` and fixed subagents as a managed overlay, without permitting them to replace core role, quality, policy, approval, or execution boundaries
@@ -421,7 +430,7 @@ Generated workspaces contain:
   enabled for the six producing roles, while portfolio, risk, and judgment
   review explicitly disable it
 - workspace customization preferences under `.tradingcodex/user/customization.json`, merged over `preferences/customization.json` in the canonical platform home; these files store UX/config metadata and never raw credentials
-- thirty-three bundled repo skills across project-scope mainagent skills and
+- thirty-four bundled repo skills across project-scope mainagent skills and
   subagent skill directories, each with `SKILL.md` frontmatter for document
   metadata and UI metadata when projected
 - one compact bundled namespace: every core skill id is `tcx-` plus one suffix
@@ -580,10 +589,10 @@ metadata and the `agents` tool namespace. It keeps every
 `features.multi_agent_v2.enabled = true` and `agents.max_depth = 1`. The
 V1-only `agents.max_threads` key is absent because Codex rejects it when V2 is
 enabled. Codex owns concurrency and scheduling. Head Manager chooses useful
-profiles, follows up with an owner when appropriate, and may use a bounded
-generic child when a profile is unavailable. Children cannot recursively
-dispatch. Model and reasoning settings inherit native Codex defaults and are
-not projected or checked by `doctor`.
+profiles and follows up with an owner when appropriate. Role eligibility and
+fallback are defined in [Roles, Skills, And Workflows](roles-skills-and-workflows.md).
+Children cannot recursively dispatch. Direct TOML model settings are projected,
+but `doctor` does not duplicate native model availability or lifecycle checks.
 
 Workspace template modules are deployment projections. Agent and skill
 ownership comes from the Python agent registry and is projected
@@ -896,11 +905,12 @@ More-specific rules deny the rest of `.codex`, canonical
 TradingCodex home/DB/runtime paths, `.env` patterns, protected TradingCodex
 workspace state, and durable research/report/forecast/decision paths. Research
 does not reopen `.tradingcodex/cli.py` or the attached runtime for managed
-lifecycle work. Matching `$tcx-brain` and `$tcx-strategy` invocations on the
-first meaningful line create
-separate current-turn scopes; the hook injects proof only into
-`manage_investment_brain` or `manage_strategy`, and neither scope requires or
-accepts `$tcx-build`.
+lifecycle work. Matching `$tcx-brain`, `$tcx-wiki`, and `$tcx-strategy`
+invocations on the first meaningful line create separate current-turn scopes;
+the hook injects proof only into `manage_investment_brain`,
+`manage_knowledge_wiki`, or `manage_strategy` for state-changing lifecycle
+actions, and none of those scopes requires or accepts `$tcx-build`. Read-only
+list, inspect, and validate actions do not require a turn proof.
 The
 parent `trading/` path is read-only, so connector and build-input changes remain
 Build work even where a child path is not fully denied. Network
@@ -1336,9 +1346,13 @@ because hook policy is an agent-runtime boundary.
   request directly, keeps narrow answers direct, calls `begin_analysis_run`
   only for a new workflow that needs durable provenance, and reuses the current
   task's run ID when continuing that workflow
-- audit records only TradingCodex safety gates, grants, immediate execution,
-  and service failures; ordinary prompts and native child lifecycle are Codex
-  owned and are not mirrored
+- audit records TradingCodex safety gates, grants, immediate execution, and
+  service failures. `PreToolUse` also records a sanitized external-tool
+  observation containing only the exact tool FQN, a secret-free canonical
+  argument hash, and, when available, an opaque session/turn/agent scope hash.
+  Missing scope is explicitly `unknown`; outcome remains `unknown`, so it
+  neither blocks a call nor mirrors native lifecycle state. Ordinary prompts and
+  native child lifecycle remain Codex owned and are not mirrored
 - no natural-language prompt classification, semantic lane, selected team,
   DAG, or supervisor state; literal reserved execution-token recognition is a
   fixed action protocol, not an intent classifier
@@ -1346,9 +1360,9 @@ because hook policy is an agent-runtime boundary.
   invocation; Head Manager seals the selected strategy and saved
   Investor Context in the lightweight analysis run
 
-Native Codex handles child dispatch, profile selection, fork behavior, and model
-defaults. TradingCodex registers no `SubagentStart` or `SubagentStop` hook and
-keeps no mirrored child lifecycle state.
+Native Codex handles child dispatch, profile selection, fork behavior, and
+model availability. TradingCodex registers no `SubagentStart` or `SubagentStop`
+hook and keeps no mirrored child lifecycle state.
 
 For `use_order_turn_grant`, `PreToolUse` additionally rejects subagents,
 missing session/turn/tool-use ids, caller-supplied proof, expired or mismatched

@@ -5,6 +5,20 @@
 - Refresh the manual GitHub Pages workflow to the current Node 24 action
   majors after the v1.1.2 deployment exposed the upstream Node 20 deprecation
   annotation. The guide remains explicit-dispatch only.
+- Simplify Codex-native orchestration, hooks, and lifecycle boundaries while
+  retaining concise fixed-role prompts, direct native delegation, and
+  service-gated sensitive effects.
+- Restore the fixed Head Manager `gpt-5.6-sol`/xhigh and fixed-role
+  `gpt-5.6-terra`/high split, including explicit independent risk and judgment
+  review boundaries.
+- Keep optional OpenBB direct, add Snapshot/Dataset row-oriented reuse, and
+  strengthen conclusion-relevant point-in-time evidence, decision quality, and
+  artifact handoff guidance without adding provider or workflow services.
+- Add agent-maintained, Obsidian-compatible Knowledge Wikis with explicit write
+  admission, immutable community packages, bounded read-only Viewer search,
+  and a separate Brain-promotion boundary.
+- Record redacted external-tool observations for offline exact-repeat regression
+  checks; they do not infer outcome or block native tool use.
 
 ## 1.1.2 - 2026-07-17
 

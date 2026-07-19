@@ -293,6 +293,9 @@ def bootstrap_workspace(
             current_generated_paths,
         )
         project_agent_configuration(target, applied_by="bootstrap", generated_at=context["GENERATED_AT"])
+        from tradingcodex_service.application.knowledge_wikis import ensure_local_knowledge_wiki
+
+        ensure_local_knowledge_wiki(target)
         write_generated_indexes(target, modules, context, set(rendered), previous_lock)
         write_server_status_snapshot(target)
     result["workspace_id"] = workspace_id

@@ -94,16 +94,18 @@ def test_explicit_build_turn_keeps_the_protected_service_proof_path(workspace: P
 
 
 @pytest.mark.parametrize(
-    ("marker", "tool_name"),
+    ("marker", "tool_name", "tool_input"),
     [
-        ("$tcx-brain", "manage_investment_brain"),
-        ("$tcx-strategy", "manage_strategy"),
+        ("$tcx-brain", "manage_investment_brain", {"action": "deactivate", "brain_id": "investment-brain-example"}),
+        ("$tcx-wiki", "manage_knowledge_wiki", {"action": "deactivate", "wiki_id": "knowledge-wiki-example"}),
+        ("$tcx-strategy", "manage_strategy", {"action": "list"}),
     ],
 )
 def test_managed_skill_turns_keep_matching_protected_service_proofs(
     workspace: Path,
     marker: str,
     tool_name: str,
+    tool_input: dict[str, object],
 ) -> None:
     session_id = f"{tool_name}-session"
     turn_id = f"{tool_name}-turn"
@@ -127,12 +129,36 @@ def test_managed_skill_turns_keep_matching_protected_service_proofs(
         "pre-tool-use",
         {
             **tool_payload(f"mcp__tradingcodex__{tool_name}", {"action": "list"}),
+            "tool_input": tool_input,
             "session_id": session_id,
             "turn_id": turn_id,
         },
     )
     assert protected is not None
     assert protected["hookSpecificOutput"]["updatedInput"]["_build_turn_proof"]
+
+
+@pytest.mark.parametrize("tool_name", ["manage_investment_brain", "manage_knowledge_wiki"])
+@pytest.mark.parametrize("action", ["list", "inspect", "validate"])
+def test_brain_and_wiki_read_only_management_is_proof_free(
+    workspace: Path,
+    tool_name: str,
+    action: str,
+) -> None:
+    tool_input: dict[str, object] = {"action": action}
+    if action == "inspect":
+        tool_input["brain_id" if "brain" in tool_name else "wiki_id"] = (
+            "investment-brain-example" if "brain" in tool_name else "knowledge-wiki-example"
+        )
+    elif action == "validate":
+        tool_input["local_source"] = (
+            "investment-brains/example" if "brain" in tool_name else "wiki-packages/example"
+        )
+    payload = tool_payload(f"mcp__tradingcodex__{tool_name}", tool_input)
+    payload["permission_mode"] = "plan"
+    payload["agent_type"] = "default"
+
+    assert run_hook(workspace, "pre-tool-use", payload) is None
 
 
 def test_hook_blocks_raw_secrets_direct_broker_effects_and_service_ledgers(workspace: Path) -> None:
@@ -158,19 +184,48 @@ def test_native_spawn_accepts_generic_fallback_without_hook_lifecycle_state(work
     assert not (workspace / "trading/audit/codex-hooks.jsonl").exists()
 
 
-def test_external_mcp_policy_stays_with_its_service_boundary(workspace: Path) -> None:
-    # OpenBB and user-owned MCP calls have their own service/native boundaries.
-    # The hook no longer attempts duplicate routing, repeat-call, or tool-catalog policy.
-    assert run_hook(
-        workspace,
-        "pre-tool-use",
-        tool_payload("mcp__openbb__equity_price_historical", {"provider": "yfinance", "limit": 10}),
-    ) is None
-    assert run_hook(
-        workspace,
-        "pre-tool-use",
-        tool_payload("mcp__user_server__search", {"query": "earnings date"}),
-    ) is None
+def test_external_mcp_calls_have_secret_free_repeat_observations_without_a_gate(workspace: Path) -> None:
+    tool_name = "mcp__user_server__search"
+    unchanged = {"query": "earnings date", "api_key": "super-secret"}
+    changed = {"query": "earnings date", "period": "2026-Q2", "api_key": "super-secret"}
+    same_scope = {**tool_payload(tool_name, unchanged), "agent_id": "child-a"}
+
+    assert run_hook(workspace, "pre-tool-use", same_scope) is None
+    assert run_hook(workspace, "pre-tool-use", same_scope) is None
+    assert run_hook(workspace, "pre-tool-use", {**same_scope, "tool_input": changed}) is None
+    assert run_hook(workspace, "pre-tool-use", {**same_scope, "turn_id": "other-turn"}) is None
+    assert run_hook(workspace, "pre-tool-use", {"tool_name": tool_name, "tool_input": unchanged}) is None
+
+    audit_path = workspace / "trading/audit/codex-hooks.jsonl"
+    audit_text = audit_path.read_text(encoding="utf-8")
+    observations = [
+        item
+        for item in map(json.loads, audit_text.splitlines())
+        if item["event"] == "external-tool-observed"
+    ]
+    assert [item["tool_name"] for item in observations] == [tool_name] * 5
+    assert observations[0]["arguments_sha256"] == observations[1]["arguments_sha256"]
+    assert observations[0]["arguments_sha256"] != observations[2]["arguments_sha256"]
+    assert observations[0]["arguments_sha256"] == observations[3]["arguments_sha256"]
+    assert observations[0]["scope"] == observations[1]["scope"] == observations[2]["scope"] == "opaque"
+    assert observations[0]["scope_sha256"] == observations[1]["scope_sha256"] == observations[2]["scope_sha256"]
+    assert observations[0]["scope_sha256"] != observations[3]["scope_sha256"]
+    assert observations[4]["scope"] == "unknown"
+    assert "scope_sha256" not in observations[4]
+    assert all(item["outcome"] == "unknown" and item["redacted"] is True for item in observations)
+    opaque_repeat_counts: dict[tuple[str, str, str], int] = {}
+    for item in observations:
+        if item["scope"] != "opaque":
+            continue
+        key = (item["scope_sha256"], item["tool_name"], item["arguments_sha256"])
+        opaque_repeat_counts[key] = opaque_repeat_counts.get(key, 0) + 1
+    assert sorted(opaque_repeat_counts.values()) == [1, 1, 2]
+    assert "super-secret" not in audit_text
+    assert "earnings date" not in audit_text
+    assert "hook-session" not in audit_text
+    assert "hook-turn" not in audit_text
+    assert "child-a" not in audit_text
+    assert '"query"' not in audit_text
 
 
 def test_session_context_is_small_and_preserves_direct_fast_path(workspace: Path) -> None:

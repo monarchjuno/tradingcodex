@@ -307,12 +307,10 @@ Head Manager then:
 
 The plan is a live Head Manager judgment, not a persisted server workflow. Head
 Manager may add, remove, reorder, follow up, or parallelize useful role profiles
-as evidence changes. Head Manager and children inherit the user's native Codex
-model and reasoning defaults; a Brain cannot choose a model or obtain execution
-authority. Every child receives compact run-bound context and the inherited
-`trading-research` profile. When an exact profile is unavailable, Head Manager
-may give a generic child the same bounded research-only brief and safety
-prohibitions; it does not turn the fallback into a new role or authority.
+as evidence changes. A Brain cannot choose a model, alter role/fallback
+eligibility, or obtain execution authority; those boundaries are owned by
+[Roles, Skills, And Workflows](roles-skills-and-workflows.md). Every child
+receives compact run-bound context and the `trading-research` profile.
 
 The browser viewer never discovers, activates, selects, or invokes an
 Investment Brain. Brain analysis runs only from the native Codex task surface
@@ -393,13 +391,15 @@ TradingCodex may propose a local lesson or Brain change, but it never edits a
 community TradingCodex plugin, publishes memory, commits, pushes, or opens a
 pull request on the user's behalf without a separate explicit user request.
 
-The built-in explicit-only `$tcx-brain` skill supports this user-owned curation
-path and the installed-plugin lifecycle. Writing or changing managed state
-requires an explicit request in a root native turn whose first meaningful line
-invokes `$tcx-brain`. The normal `trading-research` profile supports canonical
-source writes and public credential-free Git validation. The Brain-scoped
-current-turn grant cannot elevate the sandbox, authorize Build or Strategy, or
-carry into a follow-up or subagent. The browser viewer has no management path. The user selects
+The built-in implicit-capable `$tcx-brain` skill supports this user-owned
+curation path and the installed-plugin lifecycle. Natural language may
+explicitly authorize source create or revision and proof-free validation.
+Installed state changes require a fresh root native turn whose first meaningful
+line invokes `$tcx-brain`. The normal `trading-research` profile supports
+canonical source writes and public credential-free Git validation. The
+Brain-scoped lifecycle grant cannot elevate the sandbox, authorize Build,
+Wiki, or Strategy, or carry into a follow-up or subagent. The browser viewer has
+no management path. The user selects
 the exact Decision Memory lessons and counterexamples. The skill abstracts
 general doctrine without copying private cases, performs a privacy review, and
 writes a local source under `investment-brains/<investment-brain-id>` by
@@ -412,6 +412,12 @@ publication, or pull request. Managed lifecycle work starts in a fresh exact
 `$tcx-brain` turn, uses the canonical service, installs inactive first, and activates
 only on an explicit request. If third-party ideas are adapted, the result uses
 a new user-owned id, compatible license, and original wording.
+
+Investment Brains do not store the factual company, product, scientific,
+technology, industry, or value-chain pages owned by
+[Knowledge Wikis](knowledge-wikis.md). An explicit Wiki-to-Brain promotion
+abstracts selected facts into questions, causal frames, falsifiers, and limits;
+it does not copy the page or activate the revised Brain.
 
 ## Delivery Map
 
@@ -532,5 +538,7 @@ a new user-owned id, compatible license, and original wording.
   Strategy, research, and memory files remain eligible for deliberate version
   control.
 - A real Codex-native smoke proves Head Manager uses the selected Brain while
-  fixed subagents retain exact role identity, `fork_turns="none"`, inherited
-  native model defaults, and Research profile with no source/TOML emulation.
+  fixed subagents retain exact role identity, `fork_turns="none"`, their fixed
+  TOML model settings, and Research profile with no source/TOML emulation. See
+  [Roles, Skills, And Workflows](roles-skills-and-workflows.md) for that
+  contract.

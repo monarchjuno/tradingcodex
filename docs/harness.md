@@ -45,9 +45,8 @@ Head Manager takes the smallest safe path:
    run in parallel.
 4. Reuse a live child with `followup_task` for its own correction or
    clarification. Add another child for a new specialty or independent review.
-5. Use a bounded generic child when an exact profile is unavailable, preserving
-   the same research-only brief and all secret, broker, policy, approval, and
-   execution prohibitions.
+5. Apply the role and fallback boundary in
+   [Roles, Skills, And Workflows](roles-skills-and-workflows.md).
 6. Persist a result only when it supports a decision, reuse, audit, or a
    downstream handoff. Otherwise return the bounded answer directly.
 

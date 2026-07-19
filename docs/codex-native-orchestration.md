@@ -13,7 +13,7 @@ User
   -> Head Manager
      -> begin_analysis_run (identity, request hash, sealed Brain/Strategy/Context provenance)
      -> optional one explicit Investment Brain inquiry overlay
-     -> optional role-profile or bounded generic children
+     -> optional role-profile or workflow-defined fallback children
      -> optional authenticated research artifacts
      -> dynamic next-role judgment
      -> run-local synthesis artifact
@@ -83,9 +83,10 @@ conflicts with Strategy.
 
 MultiAgent V2 exposes the generated role profiles with a depth-one boundary.
 Head Manager prefers an exact profile when its specialty is useful and passes a
-compact role-owned brief rather than the full root history. Role profiles inherit
-the user's Codex model and reasoning defaults while retaining their projected
-web posture, skills, tools, and MCP principal.
+compact role-owned brief rather than the full root history. Role TOML supplies
+the direct fixed model settings; their values and fallback eligibility are owned
+by [Roles, Skills, And Workflows](roles-skills-and-workflows.md). Role profiles
+retain their projected web posture, skills, tools, and MCP principal.
 
 For an exact profile, Head Manager calls native `spawn_agent` with the exact
 `agent_type`, a compact `message`, a `task_name`, and `fork_turns="none"`. It
@@ -95,14 +96,13 @@ the change; otherwise delegation remains blocked.
 
 Use `followup_task` when a live child still owns a correction or clarification.
 Start another child for a new specialty, an unavailable session, or independent
-review. If an exact profile is unavailable, a generic child may take the same
-bounded research-only brief, evidence standard, and no-secret/no-order
-prohibitions. It cannot approve, execute, access a broker, or emulate Head
-Manager. Children never delegate recursively. Head Manager waits only while a
-live child has useful work and reports lifecycle events only from native tool
-and child-lifecycle results in the current run. Native wait is wait-any and may
-serialize with no explicit target list; that representation is not failure by
-itself.
+review. Apply the canonical fallback boundary in
+[Roles, Skills, And Workflows](roles-skills-and-workflows.md). A child cannot
+approve, execute, access a broker, or emulate Head Manager. Children never
+delegate recursively. Head Manager waits only while a live child has useful work
+and reports lifecycle events only from native tool and child-lifecycle results
+in the current run. Native wait is wait-any and may serialize with no explicit
+target list; that representation is not failure by itself.
 
 When a Brain applies, the assignment contains the question Head Manager derived
 from it, not the Brain body or a delegation of Brain authority. Brain content is
@@ -167,10 +167,11 @@ A passing native smoke proves:
 2. Head Manager uses the direct fast path or calls `begin_analysis_run` only for
    fresh research and decision work;
 3. Korean and English requests both route by agent understanding;
-4. Head Manager and children inherit native Codex model defaults;
+4. generated TOML applies the fixed model settings defined by the canonical
+   role contract;
 5. exact profiles spawn with compact fresh context, child follow-up targets a
    returned live child, and lifecycle claims match completed native tool calls;
-6. bounded generic fallback preserves role and safety boundaries;
+6. fallback behavior matches the canonical role contract;
 7. no Brain preserves baseline behavior, one exact Brain changes only inquiry
    and interpretation, and multiple or unresolved Brains fail closed;
 8. artifacts are principal-bound and preserve run-local Brain and input lineage;
