@@ -6,7 +6,7 @@ import { hashForSection, matchesSearch, sectionFromHash } from "./navigation.js"
 import { collectionViewState, sectionData, snapshotSections } from "./viewer-data.js";
 
 test("hash navigation stays inside the viewer sections", () => {
-  assert.equal(sectionFromHash("#/skills"), "skills");
+  assert.equal(sectionFromHash("#/skills"), "library");
   assert.equal(sectionFromHash("#/wiki/local/pages/example.md"), "wiki");
   assert.equal(sectionFromHash("#library?artifact=a"), "library");
   assert.equal(sectionFromHash("#/work"), "library");
@@ -45,32 +45,18 @@ test("collection states never present an error as an empty result", () => {
 
 test("light theme secondary text keeps normal-text contrast", async () => {
   const css = await readFile(new URL("./styles.css", import.meta.url), "utf8");
-  const light = css.match(/:root\[data-theme="light"\][\s\S]*?--ink-3:\s*(#[0-9a-f]{6})/i)?.[1];
+  const light = css.match(/:root\s*\{[\s\S]*?--ink-3:\s*(#[0-9a-f]{6})/i)?.[1];
   assert.ok(light);
   assert.ok(contrast(light, "#f4f3ee") >= 4.5);
 });
 
-test("system status labels wrap at every viewport width", async () => {
-  const css = await readFile(new URL("./styles.css", import.meta.url), "utf8");
-  const mobileRules = css.indexOf("@media (max-width: 600px)");
-  const wrapRule = css.indexOf(".workspace-settings .status-pill");
-  assert.match(
-    css,
-    /\.workspace-settings \.status-pill\s*\{[^}]*max-width:\s*100%[^}]*overflow-wrap:\s*anywhere[^}]*white-space:\s*normal/s,
-  );
-  assert.ok(wrapRule >= 0 && wrapRule < mobileRules, "the overflow guard must not be mobile-only");
-});
-
 test("narrow detail transitions preserve keyboard focus", async () => {
-  const [skills, library, wiki] = await Promise.all([
-    readFile(new URL("./features/SkillsPage.tsx", import.meta.url), "utf8"),
+  const [library, wiki] = await Promise.all([
     readFile(new URL("./features/LibraryPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("./features/WikiPage.tsx", import.meta.url), "utf8"),
   ]);
-  assert.match(skills, /detailRef\.current\?\.focus\(\)/);
-  assert.match(skills, /indexRef\.current\?\.focus\(\)/);
-  assert.match(library, /readerRef\.current\?\.focus\(\)/);
-  assert.match(library, /indexRef\.current\?\.focus\(\)/);
+  assert.match(library, /readerRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
+  assert.match(library, /indexRef\.current\?\.focus\(\{ preventScroll: true \}\)/);
   assert.match(wiki, /setQuery\(""\)/);
   assert.match(wiki, /hashKey !== selectedKey/);
 });
@@ -87,21 +73,26 @@ test("half-width desktop uses the compact workspace and single-pane reader layou
   ]);
   const compactStart = css.indexOf("@media (max-width: 1099px)");
   const mobileStart = css.indexOf("@media (max-width: 700px)");
+  assert.match(css, /\.section-host\s*\{\s*height:\s*100%;\s*min-height:\s*0/);
   assert.ok(compactStart >= 0 && mobileStart > compactStart);
   const compact = css.slice(compactStart, mobileStart);
   assert.match(compact, /\.viewer-layout\s*\{\s*display:\s*block/);
   assert.match(compact, /\.workspace-mobile-select\s*\{\s*display:\s*grid/);
-  assert.match(compact, /\.library-layout, \.method-layout, \.wiki-layout\s*\{\s*display:\s*block/);
-  assert.match(compact, /\.artifact-reader, \.method-detail, \.wiki-reader\s*\{\s*display:\s*none/);
+  assert.match(compact, /\.library-layout, \.wiki-layout\s*\{\s*display:\s*block/);
+  assert.match(compact, /\.artifact-reader, \.wiki-reader\s*\{\s*display:\s*none/);
   assert.doesNotMatch(compact, /--header-height:\s*118px/);
-  assert.match(app, /workspace-compact-meta/);
 });
 
 test("the app exposes no work execution surface", async () => {
-  const app = await readFile(new URL("./App.tsx", import.meta.url), "utf8");
+  const [app, shell] = await Promise.all([
+    readFile(new URL("./App.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./ViewerShell.tsx", import.meta.url), "utf8"),
+  ]);
   assert.doesNotMatch(app, /run_start|run_preview|follow-up|WorkPage|mutation\(/i);
-  assert.match(app, /Read-only viewer/);
-  assert.match(app, /Workspaces/);
+  assert.doesNotMatch(app, /Read only|Workspace viewer|Registered/);
+  assert.match(shell, /@blueprintjs\/core/);
+  assert.match(shell, /Workspace/);
+  assert.doesNotMatch(app, /SkillsPage|id: "skills"/);
 });
 
 function contrast(left, right) {

@@ -1540,8 +1540,6 @@ Codex-native bootstrap verification:
   mutation. It contains the proof-protected `use_order_turn_grant` only for
   Head Manager, and generated fixed-role configs contain neither that tool nor
   a retired `execution-operator` role.
-- the read-only System viewer verifies sanitized capability inventory and
-  partial-warning behavior without exposing a second agent discovery tool.
 - Generated Codex MCP config starts the stdio bridge through the attached
   Python interpreter and starts the local viewer/service process when autostart is
   enabled.

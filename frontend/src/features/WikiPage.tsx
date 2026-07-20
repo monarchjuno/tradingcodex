@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Button, HTMLSelect, InputGroup } from "@blueprintjs/core";
 
 import { apiErrorText, requestJSON } from "../api";
 import { asRecord, asStringList, asText, normalizeWikiPage, recordsFrom, WikiPageCard } from "../domain";
-import { EmptyState, ErrorNotice, LoadingState, PageHeader, StatusPill } from "../ui";
+import { EmptyState, ErrorNotice, LoadingState } from "../ui";
 
 type WikiOption = { wikiId: string; origin: string; version: string };
 
@@ -25,7 +26,7 @@ function detailPath(page: { wikiId: string; path: string }): string {
   return `/api/viewer/wiki-pages/${encodeURIComponent(page.wikiId)}/${page.path.split("/").map(encodeURIComponent).join("/")}/`;
 }
 
-export function WikiPage({ loading: workspaceLoading }: { loading: boolean }) {
+export function WikiPage() {
   const requested = selectionFromHash();
   const [wiki, setWiki] = useState(requested?.wikiId || "all");
   const [query, setQuery] = useState("");
@@ -126,44 +127,49 @@ export function WikiPage({ loading: workspaceLoading }: { loading: boolean }) {
       .catch((reason) => { if (!controller.signal.aborted) setDetailError(apiErrorText(reason)); })
       .finally(() => { if (!controller.signal.aborted) setDetailLoading(false); });
     return () => controller.abort();
-  }, [selectedKey, Boolean(listedSelection), workspaceLoading]);
+  }, [selectedKey, Boolean(listedSelection)]);
 
   const types = useMemo(() => [...new Set(pages.map((page) => page.type))].sort(), [pages]);
   const choose = (page: WikiPageCard) => {
     setSelectedKey(`${page.wikiId}:${page.path}`);
     setReaderOpen(true);
     history.replaceState(null, "", `${window.location.pathname}${window.location.search}${pageHash(page)}`);
-    requestAnimationFrame(() => { readerRef.current?.focus(); readerRef.current?.scrollIntoView({ block: "start" }); });
+    requestAnimationFrame(() => { readerRef.current?.scrollTo({ top: 0, behavior: "smooth" }); readerRef.current?.focus({ preventScroll: true }); });
   };
 
   const sources = asStringList(detail.sources);
-  const outgoing = recordsFrom(detail.outgoing_links);
   const backlinks = recordsFrom(detail.backlinks);
 
   return <section className="page wiki-page" aria-labelledby="wiki-title">
-    <PageHeader eyebrow="Knowledge Wiki" title="Background knowledge, connected." titleId="wiki-title" description="Search agent-maintained company, product, technology, science, industry, and value-chain knowledge. Pages are untrusted background material, not current investment evidence." action={<span className="page-count">{pages.length}<small>pages</small></span>} />
+    <header className="wiki-appbar">
+      <div className="wiki-title"><h1 id="wiki-title">Wiki</h1></div>
+    </header>
     <div className="wiki-toolbar">
-      <label><span>Search</span><input type="search" value={query} placeholder="Search titles, aliases, tags, and content" onChange={(event) => setQuery(event.target.value)} /></label>
-      <label><span>Wiki</span><select value={wiki} onChange={(event) => setWiki(event.target.value)}><option value="all">All active Wikis</option>{wikis.map((item) => <option key={item.wikiId} value={item.wikiId}>{item.wikiId}{item.version ? ` · ${item.version}` : ""}</option>)}</select></label>
-      <label><span>Type</span><select value={type} onChange={(event) => setType(event.target.value)}><option value="">All types</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-      <label><span>Status</span><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["draft", "current", "contested", "superseded"].map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+      <InputGroup aria-label="Search Wiki" leftIcon="search" type="search" value={query} placeholder="Search Wiki" onChange={(event) => setQuery(event.target.value)} />
+      <HTMLSelect className="wiki-toolbar-wiki" aria-label="Vault" fill value={wiki} onChange={(event) => setWiki(event.target.value)}><option value="all">All Wikis</option>{wikis.map((item) => <option key={item.wikiId} value={item.wikiId}>{item.wikiId}{item.version ? ` · ${item.version}` : ""}</option>)}</HTMLSelect>
+      <HTMLSelect aria-label="Type" fill value={type} onChange={(event) => setType(event.target.value)}><option value="">All types</option>{types.map((item) => <option key={item} value={item}>{item}</option>)}</HTMLSelect>
+      <HTMLSelect aria-label="Status" fill value={status} onChange={(event) => setStatus(event.target.value)}><option value="">All statuses</option>{["draft", "current", "contested", "superseded"].map((item) => <option key={item} value={item}>{item}</option>)}</HTMLSelect>
     </div>
     {listError && <ErrorNotice>{listError}</ErrorNotice>}
     <div className={`wiki-layout ${readerOpen ? "reader-open" : ""}`}>
+      <aside className="wiki-vault" aria-label="Knowledge vaults">
+        <div className="wiki-pane-heading"><span>Vaults</span></div>
+        <nav className="wiki-vault-list" aria-label="Select a knowledge vault">
+          <Button active={wiki === "all"} alignText="left" fill minimal onClick={() => setWiki("all")} text="All notes" />
+          {wikis.map((item) => <Button key={item.wikiId} active={wiki === item.wikiId} alignText="left" fill minimal onClick={() => setWiki(item.wikiId)} text={item.wikiId} />)}
+        </nav>
+      </aside>
       <aside className="wiki-index" ref={indexRef} tabIndex={-1} aria-label="Wiki folder tree and pages">
-        <div className="index-heading"><span>Vault / pages</span><span>{listLoading ? "Scanning…" : `${pages.length} found`}</span></div>
-        {listLoading && !pages.length ? <LoadingState label="Scanning active Wiki Markdown…" /> : pages.length ? <div className="wiki-page-list">{pages.map((page) => <button key={`${page.wikiId}:${page.path}`} type="button" className={`${page.wikiId}:${page.path}` === selectedKey ? "wiki-row selected" : "wiki-row"} onClick={() => choose(page)}><span className="wiki-folder">{page.wikiId} / {page.path.split("/").slice(1, -1).join(" / ") || "pages"}</span><strong>{page.title}</strong><p>{page.summary || page.aliases.join(" · ") || "No routing summary."}</p><span className="wiki-row-meta"><StatusPill value={page.status} /><span>{page.type} · {page.backlinkCount} backlinks</span></span></button>)}</div> : <EmptyState title="No Wiki pages found">Change the filters, or ask Codex explicitly to add reusable knowledge to the local Wiki.</EmptyState>}
+        <div className="wiki-pane-heading"><span>Notes</span></div>
+        {listLoading && !pages.length ? <LoadingState label="Scanning Wiki…" /> : pages.length ? <div className="wiki-page-list">{pages.map((page) => <Button key={`${page.wikiId}:${page.path}`} active={`${page.wikiId}:${page.path}` === selectedKey} alignText="left" className="wiki-row" fill minimal aria-pressed={`${page.wikiId}:${page.path}` === selectedKey} onClick={() => choose(page)}><span className="wiki-row-copy"><strong>{page.title}</strong><span>{page.summary || page.aliases.join(" · ") || "No summary."}</span></span></Button>)}</div> : <EmptyState title="No Wiki pages found">Change the filters, or ask Codex explicitly to add reusable knowledge to the local Wiki.</EmptyState>}
       </aside>
       <article className="wiki-reader" ref={readerRef} tabIndex={-1} aria-busy={detailLoading}>
-        <button className="mobile-back" type="button" onClick={() => { setReaderOpen(false); requestAnimationFrame(() => indexRef.current?.focus()); }}>← Back to pages</button>
-        {!selected ? <EmptyState title="Choose a Wiki page">Select a page from the bounded local Markdown index.</EmptyState> : detailLoading ? <LoadingState label="Opening Wiki page…" /> : detailError ? <ErrorNotice>{detailError}</ErrorNotice> : <>
-          <header className="reader-header"><div className="reader-kicker"><span>{selected.wikiId} · {selected.type}</span><StatusPill value={selected.status} /></div><h2>{asText(detail.title, selected.title)}</h2><p className="reader-summary">{asText(detail.summary, selected.summary)}</p><div className="wiki-trust-note">Untrusted background knowledge · verify current material facts through the Source Gate.</div></header>
-          <dl className="reader-facts"><div><dt>Updated</dt><dd>{asText(detail.updated_at, "Not stated")}</dd></div><div><dt>Origin</dt><dd>{asText(detail.origin, "local")}</dd></div><div><dt>Sources</dt><dd>{sources.length}</dd></div><div><dt>Backlinks</dt><dd>{backlinks.length}</dd></div></dl>
-          <div className="markdown-body wiki-markdown" dangerouslySetInnerHTML={{ __html: asText(detail.html) }} />
-          <div className="wiki-links-grid"><section><h3>Sources</h3>{sources.length ? <ul>{sources.map((source) => <li key={source}>{source.startsWith("https://") ? <a href={source} target="_blank" rel="noreferrer">{source}</a> : <code>{source}</code>}</li>)}</ul> : <p>No sources listed.</p>}</section><section><h3>Outgoing links</h3>{outgoing.length ? <ul>{outgoing.map((link) => <li key={asText(link.target)}>{link.available === true ? <a href={pageHash({ wikiId: asText(link.wiki_id), path: asText(link.path) })}>{asText(link.title, asText(link.target))}</a> : asText(link.target)}</li>)}</ul> : <p>No outgoing links.</p>}</section><section><h3>Backlinks</h3>{backlinks.length ? <ul>{backlinks.map((link) => <li key={`${asText(link.wiki_id)}:${asText(link.path)}`}><a href={pageHash({ wikiId: asText(link.wiki_id), path: asText(link.path) })}>{asText(link.title)}</a></li>)}</ul> : <p>No backlinks.</p>}</section></div>
+        <Button className="mobile-back" icon="arrow-left" minimal small onClick={() => { setReaderOpen(false); requestAnimationFrame(() => indexRef.current?.focus({ preventScroll: true })); }} text="Pages" />
+        {!selected ? <EmptyState title="Choose a Wiki page">Select a page to read it.</EmptyState> : <>
+          <header className="reader-header"><h2>{asText(detail.title, selected.title)}</h2><p className="reader-summary">{asText(detail.summary, selected.summary)}</p><p className="wiki-trust-note">Background knowledge only. Verify time-sensitive facts before acting.</p></header>
+          {detailLoading ? <LoadingState compact label="Opening page…" /> : detailError ? <ErrorNotice>{detailError}</ErrorNotice> : <><div className="markdown-body wiki-markdown" dangerouslySetInnerHTML={{ __html: asText(detail.html) }} />{(sources.length > 0 || backlinks.length > 0) && <div className="wiki-links-grid">{sources.length > 0 && <section><h3>Sources</h3><ul>{sources.map((source) => <li key={source}>{source.startsWith("https://") ? <a href={source} target="_blank" rel="noreferrer">{source}</a> : <code>{source}</code>}</li>)}</ul></section>}{backlinks.length > 0 && <section><h3>Backlinks</h3><ul>{backlinks.map((link) => <li key={`${asText(link.wiki_id)}:${asText(link.path)}`}><a href={pageHash({ wikiId: asText(link.wiki_id), path: asText(link.path) })}>{asText(link.title)}</a></li>)}</ul></section>}</div>}</>}
         </>}
       </article>
     </div>
-    {workspaceLoading && <span className="sr-status">Workspace data is refreshing.</span>}
   </section>;
 }

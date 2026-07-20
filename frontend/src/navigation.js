@@ -1,4 +1,4 @@
-export const SECTIONS = ["library", "wiki", "skills", "system"];
+export const SECTIONS = ["library", "wiki", "system"];
 
 /** @param {string} hash */
 export function sectionFromHash(hash) {
