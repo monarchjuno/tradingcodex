@@ -118,7 +118,7 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
 def test_v1_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.2.0"
+    assert TRADINGCODEX_VERSION == "1.2.1"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]

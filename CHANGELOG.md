@@ -2,12 +2,25 @@
 
 ## Unreleased
 
+## 1.2.1 - 2026-07-21
+
 - Create or refresh the GitHub Release from the exact verified distributions
   and matching changelog section only after protected PyPI publication succeeds.
 - Run Python and frontend CI gates in parallel, verify releases on Apple Silicon
   macOS, retain temporary distributions for seven days, remove the duplicate
   Ubuntu wheel smoke, and reduce upgrade validation to the latest public
   predecessor-to-candidate path.
+
+- Let users author Investor Context directly with native Codex while retaining
+  lifecycle protection for enable, disable, and clear operations.
+- Judge research evidence by the claim, intended use, and update cadence rather
+  than by an official-versus-available source label; preserve valid partial
+  fields and fetch only the missing decision-relevant coverage.
+- Remove the generic analysis prompt-submit hook from ordinary requests while
+  retaining grant revocation and reserved safety actions.
+- For short-horizon directional questions, resolve the relevant market session
+  and include market-wide or macro expertise when transmission could materially
+  change direction, range, or scenario weights without imposing a fixed roster.
 
 ## 1.2.0 - 2026-07-20
 
