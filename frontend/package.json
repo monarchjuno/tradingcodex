@@ -12,6 +12,9 @@
     "build": "npm run typecheck && vite build"
   },
   "dependencies": {
+    "@blueprintjs/core": "^6.17.2",
+    "@blueprintjs/icons": "^6.13.0",
+    "normalize.css": "^8.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

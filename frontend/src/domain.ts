@@ -1,20 +1,6 @@
 export type RecordValue = Record<string, unknown>;
-export type Section = "skills" | "library" | "wiki" | "system";
+export type Section = "library" | "wiki" | "system";
 export type Theme = "auto" | "dark" | "light";
-
-export type Skill = {
-  id: string;
-  label: string;
-  description: string;
-  owner: string;
-  boundary: string;
-  kind: string;
-  status: string;
-  availableInCodex: boolean;
-  visible: boolean;
-  protectedAction: boolean;
-  raw: RecordValue;
-};
 
 export type Artifact = {
   id: string;
@@ -91,25 +77,6 @@ export function sectionError(state: RecordValue, key: string): string {
   return asText(error.message, asText(error.code, "Section unavailable."));
 }
 
-export function normalizeSkill(value: RecordValue, index: number): Skill {
-  const id = asText(value.id, `skill-${index + 1}`);
-  const riskTags = asStringList(value.risk_tags);
-  const protectedAction = riskTags.some((tag) => ["order", "approval", "execution", "secret"].includes(tag));
-  return {
-    id,
-    label: asText(value.label, titleCase(id)),
-    description: asText(value.description),
-    owner: asStringList(value.owner_roles).join(", ") || "head-manager",
-    boundary: "Guides analysis; does not grant role, approval, or execution authority.",
-    kind: asText(value.source, "built-in"),
-    status: asText(value.status, "active"),
-    availableInCodex: value.available_in_codex === true,
-    visible: value.user_visible === true || value.scope !== "mainagent" || value.source !== "core",
-    protectedAction,
-    raw: value,
-  };
-}
-
 export function normalizeArtifact(value: RecordValue, index: number): Artifact {
   const id = asText(value.artifact_id, `artifact-${index + 1}`);
   return {
@@ -156,9 +123,7 @@ export function normalizeCalculation(value: RecordValue, index: number): Artifac
     sourceAsOf: asText(value.knowledge_cutoff),
     confidence: "reproducible",
     readiness: asText(value.status, "unknown"),
-    summary: originalRunId
-      ? `Exact reuse of ${originalRunId}.`
-      : "Immutable typed calculation result.",
+    summary: originalRunId ? "Reused calculation result." : "Recorded calculation result.",
     missingEvidence: asStringList(value.warnings),
     resourceKind: "calculation",
     detailPath: `/api/viewer/calculations/${encodeURIComponent(id)}/`,

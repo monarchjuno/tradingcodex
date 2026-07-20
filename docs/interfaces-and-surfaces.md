@@ -13,7 +13,7 @@ The v1 public routes and imports use the canonical
 
 | Surface | Primary role | Must not do |
 | --- | --- | --- |
-| Product web | Read-only workspace selection, artifact/source review, skill projection, and system posture | Launch Codex, mutate workspace/service state, accept arbitrary paths, expose raw reasoning/tool payloads, or bypass policy, approval, and execution gates |
+| Product web | Read-only workspace selection, artifact/source review, Wiki browsing, and account posture | Launch Codex, mutate workspace/service state, accept arbitrary paths, expose raw reasoning/tool payloads, or bypass policy, approval, and execution gates |
 | Django Admin | Local/staff operations console | Bypass service-layer policy or audit |
 | Django Ninja | Typed authenticated local/staff REST and operator-managed remote control API | Mirror every MCP tool automatically or bypass execution checks |
 | MCP | Agent research, order-preparation, approval, status, one proof-protected current-turn order effect, proof-protected Build services, and scoped Brain/Strategy/Wiki lifecycle | Expose raw submit/cancel/refresh mutations, accept protected lifecycle mutations without current hook proof, mirror raw REST endpoints, proxy raw broker APIs, or expose the model to runtime credentials |
@@ -29,7 +29,7 @@ table-first Admin replacement or agent runtime. React 19, TypeScript, and Vite 8
 WhiteNoise. Node 22 is a maintainer build dependency only. Installed packages
 and generated workspaces do not run a Node server or npm.
 
-The SPA keeps four stable hash sections:
+The SPA keeps three stable hash sections:
 
 - **Library** (`#/library`) browses workspace research, reports, sources,
   Dataset and Calculation cards, forecasts, and other accepted artifacts with
@@ -37,10 +37,8 @@ The SPA keeps four stable hash sections:
 - **Wiki** (`#/wiki`) searches active local and community Markdown by Wiki,
   path, type, status, and text, then reads sanitized pages, sources, wikilinks,
   and backlinks. It has no graph or mutation surface.
-- **Skills** (`#/skills`) inspects built-in, optional, and strategy projections
-  plus sanitized guidance. It cannot invoke or modify them.
-- **System** (`#/system`) shows workspace, internal paper-account scope,
-  broker/data-source, permission, and order posture.
+- **System** (`#/system`) shows the selected workspace, investing preferences,
+  broker connections, and order posture.
 
 Decision Memory does not add a fourth top-level section. Native Codex handles
 retrieval, replay, review, and lesson validation; Library exposes resulting
@@ -51,7 +49,7 @@ SPA navigation uses hash sections so Django needs only a GET shell at `/`.
 remain Django/WhiteNoise assets. Non-root product paths return `404`; browser
 navigation stays under the root hash routes.
 
-Library and Skills use list/detail navigation. Wide windows keep the list and
+Library and Wiki use list/detail navigation. Wide windows keep the list and
 reader side by side; Codex in-app and other half-width desktop windows switch
 to a full-width list-to-reader transition so neither pane is squeezed. At that
 compact desktop width the registered-workspace rail becomes a horizontal
@@ -68,7 +66,7 @@ Workspace selection is explicit and limited to registered state:
   `WorkspaceContext` in the current browser session.
 - The left rail lists up to 20 recently seen validated `WorkspaceContext` rows;
   half-width desktop and narrower layouts replace it with a select control so
-  the Library, Skills, and System content receives the full window width.
+  the Library, Wiki, and System content receives the full window width.
 - Web and API rendering use the selected workspace path only after its current
   v1 manifest and registered path validate. An explicitly unknown, unavailable,
   or stale selection returns an error and never falls back to another workspace.
@@ -91,7 +89,7 @@ and service gates.
 
 The Django product web is a separate read-only viewer. It selects only a
 registered, currently valid attached workspace and returns a canonical snapshot
-plus sanitized skill, artifact, Dataset, and Calculation detail. Dataset views
+plus sanitized Wiki, artifact, Dataset, and Calculation detail. Dataset views
 show cards, manifest/schema/profile metadata, lineage, and payload availability;
 Calculation views show cards, metrics, diagnostics, warnings, and reuse lineage.
 The viewer never returns an unbounded Dataset payload or private
