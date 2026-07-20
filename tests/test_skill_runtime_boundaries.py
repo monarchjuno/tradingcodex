@@ -60,6 +60,23 @@ def test_wiki_skill_discloses_only_materially_used_pages() -> None:
     assert "Omit the line when no Wiki page materially affected the answer" in skill_text
 
 
+def test_investor_context_uses_native_workspace_file_edits(tmp_path: Path) -> None:
+    root = tmp_path / "workspace"
+    bootstrap_workspace(root)
+    skill_text = (root / ".agents/skills/tcx-investor-context/SKILL.md").read_text(encoding="utf-8")
+    config = tomllib.loads((root / ".codex/config.toml").read_text(encoding="utf-8"))
+
+    assert "ordinary user-owned workspace file" in skill_text
+    assert "native `apply_patch`" in skill_text
+    assert "never prefix the workspace path or use an absolute" in skill_text
+    assert "duplicated workspace path is not valid verification" in skill_text
+    assert "do not add an MCP service" in skill_text
+    assert "terminal handoff" not in skill_text
+    assert "User-Terminal Commands" not in skill_text
+    assert config["permissions"]["trading-research"]["filesystem"][":workspace_roots"][".tradingcodex/user"] == "write"
+    assert config["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/user"] == "write"
+
+
 def test_openbb_enable_projects_env_names_only(tmp_path: Path) -> None:
     root = tmp_path / "workspace"
     bootstrap_workspace(root)

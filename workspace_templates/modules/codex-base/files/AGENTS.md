@@ -37,7 +37,9 @@ Repository expectations:
   protected control files, the TradingCodex runtime/database, credential files,
   local/private network targets, and Unix sockets. Durable workflow, research,
   and synthesis writes under `trading/` go through authenticated TradingCodex
-  service/MCP tools.
+  service/MCP tools. The exact `.tradingcodex/user/` subtree is user-owned and
+  writable for confirmed Investor Context; the rest of `.tradingcodex/` remains
+  protected.
 - Build work requires `$tcx-build` as the first meaningful invocation in the
   original root prompt. A plain token or a Markdown skill link whose label and
   target match this workspace's projected `tcx-build/SKILL.md` is accepted;

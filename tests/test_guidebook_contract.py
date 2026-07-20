@@ -81,3 +81,11 @@ def test_full_desktop_shell_does_not_double_count_viewport_gutters() -> None:
     assert "max-width: 1460px" in shell_rule
     assert "padding: 2.75rem 1.5rem" in shell_rule
     assert "calc((100vw - 1460px) / 2)" not in shell_rule
+
+
+def test_investor_context_guide_uses_direct_workspace_updates() -> None:
+    page = _html(GUIDEBOOK / "skill-investor-context.html")
+
+    assert "Codex updates the workspace-local Investor Context file directly" in page
+    assert "need neither a Build turn nor a terminal command" in page
+    assert "gives one exact user-terminal command" not in page

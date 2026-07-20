@@ -1399,10 +1399,12 @@ def test_generated_workspace_serializes_spaces_and_package_metacharacters(
     assert research_workspace["tcx.cmd"] == "read"
     assert research_workspace["trading"] == "read"
     assert research_workspace[".tradingcodex"] == "deny"
+    assert research_workspace[".tradingcodex/user"] == "write"
     assert ".tradingcodex/cli.py" not in research_workspace
     assert parsed[0]["web_search"] == "live"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/cli.py"] == "read"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/workspace.json"] == "read"
+    assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"][".tradingcodex/user"] == "write"
     assert parsed[0]["permissions"]["trading-build"]["filesystem"][":workspace_roots"]["."] == "write"
     assert {"manage_strategy", "manage_investment_brain"}.issubset(root_mcp["enabled_tools"])
     scratch = parsed[0]["shell_environment_policy"]["set"]["TRADINGCODEX_SCRATCH"]

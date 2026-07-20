@@ -44,7 +44,7 @@ is not a Head Manager entrypoint.
 | --- | --- | --- |
 | `tcx-plan` | Clarify scope, constraints, action boundaries, and stop conditions before an immediate or recurring task. | Compact user mandate and missing-field or blocked posture; never a server dispatch plan or selected team. |
 | `tcx-automate` | Create or update Codex app Scheduled Tasks for simple research, monitoring, recurring analysis, portfolio/status review, order drafting, assisted execution, optional turn-authorized execution, or explicitly delegated turn-authorized Build work. | Schedule plus a durable runtime prompt that invokes the actual work skill, not `tcx-automate` recursively. |
-| `tcx-investor-context` | Interview and preview workspace suitability context; persistent status/update/enable/disable/clear is handed to an explicit user-terminal command. | User-confirmed proposed values, exact terminal action, default application state, and remaining gaps. |
+| `tcx-investor-context` | Interview and manage workspace suitability context as an ordinary user-owned file. | Confirmed saved values, default application state, and remaining gaps. |
 
 ## Entrypoint Rules
 
@@ -107,11 +107,10 @@ answer ends with one concise `Wiki used:` line containing only the
 workspace-relative paths of pages actually used. Current facts that support an
 investment conclusion still require normal Source Gate verification.
 
-`tcx-investor-context` interviews and previews only the optional
-workspace-local suitability file in the Codex turn. Persistent status, update,
-enable, disable, or clear is performed by the user with the exact interactive
-terminal command returned after confirmation; the skill does not bypass the
-Build shell gate. Its persistent enable/disable state is separate from skill availability,
+`tcx-investor-context` reads, interviews for, previews, and updates the optional
+workspace-local suitability file with native workspace file tools after user
+confirmation. This ordinary user-owned file does not require a Build turn, MCP
+service, or terminal handoff. Its persistent enable/disable state is separate from skill availability,
 strategy rules, and internal paper account scope. It does not run investment
 analysis or grant authority. Native run binding follows the saved workspace default;
 the read-only viewer offers no one-run override and never rewrites the file.

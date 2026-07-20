@@ -130,10 +130,10 @@ paths, reserved namespaces, and managed block markers define the boundary:
 | Class | Representative paths | Update contract |
 | --- | --- | --- |
 | Release-managed generated files | `AGENTS.md`, `pyproject.toml`, `tcx`, `tcx.cmd`, `.codex/config.toml`, `.codex/agents/*.toml`, `.codex/hooks/*`, `.agents/skills/tcx-*`, bundled `.tradingcodex/subagents/skills/**/tcx-*`, schemas, policies, launchers, generated indexes, and protocol-owned workspace identity/status files | Template and projection files are listed and hashed in the module lock. The lock cannot inventory itself; the immutable workspace manifest and rebuildable bootstrap/status files are separately protocol-owned. Update re-renders or re-projects these files from the current package and canonical state. Direct edits are unsupported and may be replaced. |
-| User-selected managed overlays | `.tradingcodex/agent-instructions/*.md`, `.tradingcodex/user/*`, `.agents/skills/strategy-*`, optional role skills, `investment-brains/*` authoring sources, `wiki-packages/*` shareable Wiki sources, `wikis/local`, and installed Brain/Wiki registries, packages, and projections | The owning lifecycle service validates managed state. Update preserves canonical state, user-owned Wiki/Brain sources, local Wiki pages, installed packages, registries, and active projections. |
+| User-selected managed overlays | `.tradingcodex/agent-instructions/*.md`, `.agents/skills/strategy-*`, optional role skills, `investment-brains/*` authoring sources, `wiki-packages/*` shareable Wiki sources, `wikis/local`, and installed Brain/Wiki registries, packages, and projections | The owning lifecycle service validates managed state. Update preserves canonical state, user-owned Wiki/Brain sources, local Wiki pages, installed packages, registries, and active projections. |
 | Workflow and research artifacts | `trading/research/`, `trading/reports/`, `trading/forecasts/`, `trading/decisions/`, `trading/evaluations/`, postmortems, lesson state, and per-run provenance | These are workspace state, not release payload. Update preserves them; template-owned `.gitkeep` files in the same directories do not transfer ownership of sibling artifacts. |
 | Local/private runtime state | The external `TRADINGCODEX_HOME`, central DB, ignored session/status/cache/audit files, secrets, credentials, and private Investor Context | These remain outside versionable product state or inside the managed privacy-ignore block. Rebuildable status/cache files may be refreshed; durable authority never moves into the workspace. |
-| Ordinary user files | Any non-reserved path not listed in the generated-file inventory | Update leaves them untouched. A file placed in a reserved managed namespace may be rejected as a collision rather than adopted or deleted. |
+| Ordinary user files | `.tradingcodex/user/*` and any non-reserved path not listed in the generated-file inventory | Native workspace tools may update these files within the active permission profile. Update leaves them untouched. A file placed in another reserved managed namespace may be rejected as a collision rather than adopted or deleted. |
 
 In particular, `.tradingcodex/config.yaml` is a generated control input despite
 its name; use the documented customization and lifecycle surfaces instead of
@@ -823,7 +823,10 @@ Inside a generated workspace, normal `head-manager` and fixed-role analysis
 threads inherit the `trading-research` permission profile. They can use normal
 shell, data tools, and credential-free public HTTP, read ordinary
 workspace inputs, and write user-owned files outside `trading/`; disposable
-intermediates belong under `$TRADINGCODEX_SCRATCH`. Fixed-role Python
+intermediates belong under `$TRADINGCODEX_SCRATCH`. The exact
+`.tradingcodex/user/` subtree is also user-owned and writable so confirmed
+Investor Context can be managed with native file tools; the rest of
+`.tradingcodex/` remains protected. Fixed-role Python
 calculations use only the generated scratch-local `tcx-calc` contract. They
 cannot modify
 `trading/`, generated control files, or the TradingCodex home, DB, attached

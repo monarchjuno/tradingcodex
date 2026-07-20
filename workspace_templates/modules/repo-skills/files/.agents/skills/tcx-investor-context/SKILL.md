@@ -9,17 +9,14 @@ Interview the user and prepare a confirmed investor-context change. The
 persistent context is optional, belongs only to the current workspace, and
 guides suitability without granting investment or execution authority.
 
-There is no agent-authorized MCP mutation path for this state. Codex may conduct
-the interview and preview the result, but status, update, enable, disable, and
-clear are interactive user-terminal actions. Never invoke the workspace
-launcher or claim that a terminal command ran.
+This is an ordinary user-owned workspace file. Read and update it with native
+workspace file tools; do not add an MCP service or hand routine changes to a
+terminal command.
 
 ## Procedure
 
-1. For an existing context, ask the user to run
-   `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context status` in the
-   workspace terminal and share only the fields needed for the requested
-   change. A new context can begin without this step.
+1. Read `.tradingcodex/user/investor-context.md` when it exists. Treat a missing
+   file as unconfigured and do not search other files for replacement values.
 2. Ask only for missing or changed fields, in small batches. Keep confirmed
    answers separate from `unknown`, `not provided`, or `declined` values.
 3. Cover only the fields relevant to investment suitability:
@@ -30,42 +27,41 @@ launcher or claim that a terminal command ran.
    - current holdings and concentration not already represented by canonical
      portfolio state
    - tax, account, or jurisdiction constraints
-4. Preview the proposed changes and obtain user confirmation before preparing
-   any persistent-action command or replacing a confirmed value.
-5. After confirmation, return one copy-ready command for the user to run in the
-   workspace terminal. Populate only confirmed options and encode each value as
-   one literal argument for the user's current shell. If the shell is unknown
-   or a value cannot be represented safely, leave a clearly marked placeholder
-   for the user instead of interpolating it. Never interpolate newlines,
-   command substitutions, control characters, secrets, or unnecessary personal
-   detail.
-6. For `enable`, `disable`, or `clear`, return that exact command only when the
-   user explicitly requests the corresponding persistent change. Warn that
-   `clear` is destructive and require an explicit request naming `clear`.
-7. Ask the user to run
-   `{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context status` afterward if
-   verification is needed. Report only output the user provides; do not imply
-   that the agent verified persistent state.
+4. Preview the exact proposed changes and obtain user confirmation before the
+   first write or before replacing or removing a confirmed value.
+5. After confirmation, create or update only
+   `.tradingcodex/user/investor-context.md` with native `apply_patch`. Preserve
+   unchanged confirmed fields and notes. Pass that exact workspace-relative
+   path to `apply_patch`; never prefix the workspace path or use an absolute
+   path. Set `updated_at` to the current ISO-8601 time and `updated_by` to
+   `user`.
+6. For `enable` or `disable`, change only `enabled_by_default` after an explicit
+   request. For `clear`, warn that the action removes all saved fields and notes,
+   require an explicit request naming `clear`, and leave a valid empty context
+   document rather than deleting unrelated files.
+7. Re-read that exact workspace-relative file after a write and report its
+   configured fields, default application state, updated time, and path without
+   echoing unnecessary sensitive detail. A similarly suffixed file under a
+   duplicated workspace path is not valid verification. If the expected file
+   is missing or invalid, fix it before claiming success.
 
-## User-Terminal Commands
+## File Contract
 
-Use these command forms only as explicit user-terminal handoffs:
+Keep schema-versioned YAML frontmatter with `schema_version: 1`,
+`scope: workspace`, `enabled_by_default`, `updated_at`, and `updated_by`. Store
+confirmed suitability fields with these exact keys:
 
-```text
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context status
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context update --objective "<confirmed value>" --horizon "<confirmed value>" --risk-tolerance "<confirmed value>" --liquidity "<confirmed value>" --holdings "<confirmed value>" --constraints "<confirmed value>"
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context enable
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context disable
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} investor-context clear
-```
+- `investment_objective`
+- `time_horizon`
+- `risk_tolerance_and_loss_capacity`
+- `liquidity_needs`
+- `current_holdings_and_concentrations`
+- `constraints`
 
-Omit unchanged update options. If a confirmed field must be removed, use its
-documented `--clear-<field-name>` option in the user-terminal command rather
-than inventing an empty value. The exact clear options are
-`--clear-investment-objective`, `--clear-time-horizon`,
-`--clear-risk-tolerance-and-loss-capacity`, `--clear-liquidity-needs`,
-`--clear-current-holdings-and-concentrations`, `--clear-constraints`, and
-`--clear-notes`.
+Use `# Investor Context` as the Markdown heading and put optional confirmed
+notes below it. Omit unknown, declined, cleared, or empty fields instead of
+inventing values. Do not edit generated run snapshots; `begin_analysis_run`
+creates those from the saved file.
 
 `enable` and `disable` control the workspace default. Native Codex workflows use
 that default when `begin_analysis_run` seals applied context under the run.
@@ -87,6 +83,7 @@ must remain limited or blocked when required suitability fields are unavailable.
   prose. Write only values the user confirms in the current interview or update.
 - Do not use investor context to weaken evidence, role, policy, approval,
   execution, or audit gates.
-- Do not invoke shell or file-edit tools to inspect or mutate investor context.
+- Do not use shell commands, the workspace launcher, or MCP for routine
+  investor-context reads and writes.
 - Do not pass the full file to specialist tasks. Apply only the compact fields
   needed for the current workflow; execution receives no suitability narrative.
