@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Stop automated GitHub Release notes at the next changelog heading so a
+  release contains only its matching version section.
+
 ## 1.2.1 - 2026-07-21
 
 - Create or refresh the GitHub Release from the exact verified distributions

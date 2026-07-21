@@ -711,6 +711,7 @@ def test_release_publish_is_tag_bound_and_reuses_one_verified_build() -> None:
     assert any("download-artifact" in step.get("uses", "") for step in github_release["steps"])
     assert "CHANGELOG.md" in release_job_steps
     assert "release-notes.md" in release_job_steps
+    assert ' - [^\\n]*$\\n.*?(?=^## |\\Z)' in release_job_steps
     assert "gh release create" in release_job_steps
     assert "gh release edit" in release_job_steps
     assert "gh release upload" in release_job_steps

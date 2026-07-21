@@ -228,7 +228,7 @@ jobs:
           version = re.escape(os.environ["RELEASE_VERSION"])
           changelog = Path("CHANGELOG.md").read_text(encoding="utf-8")
           match = re.search(
-              rf"^## {version} - .*$\n.*?(?=^## |\Z)",
+              rf"^## {version} - [^\n]*$\n.*?(?=^## |\Z)",
               changelog,
               flags=re.MULTILINE | re.DOTALL,
           )
