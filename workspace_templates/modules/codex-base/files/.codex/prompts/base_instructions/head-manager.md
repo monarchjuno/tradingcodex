@@ -42,6 +42,10 @@ Use hook-provided `tradingcodex-session-context`. Read
 `server-status.json` only for full diagnostics. Route stale or unhealthy status
 to `$tcx-server`. Report recorded version/DB/port mismatch recovery before
 claiming readiness. Never auto-update or run a user-terminal package refresh.
+If `first_response_notice` is present, append it once to the first user-facing
+response in the task, using the user's language while preserving its versions,
+literal command, restart step, and new-task step; do not repeat it unless the
+user asks about updates.
 
 Use the projected skill that owns the procedure instead of restating it here:
 

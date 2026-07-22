@@ -1139,8 +1139,12 @@ service, the hook separately surfaces direct Viewer and Wiki links as a Codex
 `systemMessage`. It emits no viewer URL for an incompatible or unreachable
 service. When an update is available and recommendations are not suppressed,
 the same message also includes the workspace/latest versions, workspace
-launcher command, and restart step. Update details are not added to agent
-context, and the warning never grants update authority.
+launcher command, and restart step. On `source=startup` only, the hook also
+copies that compact update message into optional `first_response_notice`
+developer context so Head Manager includes it once at the end of the first
+user-facing response; resume, clear, compact, and missing-source starts omit
+the field. The full update status is never added to agent context, and neither
+notice grants update authority.
 
 Build authorization retains `exact_first_line` and managed-skill authorization
 retains `exact_first_lines` as canonical plain-token examples for copy/paste

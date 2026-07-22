@@ -135,6 +135,9 @@ def session_start(payload: dict) -> None:
             "ordinary workspace work; service calls govern TradingCodex state and final order effects."
         ),
     }
+    first_response_notice = update_system_message(status.get("update_status"))
+    if payload.get("source") == "startup" and first_response_notice:
+        context["first_response_notice"] = first_response_notice
     write_json(ROOT / ".tradingcodex" / "mainagent" / "session-start.json", context)
     append_hook_audit({"event": "session-start", "service_status": context["service_status"], "redacted": True})
     output_context(

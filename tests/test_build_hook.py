@@ -252,6 +252,7 @@ def test_session_context_is_small_and_preserves_direct_fast_path(
 def test_session_message_exposes_viewer_and_wiki_only_for_a_healthy_service(workspace: Path) -> None:
     hook = runpy.run_path(str(workspace / ".codex/hooks/tradingcodex_hook.py"))
     build_message = hook["session_system_message"]
+    build_update_message = hook["update_system_message"]
 
     healthy = build_message(
         {
@@ -275,6 +276,15 @@ def test_session_message_exposes_viewer_and_wiki_only_for_a_healthy_service(work
         )
         assert "127.0.0.1" not in message
 
+    assert build_update_message(
+        {
+            "update_available": True,
+            "update_recommendation_suppressed": True,
+            "workspace_version": "1.0.0",
+            "latest_release_version": "1.1.0",
+        }
+    ) == ""
+
 
 @pytest.mark.parametrize(
     ("package_spec", "expected_command"),
@@ -283,7 +293,7 @@ def test_session_message_exposes_viewer_and_wiki_only_for_a_healthy_service(work
         ("local-explicit", "./tcx update --from <path-to-tradingcodex>"),
     ],
 )
-def test_session_start_surfaces_update_only_as_a_system_message(
+def test_session_start_surfaces_update_in_system_message_and_first_response_notice(
     workspace: Path,
     monkeypatch: pytest.MonkeyPatch,
     package_spec: str,
@@ -297,7 +307,7 @@ def test_session_start_surfaces_update_only_as_a_system_message(
     lock["tradingcodex_package_spec"] = package_spec
     lock_path.write_text(json.dumps(lock, indent=2) + "\n", encoding="utf-8")
 
-    result = run_hook(workspace, "session-start", {})
+    result = run_hook(workspace, "session-start", {"source": "startup"})
 
     assert result is not None
     message = str(result["systemMessage"])
@@ -305,6 +315,31 @@ def test_session_start_surfaces_update_only_as_a_system_message(
     assert f"run `{expected_command}`" in message
     assert "fully quit and reopen Codex and start a new task" in message
     additional_context = str(result["hookSpecificOutput"]["additionalContext"])
-    assert latest not in additional_context
     context = json.loads(additional_context)
+    assert context["first_response_notice"] in message
+    assert f"workspace {TRADINGCODEX_VERSION}, latest {latest}" in context["first_response_notice"]
+    assert f"run `{expected_command}`" in context["first_response_notice"]
+    assert "update_status" not in context
+    assert len(additional_context) < 1_200
+    head_manager = (workspace / ".codex/prompts/base_instructions/head-manager.md").read_text(encoding="utf-8")
+    assert "If `first_response_notice` is present" in head_manager
+
+
+@pytest.mark.parametrize("source", ["resume", "clear", "compact", None])
+def test_session_start_does_not_add_first_response_notice_after_startup(
+    workspace: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    source: str | None,
+) -> None:
+    current = Version(TRADINGCODEX_VERSION)
+    latest = f"{current.major}.{current.minor + 1}.0"
+    monkeypatch.setenv("TRADINGCODEX_LATEST_RELEASE_VERSION", latest)
+    payload = {"source": source} if source is not None else {}
+
+    result = run_hook(workspace, "session-start", payload)
+
+    assert result is not None
+    assert latest in str(result["systemMessage"])
+    context = json.loads(str(result["hookSpecificOutput"]["additionalContext"]))
+    assert "first_response_notice" not in context
     assert "update_status" not in context
