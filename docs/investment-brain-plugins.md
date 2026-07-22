@@ -427,7 +427,7 @@ it does not copy the page or activate the revised Brain.
   selected/default team, keyword/negation router, or server workflow loop;
 - remove remaining CLI language that previews role batches or promises a
   TradingCodex scheduler, alongside nonexistent loop commands;
-- align README, installation, generated-workspace, skill, OpenWiki, and
+- align README, installation, generated-workspace, skill, architecture, and
   validation guidance with dynamic Head Manager coordination; and
 - document the Git executable as an attach prerequisite while retaining
   automatic local repository init for a new standalone workspace.

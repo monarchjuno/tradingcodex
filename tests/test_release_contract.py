@@ -198,11 +198,10 @@ def test_attach_contract_has_no_overwrite_or_init_compatibility() -> None:
             "tradingcodex_cli/__main__.py",
             "tradingcodex_cli/generator.py",
             "docs/README.md",
+            "docs/architecture.md",
             "docs/generated-workspaces.md",
             "docs/interfaces-and-surfaces.md",
             "docs/validation-and-test-plan.md",
-            "openwiki/generated-workspaces.md",
-            "openwiki/quickstart.md",
             "tests/README.md",
         )
     )
@@ -744,7 +743,7 @@ def test_normal_github_uploads_do_not_build_or_deploy_release_artifacts() -> Non
     assert "download-artifact" not in ci_uses
     ci_trigger = ci.get("on") or ci.get(True)
     ignored = set(ci_trigger["push"]["paths-ignore"])
-    assert {"guidebook/**", "docs/**", "openwiki/**", "assets/**", "*.md"} <= ignored
+    assert {"guidebook/**", "docs/**", "assets/**", "*.md"} <= ignored
     assert set(ci_trigger["pull_request"]["paths-ignore"]) == ignored
 
     pages_trigger = pages.get("on") or pages.get(True)

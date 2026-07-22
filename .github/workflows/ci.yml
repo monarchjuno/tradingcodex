@@ -6,7 +6,6 @@ on:
     paths-ignore:
       - guidebook/**
       - docs/**
-      - openwiki/**
       - assets/**
       - "*.md"
       - .github/workflows/deploy-user-guide.yml
@@ -17,7 +16,6 @@ on:
     paths-ignore:
       - guidebook/**
       - docs/**
-      - openwiki/**
       - assets/**
       - "*.md"
       - .github/workflows/deploy-user-guide.yml

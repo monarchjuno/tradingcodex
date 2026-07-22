@@ -4,10 +4,12 @@
 
 Read in this order:
 
-1. [OpenWiki quickstart](openwiki/quickstart.md) for source and validation routing.
-2. This file for repository-wide non-negotiable rules.
+1. This file for repository-wide non-negotiable rules and validation routing.
+2. [Architecture](docs/architecture.md) for the codebase map, ownership, and
+   runtime boundaries.
 3. [Product documentation](docs/README.md) for durable behavior and rationale.
-4. [User guide](guidebook/index.html) only when setup or an everyday user journey changes.
+4. [User guide](guidebook/index.html) only when setup or an everyday user
+   journey changes.
 
 Keep each fact in one owning layer and link to it elsewhere:
 
@@ -15,7 +17,6 @@ Keep each fact in one owning layer and link to it elsewhere:
 | --- | --- |
 | `docs/` | Durable product behavior, architecture, safety, workflow, and release intent. |
 | `guidebook/` | Concise, task-first user instructions. |
-| `openwiki/` | Source ownership, edit routing, and validation routing for coding agents. |
 | `README.md` / `installation.md` | Product entrypoint and installation path. |
 | `AGENTS.md` | Repository-wide development constraints. |
 
@@ -84,6 +85,22 @@ limit without a measured compatibility, safety, or latency failure.
   explain why a smaller native solution is insufficient, and replace rather
   than duplicate the old path.
 
+## Model-Aware Consequence Tracing
+
+When the implementing Codex agent and TradingCodex runtime agents use the same
+GPT/Codex model family, use your own likely interpretation and behavior as a
+concrete design signal. Do not assume identical behavior: prompts, context,
+skills, tools, permissions, model versions, and reasoning settings may differ.
+
+Before changing prompts, skills, tool exposure, delegation, hooks, or services,
+trace the consequential path from the user request through model
+interpretation, guidance and context, tool or subagent selection, canonical
+service boundaries, generated output or external action, and finally durable,
+safety, latency, context, and user-visible effects. Improve the earliest layer
+that owns the cause. Validate consequential model-facing changes in the actual
+generated TradingCodex harness rather than inferring behavior only from unit
+tests or assumptions about the model.
+
 ## Research Source Direction
 
 External research uses a guidance-based fallback, not a TradingCodex-owned
@@ -150,10 +167,10 @@ free another runtime's port.
 
 | Change area | Read first | Minimum validation |
 | --- | --- | --- |
-| CLI, attach/update, templates, hooks, generated files | `openwiki/generated-workspaces.md` | Focused tests and disposable workspace smoke. |
-| Service, model, API, MCP, viewer | `openwiki/interfaces-and-data.md` | Focused tests; `python manage.py check` when Django wiring changes. |
-| Roles, skills, workflow, research harness | `openwiki/workflows-and-agents.md` | Generated workspace and Codex-native smoke when behavior changes. |
-| Policy, broker, approval, execution, secrets | `openwiki/safety-and-execution.md` | Focused safety tests and canonical service-path checks. |
+| CLI, attach/update, templates, hooks, generated files | `docs/generated-workspaces.md` | Focused tests and disposable workspace smoke. |
+| Service, model, API, MCP, viewer | `docs/architecture.md` and `docs/interfaces-and-surfaces.md` | Focused tests; `python manage.py check` when Django wiring changes. |
+| Roles, skills, workflow, research harness | `docs/roles-skills-and-workflows.md` | Generated workspace and Codex-native smoke when behavior changes. |
+| Policy, broker, approval, execution, secrets | `docs/safety-policy-and-execution.md` | Focused safety tests and canonical service-path checks. |
 | Documentation only | `docs/README.md` | Link/file checks and review of changed Markdown. |
 | Package or release | `docs/deployment.md` | The release-readiness checks documented there. |
 

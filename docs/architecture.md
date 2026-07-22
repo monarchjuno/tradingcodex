@@ -1,7 +1,10 @@
-# System Architecture
+# TradingCodex Architecture
 
-This document owns TradingCodex architecture, Django app boundaries, central DB
-ownership, service-layer use cases, runtime planes, and core model ownership.
+This document is the codebase map and canonical architecture reference for
+TradingCodex. It owns runtime and dependency boundaries, source and state
+ownership, Django app boundaries, central DB ownership, service-layer use
+cases, and core model ownership. Repository-wide development constraints and
+the minimum validation route remain in [`AGENTS.md`](../AGENTS.md).
 
 ## Architecture Summary
 
@@ -31,43 +34,82 @@ optional role skills, and `strategy-*` skills are managed user overlays. The
 harness coordinates those layers; it is not the product definition and an
 overlay never replaces the kernel.
 
-## Source Tree
+## Model-Aware Consequence Flow
+
+The Codex agent changing this repository and agents running inside a
+TradingCodex workspace may use the same GPT/Codex model family. The
+implementing agent's own likely interpretation and behavior are therefore a
+useful design signal, especially when reviewing prompts, skills, tool exposure,
+and delegation. They are not proof of identical runtime behavior: system
+instructions, context, enabled capabilities, permissions, model versions, and
+reasoning settings may differ.
+
+Trace consequential behavior end to end before adding or changing harness
+machinery:
 
 ```text
+user request
+  -> model interpretation and chosen response path
+  -> prompt, skill, and available-context guidance
+  -> tool or subagent selection
+  -> TradingCodex interface and application-service boundary
+  -> workspace artifact, durable record, or external action
+  -> safety, audit, latency, context, and user-visible consequences
+```
+
+Fix behavior at the earliest canonical layer that causes it. Do not add a
+router, validator, retry loop, registry, or state machine merely to compensate
+for behavior native Codex already handles or that clearer context and guidance
+can resolve. For consequential prompt, skill, tool, or orchestration changes,
+observe the actual generated TradingCodex harness; unit tests and assumptions
+about the model cover deterministic contracts but do not replace runtime
+evidence.
+
+## Codebase Map
+
+Use this map to find the canonical owner, then inspect that owner, its callers,
+and focused tests. It intentionally lists stable directories and entrypoints
+rather than every file.
+
+| Path | Ownership |
+| --- | --- |
+| `tradingcodex_service/application/` | Canonical durable use cases, state transitions, provenance, projections, and sensitive-action gates. |
+| `apps/*/models.py`, `apps/*/admin.py` | Central Django ledger models, migrations, and local Admin inspection. Thin `services.py` modules re-export canonical application services where required. |
+| `tradingcodex_service/api.py`, `viewer_api.py`, `web.py` | Local API and read-only web surfaces; these call application services and own no parallel business logic. |
+| `tradingcodex_service/mcp_runtime.py` | TradingCodex MCP definitions, role visibility, validation, and dispatch into application services. |
+| `tradingcodex_cli/` | Attach/update, generated-workspace lifecycle, operator commands, service startup, and the isolated calculation runner. |
+| `workspace_templates/modules/*/files/` | Source templates for projected prompts, skills, agents, hooks, policies, launchers, and workspace contracts. Generated copies are not edited directly. |
+| `frontend/` | Maintainer-only React/TypeScript viewer source. |
+| `tradingcodex_service/static/tradingcodex_web/` | Deterministic generated frontend build served by Django; never hand-edited. |
+| `tests/` | Unit, contract, safety, generated-workspace, platform, and native Codex validation. |
+| `docs/` | Canonical product behavior, architecture, safety, workflow, validation, and release rationale. |
+| `guidebook/` | Concise, task-first user instructions. |
+| `README.md`, `installation.md`, `install.sh` | Product entrypoint, installation contract, and source-development bootstrap. |
+
+### Domain Owners
+
+| Concern | Primary source |
+| --- | --- |
+| Runtime home, workspace identity, and service lifecycle | `tradingcodex_service/application/runtime.py`, `workspaces.py`, `health.py`; `tradingcodex_cli/generator.py`, `startup_status.py` |
+| Agent roles, skills, analysis runs, and harness display | `tradingcodex_service/application/agents.py`, `analysis_runs.py`, `harness.py`; `workspace_templates/modules/` |
+| File-native research, datasets, calculations, and provenance | `tradingcodex_service/application/research.py`, `research_objects.py`, `datasets.py`, `calculations.py`, `artifact_bindings.py` |
+| Decisions, forecasts, and postmortems | `tradingcodex_service/application/decision_packages.py`, `forecasting.py`, `postmortems.py` |
+| Knowledge Wikis and managed packages | `tradingcodex_service/application/knowledge_wikis.py`, `managed_package_sources.py`, `wiki_viewer.py` |
+| Policy, orders, approvals, brokers, and final execution | `tradingcodex_service/application/policy.py`, `orders.py`, `execution_gateway.py`, `brokers.py`, plus the corresponding `apps/` models |
+| Viewer, API, Admin, CLI, and MCP surfaces | Interface entrypoints above; all durable behavior remains in `application/` |
+| Generated workspace projection | `tradingcodex_cli/generator.py`, module manifests, and `workspace_templates/modules/*/files/` |
+
+## Conceptual Source Tree
+
+```text
+README.md / installation.md / install.sh
 pyproject.toml
 manage.py
 frontend/
-  package.json
   src/
-  vite.config.ts
 tradingcodex_service/
-  static/tradingcodex_web/
   application/
-    brokers.py
-    build_gateway.py
-    common.py
-    execution_gateway.py
-    runtime.py
-    orders.py
-    portfolio.py
-    policy.py
-    research.py
-    research_objects.py
-    research_object_catalog.py
-    datasets.py
-    calculations.py
-    research_specs.py
-    investment_analysis.py
-    forecasting.py
-    evaluation_lab.py
-    audit.py
-    harness.py
-    analysis_runs.py
-    investment_brains.py
-    viewer.py
-    workspace_git.py
-    workspaces.py
-    health.py
+  static/tradingcodex_web/  # generated frontend build
 tradingcodex_cli/
   commands/
 apps/
@@ -78,11 +120,11 @@ apps/
   orders/
   policy/
   portfolio/
-  research/
-  workflows/
 workspace_templates/
+  modules/
 tests/
 docs/
+guidebook/
 ```
 
 The source tree above is conceptual. Large service modules may be refactored
@@ -280,10 +322,14 @@ refuses remote hosts or an unverified listener PID.
 | `policy` | Principals, capabilities, restricted list, limits, policy decisions. |
 | `orders` | Canonical order tickets, order checks, approval receipts, current-turn order grants, broker order timeline, fills, and execution attempts/results. |
 | `portfolio` | Cash, positions, exposure snapshots, normalized ledger events, broker sync runs, reconciliation runs, paper portfolio state. |
-| `research` | Workspace markdown research artifacts, artifact versions, evidence packs, report metadata, file-native source/as-of snapshots, immutable Dataset and Calculation objects, and rebuildable catalog projections. No Django DB models or Admin DB surface. |
 | `audit` | Append-only audit events, request hashes, result hashes, policy/action provenance. |
 | `mcp` | Protocol adapter metadata, tool registry, and non-research tool call ledger. |
 | `integrations` | Broker connections, broker accounts, instrument maps, paper and validation-only execution paths, read-only data adapters, future broker adapter definitions. |
+
+File-native research has no Django app, DB models, or Admin DB surface.
+Workspace markdown artifacts, versions, evidence packs, source/as-of snapshots,
+immutable Dataset and Calculation objects, and rebuildable catalog projections
+are owned by `tradingcodex_service/application/` services.
 
 ## Service Layer Rules
 

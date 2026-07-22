@@ -183,8 +183,8 @@ also require the disposable-workspace and Codex-native checks documented in
 `.github/workflows/ci.yml` is test-only. Parallel Ubuntu jobs run the frontend
 determinism check and the Python 3.11 source/framework gates. It does
 not construct or upload a wheel or source distribution, run release-upgrade or
-native-runtime matrices, or publish anything. Documentation-, guide-, OpenWiki-,
-and asset-only pushes or pull requests skip this workflow. Source-bearing pull
+native-runtime matrices, or publish anything. Documentation-, guide-, and
+asset-only pushes or pull requests skip this workflow. Source-bearing pull
 requests and pushes still receive the normal source-quality checks.
 
 `.github/workflows/release.yml` is manual-only. Every run requires an explicit

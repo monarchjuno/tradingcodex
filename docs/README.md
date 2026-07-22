@@ -5,9 +5,9 @@ the reasons behind it; it is not a second user guide or a source-file index.
 
 - New users start with the [User Guide](https://monarchjuno.github.io/tradingcodex/).
 - Operators start with [installation.md](../installation.md).
-- Maintainers start with [AGENTS.md](../AGENTS.md) and
-  [openwiki/quickstart.md](../openwiki/quickstart.md), then read the owning page
-  below before changing behavior.
+- Maintainers start with [AGENTS.md](../AGENTS.md) and the codebase
+  [Architecture](architecture.md), then read the owning page below before
+  changing behavior.
 
 ## Documentation Ownership
 
@@ -17,7 +17,6 @@ the reasons behind it; it is not a second user guide or a source-file index.
 | `installation.md` | Setup, update, and operator recovery. |
 | `docs/` | Canonical product behavior, architecture, safety, and rationale. |
 | `guidebook/` | Short task-first instructions for end users. |
-| `openwiki/` | Source ownership and validation routing for coding agents. |
 | `AGENTS.md` | Repository-wide development rules. |
 
 Keep a concept in one owning document and link to it elsewhere. Update another
@@ -29,14 +28,14 @@ into every layer. If two layers disagree, fix the owning `docs/` page first.
 | Goal | Canonical page | Useful follow-up |
 | --- | --- | --- |
 | Understand the product and its design posture | [Product Direction](product-direction.md) | [Harness](harness.md) |
-| Understand runtime and source ownership | [System Architecture](system-architecture.md) | [Interfaces And Surfaces](interfaces-and-surfaces.md) |
+| Understand runtime and source ownership | [Architecture](architecture.md) | [Interfaces And Surfaces](interfaces-and-surfaces.md) |
 | Change Head Manager, roles, skills, or research flow | [Roles, Skills, And Workflows](roles-skills-and-workflows.md) | [Codex-Native Orchestration](codex-native-orchestration.md) |
 | Work with research evidence, datasets, and artifacts | [Research Memory And Artifacts](research-memory-and-artifacts.md) | [Data Sources And OpenBB](data-sources-and-openbb.md) |
 | Work with reusable company, product, technology, science, industry, or value-chain knowledge | [Knowledge Wikis](knowledge-wikis.md) | [Investment Brain Plugins](investment-brain-plugins.md) |
 | Understand saved decisions and improvement | [Decision Memory](decision-memory.md) | [Improvement Loop](improvement-loop.md) |
 | Change policy, approvals, brokers, or execution | [Safety, Policy, And Execution](safety-policy-and-execution.md) | [Guardrails](guardrails.md) |
 | Change attach/update or generated workspace files | [Generated Workspaces](generated-workspaces.md) | [Deployment](deployment.md) |
-| Change the viewer, API, MCP, Admin, or CLI | [Interfaces And Surfaces](interfaces-and-surfaces.md) | [System Architecture](system-architecture.md) |
+| Change the viewer, API, MCP, Admin, or CLI | [Interfaces And Surfaces](interfaces-and-surfaces.md) | [Architecture](architecture.md) |
 | Choose or verify validation | [Validation And Test Plan](validation-and-test-plan.md) | [Release Readiness](release-readiness.md) |
 
 ## Reference By Domain
@@ -70,8 +69,8 @@ into every layer. If two layers disagree, fix the owning `docs/` page first.
   sensitive-action, approval, broker, secret, and audit boundary.
 - [Guardrails](guardrails.md) — guidance, enforcement, and information-barrier
   taxonomy.
-- [System Architecture](system-architecture.md) — runtime planes, central DB,
-  app boundaries, and service ownership.
+- [Architecture](architecture.md) — codebase map, consequential request flow,
+  runtime planes, central DB, app boundaries, and service ownership.
 - [Interfaces And Surfaces](interfaces-and-surfaces.md) — viewer, Admin, API,
   MCP, CLI, and generated wrapper boundaries.
 - [Generated Workspaces](generated-workspaces.md) — attach/update, generated
@@ -94,8 +93,9 @@ into every layer. If two layers disagree, fix the owning `docs/` page first.
 
 - Document durable behavior, not temporary implementation plans or completed
   checklists; Git history preserves those.
-- Prefer links to repeated explanations. `openwiki/` should contain paths and
-  checks, not a second architecture narrative.
+- Prefer links to repeated explanations. Keep the codebase map in
+  `architecture.md` and validation routing in `AGENTS.md`, not in parallel
+  documentation layers.
 - Keep user procedures in `guidebook/`; keep internal source paths out of it.
 - Keep product copy in English unless a reviewed localization layer is added.
 - A behavior change updates its owning page in the same change. A code-only
