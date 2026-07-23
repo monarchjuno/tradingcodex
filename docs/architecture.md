@@ -92,8 +92,8 @@ rather than every file.
 | --- | --- |
 | Runtime home, workspace identity, and service lifecycle | `tradingcodex_service/application/runtime.py`, `workspaces.py`, `health.py`; `tradingcodex_cli/generator.py`, `startup_status.py` |
 | Agent roles, skills, analysis runs, and harness display | `tradingcodex_service/application/agents.py`, `analysis_runs.py`, `harness.py`; `workspace_templates/modules/` |
-| File-native research, datasets, calculations, and provenance | `tradingcodex_service/application/research.py`, `research_objects.py`, `datasets.py`, `calculations.py`, `artifact_bindings.py` |
-| Decisions, forecasts, and postmortems | `tradingcodex_service/application/decision_packages.py`, `forecasting.py`, `postmortems.py` |
+| File-native research, datasets, calculations, and provenance | `tradingcodex_service/application/artifact_v2.py`, `research.py`, `research_objects.py`, `datasets.py`, `calculations.py`, `artifact_bindings.py`, `artifact_catalog.py` |
+| Judgments, adoption, forecasts, postmortems, and episode projection | `tradingcodex_service/application/judgments.py`, `decision_episodes.py`, `judgment_postmortems.py`, `forecasting.py`; `decision_packages.py` and `postmortems.py` remain legacy read paths |
 | Knowledge Wikis and managed packages | `tradingcodex_service/application/knowledge_wikis.py`, `managed_package_sources.py`, `wiki_viewer.py` |
 | Policy, orders, approvals, brokers, and final execution | `tradingcodex_service/application/policy.py`, `orders.py`, `execution_gateway.py`, `brokers.py`, plus the corresponding `apps/` models |
 | Viewer, API, Admin, CLI, and MCP surfaces | Interface entrypoints above; all durable behavior remains in `application/` |
@@ -129,7 +129,7 @@ guidebook/
 
 The source tree above is conceptual. Large service modules may be refactored
 into packages under `tradingcodex_service/application/` when that improves
-maintainability. For the v1 release contract, implementation should split by
+maintainability. For the current release contract, implementation should split by
 durable service use case rather than by interface surface. Web, API, CLI, MCP,
 and generated hooks should continue calling the
 same application services instead of growing separate policy, execution,
@@ -144,7 +144,7 @@ update` never run npm.
 
 Durable service implementation lives under
 `tradingcodex_service/application/`. CLI command implementations live under
-`tradingcodex_cli/commands/`. The v1 codebase uses these canonical modules
+`tradingcodex_cli/commands/`. The codebase uses these canonical modules
 directly.
 
 ## Runtime Planes
@@ -440,18 +440,26 @@ Read/write research and audit use cases:
 - `get_forecast`
 - `list_forecasts`
 - `calibration_report`
+- `record_judgment_snapshot`
+- `get_judgment_snapshot`
+- `list_judgment_snapshots`
+- `record_decision_adoption`
+- `record_judgment_process_review`
+- `create_judgment_postmortem`
+- `list_decision_episodes`
+- `get_decision_episode`
 - `create_evaluation_corpus`
 - `record_evaluation_run`
 - `record_blind_human_review`
 - `compare_evaluation_runs`
 - `record_audit_event`
 
-Research artifact writes preserve workspace markdown as the source of truth and
-carry handoff metadata for source/as-of posture, clear distinctions among facts,
-analysis, and assumptions, confidence, missing evidence, next-recipient routing, blocked actions, and
-source snapshots. `quality-check --strict` validates the markdown handoff
-contract, Evidence Run Card shape, and Validation Card shape without moving
-research memory into the central DB.
+Research artifact writes preserve workspace markdown as the source of truth.
+V2 stores a compact identity, status, summary, requirement, and lineage
+envelope in Markdown; receipt v4 seals the exact versions, hashes, and run
+context omitted from that reader-facing file. `quality-check --strict`
+validates the markdown handoff contract, Evidence Run Card shape, and
+Validation Card shape without moving research memory into the central DB.
 
 Dataset manifests and Calculation specs/runs use the same immutable research-
 object primitives as Source Snapshots, ResearchSpecs, and ExperimentRuns.
@@ -507,6 +515,13 @@ binds the sealed run-record hash, artifact path/version/body and file hashes,
 producer, exact inputs, and Brain/Strategy/Investor Context lineage. Synthesis,
 forecasts, and Decision Memory reverify receipts instead of trusting Markdown
 frontmatter or caller-supplied lineage.
+
+The Decision Episode viewer is a read projection, not another workflow state
+store. It joins the run, authenticated synthesis and role artifacts, forecasts,
+JudgmentSnapshot, explicit User Adoption, process review/Postmortem, and lesson
+status by `workflow_run_id`. Each lifecycle dimension remains independently
+projected, and ambiguous legacy synthesis candidates are surfaced rather than
+chosen by the viewer.
 
 The viewer adds no run state beside the lightweight native run under
 `.tradingcodex/mainagent/runs/<analysis-run-id>/` and launches no Codex process.

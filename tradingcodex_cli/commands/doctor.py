@@ -419,7 +419,7 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
 
 
 def _central_service_checks(root: Path) -> list[dict[str, Any]]:
-    checks: list[dict[str, Any]] = [*_version_checks(root), *_workspace_git_checks(root)]
+    checks: list[dict[str, Any]] = [*_version_checks(root), *_workspace_git_checks(root), *_artifact_contract_checks(root)]
     try:
         home_status = runtime_home_status()
         assert_runtime_home_outside_workspace(root, str(home_status["home"]))
@@ -543,6 +543,46 @@ def _central_service_checks(root: Path) -> list[dict[str, Any]]:
         path = root / rel
         checks.append({"layer": "service", "name": f"workspace export/cache writable: {rel}", "ok": path.exists() and os.access(path, os.W_OK), "codexNative": False, "detail": "writable" if path.exists() and os.access(path, os.W_OK) else "missing or not writable"})
     return checks
+
+
+def _artifact_contract_checks(root: Path) -> list[dict[str, Any]]:
+    from tradingcodex_service.application.artifact_bindings import verify_authenticated_artifact_binding
+    from tradingcodex_service.application.artifact_catalog import ARTIFACT_CATALOG_PATH, ARTIFACT_CATALOG_PROJECTOR_VERSION
+    from tradingcodex_service.application.research import list_research_artifacts
+
+    try:
+        artifact_listing = list_research_artifacts(root, {"limit": 1000})
+        artifacts = artifact_listing["artifacts"]
+        unstructured_files = int(artifact_listing.get("invalid_artifact_count") or 0)
+        v1 = sum(1 for item in artifacts if int(item.get("artifact_schema_version") or 1) == 1)
+        v2 = sum(1 for item in artifacts if int(item.get("artifact_schema_version") or 1) >= 2)
+        invalid_receipts = 0
+        syntheses: dict[str, list[str]] = {}
+        for artifact in artifacts:
+            if artifact.get("workflow_run_id"):
+                try:
+                    verify_authenticated_artifact_binding(root, artifact)
+                except Exception:
+                    invalid_receipts += 1
+            if artifact.get("artifact_type") == "synthesis_report":
+                syntheses.setdefault(str(artifact.get("workflow_run_id") or ""), []).append(str(artifact.get("artifact_id") or ""))
+        ambiguities = sum(1 for run_id, ids in syntheses.items() if run_id and f"synthesis-{run_id}" not in ids and len(ids) > 1)
+        index_path = root / ARTIFACT_CATALOG_PATH
+        rebuild_needed = True
+        if index_path.exists():
+            document = json.loads(index_path.read_text(encoding="utf-8"))
+            rebuild_needed = document.get("projector_version") != ARTIFACT_CATALOG_PROJECTOR_VERSION
+        detail = f"v1={v1}, v2={v2}, invalid_receipts={invalid_receipts}, unstructured_files={unstructured_files}, legacy_ambiguities={ambiguities}, catalog_rebuild_needed={str(rebuild_needed).lower()}"
+        return [{
+            "layer": "service",
+            "name": "artifact v1/v2 compatibility",
+            "ok": invalid_receipts == 0,
+            "warn": invalid_receipts == 0 and (unstructured_files > 0 or ambiguities > 0 or rebuild_needed),
+            "codexNative": False,
+            "detail": detail,
+        }]
+    except Exception as exc:
+        return [{"layer": "service", "name": "artifact v1/v2 compatibility", "ok": False, "codexNative": False, "detail": str(exc)}]
 
 
 def _workspace_git_checks(root: Path) -> list[dict[str, Any]]:

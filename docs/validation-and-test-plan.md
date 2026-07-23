@@ -337,15 +337,13 @@ session.
 Run after research-memory changes:
 
 ```bash
-mkdir -p trading/research/.drafts
-printf '%s\n' '---' 'artifact_id: research-smoke' '---' '# Research Smoke' '' 'Initial evidence from the bounded smoke fixture.' \
-  > trading/research/.drafts/research-smoke-v1.md
-./tcx research create --markdown-file trading/research/.drafts/research-smoke-v1.md \
-  --artifact-id research-smoke --type evidence_pack --universe public_equity \
-  --title "Research smoke"
-printf '%s\n' '---' 'artifact_id: research-smoke' '---' '# Research Smoke' '' 'Updated evidence from the bounded smoke fixture.' \
-  > trading/research/.drafts/research-smoke-v2.md
-./tcx research append research-smoke --markdown-file trading/research/.drafts/research-smoke-v2.md
+./tcx workflow begin "Run the bounded Artifact v2 smoke"
+# Write create-v2.json with the returned run id, compact status/lineage blocks,
+# requirements, summary, and initial Markdown body.
+./tcx research create create-v2.json --principal fundamental-analyst
+# Write append-v2.json with artifact_id research-smoke, the unchanged run
+# boundary, and the updated body/status.
+./tcx research append append-v2.json --principal fundamental-analyst
 ./tcx research search "Updated evidence"
 ./tcx research catalog list
 ./tcx research catalog search "Updated evidence"
@@ -729,15 +727,14 @@ Scenarios should include:
 - starter prompts and generated guidance expose the no-overlap handoff contract
 - starter prompts and generated guidance tell subagents to write reader-facing
   research artifacts in the user's language unless explicitly overridden
-- starter prompts and generated guidance tell `head-manager` to keep final chat
-  brief while saving full accepted-artifact synthesis as a Markdown report under
-  `trading/reports/head-manager/`
-- `tcx quality-check <artifact> --strict` fails research markdown that lacks
-  source/as-of posture, `context_summary`, handoff state,
-  confidence, missing-evidence fields, next-recipient routing, blocked actions,
-  or source snapshot metadata
-- accepted run-bound writes apply that same strict contract before publication,
-  including structured `follow_up_requests` and `improvements`; tests assert a
+- starter prompts and generated guidance tell `head-manager` to answer with a
+  self-contained conclusion, decisive evidence and implications, uncertainty,
+  readiness, and next actions; a canonical synthesis link is supplemental
+- `tcx quality-check <artifact> --strict` validates the compact v2 envelope,
+  summary, two readiness axes, confidence basis, requirements, lineage, and
+  content hash while retaining the legacy v1 verifier unchanged
+- accepted run-bound writes inherit input requirements before publication;
+  decision-quality writes require an independent reviewer input, and tests assert a
   rejected write cannot create a stable artifact or service receipt
 - `tcx quality-check <artifact> --strict` validates
   `trading/forecasts/*.jsonl` forecast records and fails malformed probability
@@ -759,8 +756,8 @@ Scenarios should include:
 - multi-round subagent smokes cover several independent analysis runs and large
   research artifacts across research-only, thesis, portfolio/risk, order-draft,
   approval/execution, crypto, ETF/index, and options/instrument requests; they
-  verify compact hook context, no TradingCodex child-session state, and strict
-  artifact quality including `context_summary`
+  verify compact hook context, no TradingCodex child-session state, and compact
+  v2 artifact quality including `summary`
 - repo skill boundary tests fail when role identifiers leak into generic skills
   outside necessary command principal examples or policy/artifact contracts
 - MCP `tools/list` exposes both TradingCodex custom annotations and standard
@@ -776,9 +773,32 @@ Scenarios should include:
 - a separate managed-activation smoke proves that a user-approved overlay is
   projected, attributed, non-implicit by default, and applied only when selected
 - `tcx doctor --layer task-harness` is rejected; `improvement` is the canonical
-  layer name in the v1 contract
+  layer name in the current contract
 
 Harness taxonomy checks should confirm:
+
+- compact v2 Markdown omits empty optional values and receipt-only hashes;
+  receipt v4 still verifies exact input versions, hashes, run context, data
+  lineage, and Memory refs, while existing v1 bytes and receipts remain valid
+- old flat MCP/API writes fail validation; all reads project v2 detail or
+  `items`/page cards, including the exact legacy readiness mapping and warning
+  fallback
+- synthesis identity/path are service-derived per run, accepted inputs and
+  inherited requirements are enforced, and illegal readiness escalation fails
+- factual and single-artifact restatement paths do not save synthesis;
+  decision-relevant multi-artifact judgments do, and the final chat remains
+  detailed and self-contained rather than listing report sections
+- evaluable synthesis and durable abstention may freeze a JudgmentSnapshot,
+  factual/screening synthesis may not, its Forecast binding must match the
+  canonical synthesis, User Adoption is terminal-only and authority-neutral,
+  and the Judgment → Forecast → process review → Postmortem → Lesson Episode
+  projection is rebuildable
+- outcome-blind process review rejects an already revealed Forecast outcome,
+  Postmortem requires outcome resolution after the review lock, and public
+  search/Library/Episode cards reject or omit receipt-invalid run artifacts
+- Viewer Episodes covers list, detail, empty/error, accessibility, workspace
+  switch, source links, Memory delta, separate lifecycle statuses, and legacy
+  multi-synthesis ambiguity
 
 - product web opens on Library and keeps Skills and System available under the
   stable hash routes with readable, sanitized artifact previews

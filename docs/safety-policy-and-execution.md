@@ -635,7 +635,7 @@ has an approval receipt, and `submit_approved_order` includes
   keys, tokens, passwords, or `.env` contents through an analysis task.
 - A ticker, universe name, or research phrase never maps to a default role team.
   Head Manager chooses the smallest useful role from the current questions and
-  can return research-only, screen-grade, not-decision-ready, or blocked when
+  can return `research-only`, `screen`, `insufficient`, or `blocked` readiness when
   available capabilities or evidence do not support a stronger result.
 
 ## Secret Wall

@@ -7,6 +7,7 @@ from django.test import Client
 
 from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application import viewer
+from tradingcodex_service.application.analysis_runs import begin_analysis_run
 from tradingcodex_service.application.runtime import workspace_context_payload
 
 
@@ -17,7 +18,7 @@ def test_viewer_snapshot_has_no_work_execution_state(tmp_path: Path) -> None:
     snapshot = viewer.viewer_snapshot(workspace)
 
     section_names = set(snapshot["sections"])
-    assert {"workspace", "skills", "artifacts", "datasets", "calculations"}.issubset(section_names)
+    assert {"episodes", "workspace", "skills", "artifacts", "datasets", "calculations"}.issubset(section_names)
     assert section_names.isdisjoint({"runs", "workflow", "work"})
     assert snapshot["sections"]["workspace"]["ok"] is True
 
@@ -60,6 +61,8 @@ def test_viewer_routes_are_get_only_and_old_workbench_routes_are_gone(
     for method in ("POST", "PUT", "DELETE"):
         for path in (
             "/api/viewer/",
+            "/api/viewer/episodes/",
+            "/api/viewer/episodes/analysis-example/",
             "/api/viewer/skills/tcx-workflow/",
             "/api/viewer/artifacts/example/",
             "/api/viewer/datasets/dataset-example/",
@@ -71,6 +74,35 @@ def test_viewer_routes_are_get_only_and_old_workbench_routes_are_gone(
             assert response.status_code == 405
             assert response.headers["Allow"] == "GET"
     assert client.get("/api/workbench/").status_code == 404
+
+
+def test_episode_viewer_api_lists_and_reads_run_projection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workspace = tmp_path / "viewer-episodes"
+    bootstrap_workspace(workspace)
+    run = begin_analysis_run(
+        workspace,
+        "Inspect a decision episode.",
+        run_id="analysis-viewer-episode",
+        apply_investor_context=False,
+    )
+    monkeypatch.setenv("TRADINGCODEX_WORKSPACE_ROOT", str(workspace))
+    client = Client(REMOTE_ADDR="127.0.0.1")
+
+    listing = client.get("/api/viewer/episodes/")
+    assert listing.status_code == 200
+    assert listing.json()["items"][0]["workflow_run_id"] == run["workflow_run_id"]
+    assert listing.json()["items"][0]["title"] == run["workflow_run_id"]
+    assert "no canonical synthesis" in listing.json()["items"][0]["summary"]
+    assert listing.json()["items"][0]["analysis_state"] == "researching"
+    detail = client.get(f"/api/viewer/episodes/{run['workflow_run_id']}/")
+    assert detail.status_code == 200
+    assert detail.json()["episode"]["read_only"] is True
+    assert detail.json()["episode"]["analysis"]["state"] == "researching"
+    missing = client.get("/api/viewer/episodes/analysis-missing/")
+    assert missing.status_code == 404
 
 
 def test_wiki_viewer_api_searches_and_reads_sanitized_pages(

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiErrorText, requestJSON } from "./api";
 import { asRecord, asText, normalizeArtifact, normalizeCalculation, normalizeDataset, recordsFrom, Section, sectionError } from "./domain";
 import { LibraryPage } from "./features/LibraryPage";
+import { EpisodesPage } from "./features/EpisodesPage";
 import { WikiPage } from "./features/WikiPage";
 import { SystemPage } from "./features/SystemPage";
 import { hashForSection, sectionFromHash } from "./navigation.js";
@@ -35,18 +36,19 @@ export default function App() {
     const onHash = () => setSection(sectionFromHash(window.location.hash) as Section);
     window.addEventListener("hashchange", onHash);
     if (!window.location.hash || window.location.hash.startsWith("#/work")) {
-      history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hashForSection("library")}`);
-      setSection("library");
+      history.replaceState(null, "", `${window.location.pathname}${window.location.search}${hashForSection("episodes")}`);
+      setSection("episodes");
     }
     return () => window.removeEventListener("hashchange", onHash);
   }, []);
   useEffect(() => {
-    const labels: Record<Section, string> = { library: "Library", wiki: "Wiki", system: "System" };
+    const labels: Record<Section, string> = { episodes: "Episodes", library: "Library", wiki: "Wiki", system: "System" };
     document.title = `${labels[section]} · TradingCodex`;
     requestAnimationFrame(() => mainRef.current?.focus({ preventScroll: true }));
   }, [section]);
 
   const artifacts = useMemo(() => recordsFrom(sectionData(state, "artifacts")).map(normalizeArtifact), [state]);
+  const episodes = useMemo(() => recordsFrom(sectionData(state, "episodes")), [state]);
   const datasets = useMemo(() => recordsFrom(sectionData(state, "datasets")).map(normalizeDataset), [state]);
   const calculations = useMemo(() => recordsFrom(sectionData(state, "calculations")).map(normalizeCalculation), [state]);
   const libraryItems = useMemo(() => [...artifacts, ...datasets, ...calculations], [artifacts, datasets, calculations]);
@@ -73,6 +75,7 @@ export default function App() {
       <div className="sr-status" aria-live="polite">{stateLoading ? "Loading TradingCodex" : stateError || `${workspaceName} ready`}</div>
       {stateError && <div className="global-notice"><ErrorNotice retry={() => void loadState()}>{stateError}</ErrorNotice></div>}
       {stateLoading && !hasSnapshot ? <div className="initial-loading"><LoadingState label="Opening the selected workspace…" /></div> : stateError && !hasSnapshot ? null : <div className="section-host" key={workspaceId}>
+        {section === "episodes" && <EpisodesPage episodes={episodes} error={sectionError(state, "episodes")} loading={stateLoading} />}
         {section === "library" && <LibraryPage artifacts={libraryItems} error={[sectionError(state, "artifacts"), sectionError(state, "datasets"), sectionError(state, "calculations")].filter(Boolean).join(" · ")} loading={stateLoading} />}
         {section === "wiki" && <WikiPage />}
         {section === "system" && <SystemPage state={state} />}

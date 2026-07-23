@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+## 2.1.0 - 2026-07-23
+
+- Ship the complete compact Artifact v2, receipt v4, canonical synthesis,
+  JudgmentSnapshot/User Adoption, and Decision Episode vertical slice across
+  CLI, MCP, REST, generated workspaces, and the read-only Viewer.
+- Make outcome-blind process review ordering enforceable, bind JudgmentSnapshot
+  Forecast posture to the authenticated synthesis, and retain durable blocked
+  abstentions without granting action authority.
+- Fail closed on unauthenticated run-bound cards and Episode lineage, expose
+  locked process reviews and bounded lifecycle records in Episodes, reject
+  unknown nested REST envelope fields, and document the explicit v1-to-v2
+  workspace transition.
+
+## 2.0.0 - 2026-07-23
+
+- Replace the public research-artifact write and read contracts with compact v2
+  envelopes, two-axis readiness, receipt v4 provenance, and one canonical Head
+  Manager synthesis identity per analysis run while preserving authenticated v1
+  files and receipts byte-for-byte through an explicit v1-to-v2 update path.
+- Add evidence-only JudgmentSnapshots, explicit terminal-recorded User Adoption
+  events, judgment-bound postmortems, and read-only Decision Episode projections
+  across MCP, API, CLI, and the workspace Viewer.
+- Make final Head Manager answers self-contained and decision-focused; durable
+  reports retain full provenance and are linked as supporting records instead of
+  being restated as a table of contents in chat.
+
 ## 1.2.2 - 2026-07-22
 
 - Validate Codex CLI 0.145.0 as the current reference while retaining 0.144.4

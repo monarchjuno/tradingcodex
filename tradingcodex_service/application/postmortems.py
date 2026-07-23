@@ -207,7 +207,11 @@ def get_postmortem(workspace_root: Path | str, report_id: str) -> dict[str, Any]
     if not path.exists():
         raise ValueError(f"postmortem not found: {report_id}")
     report = _read_postmortem(path)
-    _verify_postmortem_refs(root, report)
+    if report.get("schema_version") == 2:
+        from tradingcodex_service.application.judgment_postmortems import verify_judgment_postmortem
+        verify_judgment_postmortem(root, report)
+    else:
+        _verify_postmortem_refs(root, report)
     return {
         "status": "ok",
         "postmortem": report,
@@ -224,10 +228,14 @@ def list_postmortems(workspace_root: Path | str, limit: int = 50) -> dict[str, A
     items = []
     for path in sorted((root / POSTMORTEM_ROOT).glob("*.postmortem_report.json")):
         report = _read_postmortem(path)
-        _verify_postmortem_refs(root, report)
+        if report.get("schema_version") == 2:
+            from tradingcodex_service.application.judgment_postmortems import verify_judgment_postmortem
+            verify_judgment_postmortem(root, report)
+        else:
+            _verify_postmortem_refs(root, report)
         items.append({
             "id": report.get("id", ""),
-            "decision_id": (report.get("decision_snapshot_ref") or {}).get("decision_id", ""),
+            "decision_id": (report.get("decision_snapshot_ref") or {}).get("decision_id", "") or (report.get("judgment_snapshot_ref") or {}).get("judgment_id", ""),
             "evidence_lane": report.get("evidence_lane", ""),
             "known_at": report.get("known_at", ""),
             "lesson_count": len(report.get("lesson_candidates") or []),
@@ -433,7 +441,11 @@ def _record_lesson_candidates(root: Path, report: dict[str, Any], report_path: P
                 recorded.append(existing[0])
                 continue
             base = {"lesson_id": lesson_id, "postmortem_id": report["id"], "report_hash": report["report_hash"]}
-            episode_id = str((report.get("decision_snapshot_ref") or {}).get("decision_id") or "")
+            episode_id = str(
+                (report.get("decision_snapshot_ref") or {}).get("decision_id")
+                or (report.get("judgment_snapshot_ref") or {}).get("judgment_id")
+                or ""
+            )
             event = {
                 "improvement_id": "improve-" + stable_hash(base)[:16],
                 "lesson_id": lesson_id,
@@ -668,7 +680,7 @@ def _read_postmortem(path: Path) -> dict[str, Any]:
         raise ValueError(f"invalid postmortem: {path.stem}") from exc
     if not isinstance(report, dict):
         raise ValueError(f"postmortem must be an object: {path.stem}")
-    if report.get("schema_version") != POSTMORTEM_SCHEMA_VERSION:
+    if report.get("schema_version") not in {POSTMORTEM_SCHEMA_VERSION, 2}:
         raise ValueError(f"unsupported postmortem schema: {path.stem}")
     expected = str(report.get("report_hash") or "")
     payload = {key: value for key, value in report.items() if key != "report_hash"}

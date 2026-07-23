@@ -363,7 +363,7 @@ def test_api_and_cli_expose_frozen_research_and_forecast_operations(monkeypatch,
     assert client.get(f"/api/research/forecasts/{forecast_id}").json()["forecast"]["forecast_id"] == forecast_id
     catalog = client.get("/api/research/catalog").json()
     assert {"research_spec", "source_snapshot", "forecast"}.issubset(
-        {entry["artifact_type"] for entry in catalog["entries"]}
+        {entry["artifact_type"] for entry in catalog["items"]}
     )
     catalog_search = client.post(
         "/api/research/catalog/search",
@@ -378,7 +378,7 @@ def test_api_and_cli_expose_frozen_research_and_forecast_operations(monkeypatch,
         content_type="application/json",
     )
     assert catalog_search.status_code == 200, catalog_search.content
-    assert catalog_search.json()["entries"][0]["artifact_type"] == "research_spec"
+    assert catalog_search.json()["items"][0]["artifact_type"] == "research_spec"
     monkeypatch.setenv("TRADINGCODEX_API_PRINCIPAL", "fundamental-analyst")
 
     cli_forecast_id = f"cli-forecast-{uuid.uuid4().hex[:10]}"

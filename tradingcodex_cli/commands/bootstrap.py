@@ -85,7 +85,10 @@ def update(argv: list[str]) -> None:
     parser.add_argument("--skip-refresh", action="store_true", help="wrapper-only: use the recorded Python package instead of refreshing through uvx")
     args = parser.parse_args(argv)
     target = Path(args.project_dir).resolve()
-    validated_workspace = validate_generated_workspace(target)
+    validated_workspace = validate_generated_workspace(
+        target,
+        allow_previous_major=True,
+    )
     existing_lock = validated_workspace["module_lock"]
     if args.dev:
         development_source = _development_source_root()

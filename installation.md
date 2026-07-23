@@ -444,14 +444,20 @@ currency before creating orders.
 Create and search workspace-file-native research memory:
 
 ```bash
-mkdir -p trading/research/.drafts
-printf '%s\n' '---' 'artifact_id: note-1' '---' '# Research Note' '' '[factual] Gross margin example.' > trading/research/.drafts/note.md
-./tcx research create --markdown-file trading/research/.drafts/note.md --universe public_equity --artifact-id note-1 --title "Research Note"
+./tcx workflow begin "Record the bounded gross-margin evidence"
+# Put the returned analysis run id and the v2 artifact request in note-v2.json.
+./tcx research create note-v2.json --principal fundamental-analyst
 ./tcx research search "gross margin"
 ./tcx research export note-1
 ./tcx research spec list
 ./tcx forecast list
 ```
+
+The v2 JSON request contains identity/content, nested `status`, nested
+`lineage`, and `requirements`. `summary` is the compact shared reader/agent
+summary; the Markdown body remains the full readable analysis. See
+[Research Memory And Artifacts](docs/research-memory-and-artifacts.md) for the
+exact envelope and readiness rules.
 
 ResearchSpec/replay/ExperimentRun and forecast issue/revise/resolve operations
 accept JSON payload files or `-` for stdin. Forecast authorship and resolution

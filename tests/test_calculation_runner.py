@@ -674,29 +674,32 @@ def test_prepared_calculation_records_searches_compares_and_reuses(tmp_path: Pat
     call_mcp_tool(
         workspace,
         "create_research_artifact",
-        {
-            "artifact_id": "calculation-backed-technical-note",
-            "artifact_type": "research_memo",
-            "universe": "digital_assets",
-            "workflow_type": "calculation_memory_test",
-            "title": "Calculation-backed technical note",
-            "markdown": "# Calculation-backed technical note\n\n[factual] The sealed return is 10%.\n",
-            "source_as_of": "2025-01-01",
-            "knowledge_cutoff": "2025-01-02T00:00:00Z",
-            "evidence_lane": "live_forward",
-            "readiness_label": "accepted",
-            "context_summary": "Exact calculation reuse binding test.",
-            "reader_summary": "The current workflow reuses an exact prior return calculation.",
-            "handoff_state": "accepted",
-            "confidence": "high",
-            "missing_evidence": [],
-            "next_recipient": "head-manager",
-            "next_action": "Use the sealed calculation lineage.",
-            "blocked_actions": ["order", "execution"],
-            "source_snapshot_ids": [],
-            "calculation_run_ids": [reused["calculation_run_id"]],
-            "workflow_run_id": "analysis-two",
-            "input_artifact_ids": [],
+            {
+                "artifact_id": "calculation-backed-technical-note",
+                "artifact_type": "research_memo",
+                "universe": "digital_assets",
+                "title": "Calculation-backed technical note",
+                "markdown": "# Calculation-backed technical note\n\n[factual] The sealed return is 10%.\n",
+                "summary": "The current workflow reuses an exact prior return calculation.",
+                "status": {
+                    "handoff": "accepted",
+                    "evidence_readiness": "decision-grade",
+                    "action_readiness": "research-only",
+                    "confidence": "high",
+                    "confidence_basis": "The calculation run is authenticated and exactly reusable.",
+                    "missing_evidence": [],
+                    "blocked_actions": ["order", "execution"],
+                },
+                "lineage": {
+                    "workflow_run_id": "analysis-two",
+                    "knowledge_cutoff": "2025-01-02T00:00:00Z",
+                    "evidence_lane": "live_forward",
+                    "input_artifact_ids": [],
+                    "source_snapshot_ids": [],
+                    "dataset_ids": [],
+                    "calculation_run_ids": [reused["calculation_run_id"]],
+                },
+                "requirements": [],
         },
         transport_principal="technical-analyst",
     )
@@ -707,18 +710,18 @@ def test_prepared_calculation_records_searches_compares_and_reuses(tmp_path: Pat
             "include_markdown": False,
         },
     )
-    assert artifact["calculation_run_hashes"] == {
+    verification = verify_authenticated_artifact_binding(workspace, artifact)
+    receipt = json.loads((workspace / verification["path"]).read_text(encoding="utf-8"))
+    assert receipt["schema_version"] == 4
+    assert receipt["calculation_run_hashes"] == {
         reused["calculation_run_id"]: binding["run_sha256"]
     }
-    assert artifact["calculation_reuse_origins"] == {
+    assert receipt["calculation_reuse_origins"] == {
         reused["calculation_run_id"]: {
             "original_run_id": run["calculation_run_id"],
             "original_run_sha256": run["run_sha256"],
         }
     }
-    verification = verify_authenticated_artifact_binding(workspace, artifact)
-    receipt = json.loads((workspace / verification["path"]).read_text(encoding="utf-8"))
-    assert receipt["schema_version"] == 2
     assert receipt["calculation_run_ids"] == [reused["calculation_run_id"]]
 
     search = search_calculations(workspace, {"query": "return"})

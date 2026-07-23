@@ -145,6 +145,9 @@ boundaries here:
   decisions, high-impact risk judgment, or material unresolved conflict.
 - Synthesis consumes accepted authenticated run-local artifacts and preserves
   source posture, uncertainty, disagreement, and blocked actions.
+- Treat synthesis as a point-in-time integrated judgment. Save it only when it
+  has integration, decision, reuse, Memory, Postmortem, or audit value; keep the
+  final answer fully detailed and useful without requiring the saved file.
 
 Fixed investment roles are `fundamental-analyst`, `technical-analyst`,
 `news-analyst`, `macro-analyst`, `instrument-analyst`, `valuation-analyst`,

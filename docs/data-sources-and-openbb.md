@@ -53,11 +53,11 @@ do not impose a fixed source count on ordinary well-supported facts.
 
 Missing or ambiguous coverage limits only dependent claims and actions; it
 does not erase independent valid fields or automatically downgrade the whole
-artifact. `ready-for-portfolio-risk` may use a mixture of official records,
+artifact. `decision-grade` evidence may use a mixture of official records,
 OpenBB/provider data, and reputable secondary evidence when every
 conclusion-driving claim has fit-for-purpose support, a current market anchor
 exists when relevant, and material conflicts and gaps are explicit.
-`screen-grade` is for a gap that materially prevents responsible decision
+`screen` evidence readiness is for a gap that materially prevents responsible decision
 support, not for the mere absence of a primary source. Confidence records the
 strength and independence of support separately from readiness. This preserves
 evidence usability and decision readiness without adding a provider trust

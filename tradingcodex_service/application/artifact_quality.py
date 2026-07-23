@@ -318,6 +318,9 @@ def _evaluate_jsonl(text: str, result: dict[str, Any], *, strict: bool) -> None:
 def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> None:
     document = split_markdown_frontmatter(text)
     frontmatter = document.frontmatter
+    if frontmatter.get("artifact_schema_version") == 2:
+        _evaluate_v2_markdown(frontmatter, document.body or text, result, strict=strict)
+        return
     result["frontmatter"] = {
         key: frontmatter.get(key)
         for key in (
@@ -457,6 +460,105 @@ def _evaluate_markdown(text: str, result: dict[str, Any], *, strict: bool) -> No
                 result["required_fields_missing"].append("missing_evidence_or_blocked_actions")
 
     _evaluate_decision_quality(frontmatter, result, strict=strict)
+
+
+def _evaluate_v2_markdown(
+    frontmatter: dict[str, Any],
+    body: str,
+    result: dict[str, Any],
+    *,
+    strict: bool,
+) -> None:
+    """Validate the compact reader envelope without requiring receipt-only data."""
+
+    visible_fields = (
+        "artifact_schema_version", "artifact_id", "artifact_type", "title",
+        "universe", "symbol", "workflow_run_id", "producer_role", "version",
+        "recorded_at", "knowledge_cutoff", "handoff_state",
+        "evidence_readiness", "action_readiness", "confidence",
+        "confidence_basis", "summary", "requirements", "input_artifact_ids",
+        "source_snapshot_ids", "dataset_ids", "calculation_run_ids",
+        "missing_evidence", "blocked_actions", "decision_quality", "memory",
+        "forecast", "valuation", "anti_overfit", "follow_up_requests",
+        "content_hash",
+    )
+    result["artifact_schema_version"] = 2
+    result["frontmatter"] = {
+        field: frontmatter[field] for field in visible_fields if field in frontmatter
+    }
+    summary = str(frontmatter.get("summary") or "")
+    result["context_efficiency"].update(
+        {
+            "body_estimated_tokens": estimate_tokens(body),
+            "summary_present": bool(summary.strip()),
+            "summary_chars": len(summary),
+            "recommended_use": "pass the artifact card; open Markdown only for load-bearing evidence",
+        }
+    )
+    required = (
+        "artifact_id", "artifact_type", "title", "universe",
+        "workflow_run_id", "producer_role", "version", "recorded_at",
+        "handoff_state", "evidence_readiness", "action_readiness",
+        "confidence", "confidence_basis", "summary", "content_hash",
+    )
+    missing = [field for field in required if _is_blank(frontmatter.get(field))]
+    if not body.strip():
+        missing.append("markdown_body")
+    if strict:
+        result["required_fields_missing"].extend(missing)
+    else:
+        result["warnings"].extend(f"missing {field}" for field in missing)
+
+    enum_fields = {
+        "handoff_state": HANDOFF_STATES,
+        "evidence_readiness": {"factual", "screen", "decision-grade", "insufficient"},
+        "action_readiness": {"research-only", "portfolio-review", "draft-eligible", "blocked"},
+        "confidence": {"low", "medium", "high"},
+    }
+    for field, allowed in enum_fields.items():
+        value = frontmatter.get(field)
+        if value not in (None, "") and value not in allowed:
+            issue = f"valid_{field}"
+            result["warnings"].append(f"{field} must be one of {sorted(allowed)}")
+            if strict:
+                result["required_fields_missing"].append(issue)
+
+    evidence = str(frontmatter.get("evidence_readiness") or "")
+    action = str(frontmatter.get("action_readiness") or "")
+    if action in {"portfolio-review", "draft-eligible"} and evidence != "decision-grade":
+        result["warnings"].append(f"{action} requires decision-grade evidence")
+        if strict:
+            result["required_fields_missing"].append("readiness_compatibility")
+
+    list_fields = (
+        "requirements", "input_artifact_ids", "source_snapshot_ids",
+        "dataset_ids", "calculation_run_ids", "missing_evidence",
+        "blocked_actions", "follow_up_requests",
+    )
+    for field in list_fields:
+        if field in frontmatter and not isinstance(frontmatter[field], list):
+            result["warnings"].append(f"{field} should be a list")
+            if strict:
+                result["required_fields_missing"].append(f"{field}.list")
+
+    forbidden = (
+        "input_artifact_hashes", "input_artifact_versions",
+        "source_snapshot_hashes", "dataset_manifest_hashes",
+        "calculation_run_hashes", "strategy_hash", "created_by", "role",
+        "workspace_native", "receipt_hmac",
+    )
+    present_forbidden = [field for field in forbidden if field in frontmatter]
+    if present_forbidden:
+        result["warnings"].append(
+            "receipt-only or duplicate fields present: " + ", ".join(present_forbidden)
+        )
+        if strict:
+            result["required_fields_missing"].append("compact_frontmatter")
+
+    result["decision_quality"] = {
+        "status": "pass" if not result["required_fields_missing"] else "fail",
+        "checks": ["artifact_v2_compact_envelope"],
+    }
 
 
 def _evaluate_follow_up_requests(frontmatter: dict[str, Any], result: dict[str, Any], *, strict: bool) -> None:

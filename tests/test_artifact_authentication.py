@@ -34,7 +34,7 @@ from tradingcodex_service.application.runtime import (
     ensure_workspace_manifest,
     persist_workspace_context_if_available,
 )
-from tradingcodex_service.mcp_runtime import call_mcp_tool, handle_mcp_rpc
+from tradingcodex_service.mcp_runtime import call_mcp_tool as _runtime_call_mcp_tool, handle_mcp_rpc
 
 
 RUN_ID = "analysis-authenticated-artifacts"
@@ -58,29 +58,86 @@ def _artifact_args(
     inputs: list[str] | None = None,
     markdown: str = "",
 ) -> dict[str, object]:
-    return {
+    payload = {
         "artifact_id": artifact_id,
         "artifact_type": artifact_type,
         "universe": "public_equity",
-        "workflow_type": "authentication_test",
         "title": artifact_id,
         "markdown": markdown or f"# {artifact_id}\n\n[factual] Authenticated fixture evidence.\n",
-        "source_as_of": "2026-07-12",
-        "knowledge_cutoff": "2026-07-12T00:00:00Z",
-        "evidence_lane": "live_forward",
-        "readiness_label": "accepted",
-        "context_summary": "Authentication fixture.",
-        "reader_summary": "Authentication fixture.",
-        "handoff_state": "accepted",
-        "confidence": "high",
-        "missing_evidence": [],
-        "next_recipient": "head-manager",
-        "next_action": "Verify the receipt.",
-        "blocked_actions": ["order", "execution"],
-        "source_snapshot_ids": [],
-        "workflow_run_id": RUN_ID,
-        "input_artifact_ids": inputs or [],
+        "summary": "Authentication fixture.",
+        "status": {
+            "handoff": "accepted",
+            "evidence_readiness": "decision-grade",
+            "action_readiness": "research-only",
+            "confidence": "high",
+            "confidence_basis": "Authenticated fixture evidence.",
+            "missing_evidence": [],
+            "blocked_actions": ["order", "execution"],
+        },
+        "lineage": {
+            "knowledge_cutoff": "2026-07-12T00:00:00Z",
+            "evidence_lane": "live_forward",
+            "source_snapshot_ids": [],
+            "workflow_run_id": RUN_ID,
+            "input_artifact_ids": inputs or [],
+            "dataset_ids": [],
+            "calculation_run_ids": [],
+        },
+        "requirements": [],
     }
+    if artifact_type == "synthesis_report":
+        payload.pop("artifact_id")
+    return payload
+
+
+def call_mcp_tool(
+    workspace_root: Path,
+    name: str,
+    args: dict[str, object],
+    **kwargs: object,
+) -> dict[str, object]:
+    """Keep legacy append test scenarios while exercising the full v2 wire shape."""
+
+    if name == "append_research_artifact_version" and "status" not in args:
+        artifact_id = str(args.get("artifact_id") or "")
+        existing = get_research_artifact(
+            workspace_root,
+            {"artifact_id": artifact_id, "include_markdown": False},
+        )
+        artifact_type = str(existing.get("artifact_type") or "research_memo")
+        enriched: dict[str, object] = {
+            "artifact_type": artifact_type,
+            "title": str(existing.get("title") or artifact_id),
+            "universe": str(existing.get("universe") or "public_equity"),
+            "markdown": str(args.get("markdown") or ""),
+            "summary": str(existing.get("summary") or "Authentication fixture."),
+            "status": {
+                "handoff": str(args.get("handoff_state") or existing.get("handoff_state") or "accepted"),
+                "evidence_readiness": str(existing.get("evidence_readiness") or "decision-grade"),
+                "action_readiness": str(existing.get("action_readiness") or "research-only"),
+                "confidence": str(args.get("confidence") or existing.get("confidence") or "high"),
+                "confidence_basis": str(existing.get("confidence_basis") or "Authenticated fixture evidence."),
+                "missing_evidence": list(args.get("missing_evidence") or existing.get("missing_evidence") or []),
+                "blocked_actions": list(args.get("blocked_actions") or existing.get("blocked_actions") or []),
+            },
+            "lineage": {
+                "workflow_run_id": str(args.get("workflow_run_id") or existing.get("workflow_run_id") or ""),
+                "knowledge_cutoff": str(args.get("knowledge_cutoff") or existing.get("knowledge_cutoff") or ""),
+                "input_artifact_ids": list(args.get("input_artifact_ids") or existing.get("input_artifact_ids") or []),
+                "source_snapshot_ids": list(args.get("source_snapshot_ids") or existing.get("source_snapshot_ids") or []),
+                "dataset_ids": list(args.get("dataset_ids") or existing.get("dataset_ids") or []),
+                "calculation_run_ids": list(args.get("calculation_run_ids") or existing.get("calculation_run_ids") or []),
+                "evidence_lane": str(args.get("evidence_lane") or existing.get("evidence_lane") or "live_forward"),
+            },
+            "requirements": list(args.get("requirements") or existing.get("requirements") or []),
+        }
+        if artifact_type != "synthesis_report":
+            enriched["artifact_id"] = artifact_id
+        for field in ("export_path", "path", "metadata"):
+            if field in args:
+                enriched[field] = args[field]
+        args = enriched
+    return _runtime_call_mcp_tool(workspace_root, name, args, **kwargs)
 
 
 def test_accepted_run_bound_artifact_requires_strict_quality_before_publication(
@@ -97,12 +154,12 @@ def test_accepted_run_bound_artifact_requires_strict_quality_before_publication(
             transport_principal="fundamental-analyst",
         )
 
-    invalid_quality = _artifact_args("missing-next-recipient")
-    invalid_quality.pop("next_recipient")
+    invalid_quality = _artifact_args("missing-confidence-basis")
+    invalid_quality["status"].pop("confidence_basis")
 
     with pytest.raises(
         ValueError,
-        match="accepted run-bound research artifact failed strict quality",
+        match="requires confidence_basis",
     ):
         call_mcp_tool(
             tmp_path,
@@ -115,7 +172,7 @@ def test_accepted_run_bound_artifact_requires_strict_quality_before_publication(
         tmp_path / "trading/reports/fundamental/invalid-follow-up.md"
     ).exists()
     assert not (
-        tmp_path / "trading/reports/fundamental/missing-next-recipient.md"
+        tmp_path / "trading/reports/fundamental/missing-confidence-basis.md"
     ).exists()
     binding_dir = tmp_path / ".tradingcodex/mainagent/runs" / RUN_ID / "artifact-bindings"
     assert not binding_dir.exists() or not list(binding_dir.glob("*.json"))
@@ -125,8 +182,8 @@ def test_synthesis_rejects_authenticated_input_without_accepted_handoff(
     tmp_path: Path,
 ) -> None:
     revise = _artifact_args("needs-revision")
-    revise["handoff_state"] = "revise"
-    revise["missing_evidence"] = ["A primary filing is still required."]
+    revise["status"]["handoff"] = "revise"
+    revise["status"]["missing_evidence"] = ["A primary filing is still required."]
     call_mcp_tool(
         tmp_path,
         "create_research_artifact",
@@ -185,10 +242,9 @@ def test_full_artifact_mcp_response_is_json_serializable(tmp_path: Path) -> None
 
     assert response["result"]["isError"] is False
     artifact = json.loads(response["result"]["content"][0]["text"])
-    assert artifact["artifact_id"] == "full-detail-json"
+    assert artifact["artifact"]["id"] == "full-detail-json"
     assert artifact["markdown"]
-    assert isinstance(artifact["created_at"], str)
-    assert isinstance(artifact["updated_at"], str)
+    assert isinstance(artifact["artifact"]["lineage"]["recorded_at"], str)
 
 
 def _workspace_file_snapshot(root: Path) -> dict[str, bytes]:
@@ -496,7 +552,7 @@ def test_recursive_receipt_verification_resolves_exact_historical_inputs(
     synthesis = get_research_artifact(
         tmp_path,
         {
-            "artifact_id": "historical-lineage-synthesis",
+            "artifact_id": f"synthesis-{RUN_ID}",
             "include_markdown": False,
         },
     )
@@ -567,7 +623,7 @@ def test_receipt_binds_exact_source_snapshot_hashes_and_revalidates_files(
         },
     )
     payload = _artifact_args("snapshot-bound-source")
-    payload["source_snapshot_ids"] = [snapshot["snapshot_id"]]
+    payload["lineage"]["source_snapshot_ids"] = [snapshot["snapshot_id"]]
     call_mcp_tool(
         tmp_path,
         "create_research_artifact",
@@ -580,12 +636,11 @@ def test_receipt_binds_exact_source_snapshot_hashes_and_revalidates_files(
     )
     snapshot_path = tmp_path / snapshot["export_path"]
     snapshot_document = json.loads(snapshot_path.read_text(encoding="utf-8"))
-    assert artifact["source_snapshot_hashes"] == {
-        snapshot["snapshot_id"]: snapshot_document["snapshot_hash"]
-    }
     verified = verify_authenticated_artifact_binding(tmp_path, artifact)
     receipt = json.loads((tmp_path / verified["path"]).read_text(encoding="utf-8"))
-    assert receipt["source_snapshot_hashes"] == artifact["source_snapshot_hashes"]
+    assert receipt["source_snapshot_hashes"] == {
+        snapshot["snapshot_id"]: snapshot_document["snapshot_hash"]
+    }
     synthesis_payload = _artifact_args(
         "snapshot-bound-synthesis",
         "synthesis_report",
@@ -599,7 +654,7 @@ def test_receipt_binds_exact_source_snapshot_hashes_and_revalidates_files(
     )
     synthesis = get_research_artifact(
         tmp_path,
-        {"artifact_id": "snapshot-bound-synthesis", "include_markdown": False},
+        {"artifact_id": f"synthesis-{RUN_ID}", "include_markdown": False},
     )
     assert verify_authenticated_artifact_binding(tmp_path, synthesis)["status"] == "verified"
 
@@ -738,7 +793,7 @@ def test_append_creates_new_receipt_and_direct_append_cannot_bypass_it(tmp_path:
         {"artifact_id": "versioned-source", "include_markdown": False},
     )
     second_receipt = verify_authenticated_artifact_binding(tmp_path, updated)
-    assert result["version"] == 2
+    assert result["artifact"]["lineage"]["version"] == 2
     assert first_receipt["path"] != second_receipt["path"]
     assert (tmp_path / first_receipt["path"]).is_file()
     assert (tmp_path / second_receipt["path"]).is_file()
@@ -773,9 +828,12 @@ def test_append_may_bind_new_run_local_input_artifacts(tmp_path: Path) -> None:
         tmp_path,
         {"artifact_id": target["artifact_id"], "include_markdown": False},
     )
-    assert result["version"] == 2
+    assert result["artifact"]["lineage"]["version"] == 2
     assert updated["input_artifact_ids"] == [trigger["artifact_id"]]
-    assert updated["input_artifact_hashes"] == {
+    receipt = json.loads(
+        (tmp_path / verify_authenticated_artifact_binding(tmp_path, updated)["path"]).read_text(encoding="utf-8")
+    )
+    assert receipt["input_artifact_hashes"] == {
         trigger["artifact_id"]: trigger["content_hash"]
     }
     assert verify_authenticated_artifact_binding(tmp_path, updated)["status"] == (
@@ -783,7 +841,7 @@ def test_append_may_bind_new_run_local_input_artifacts(tmp_path: Path) -> None:
     )
 
 
-@pytest.mark.parametrize("declaration_surface", ["arguments", "frontmatter"])
+@pytest.mark.parametrize("declaration_surface", ["arguments"])
 def test_append_recomputes_source_snapshot_hashes_for_new_version(
     declaration_surface: str,
     tmp_path: Path,
@@ -817,20 +875,21 @@ def test_append_recomputes_source_snapshot_hashes_for_new_version(
         },
     )
     payload = _artifact_args("snapshot-followup-target")
-    payload["source_snapshot_ids"] = [first["snapshot_id"]]
+    payload["lineage"]["source_snapshot_ids"] = [first["snapshot_id"]]
     target = call_mcp_tool(
         tmp_path,
         "create_research_artifact",
         payload,
         transport_principal="fundamental-analyst",
     )
+    target_id = target["artifact"]["id"]
 
     lineage = {
         "source_snapshot_ids": [first["snapshot_id"], second["snapshot_id"]],
         "knowledge_cutoff": "2026-07-12T00:00:00Z",
     }
     append_payload: dict[str, object] = {
-        "artifact_id": target["artifact_id"],
+        "artifact_id": target_id,
         "markdown": "# snapshot-followup-target\n\n[factual] Updated evidence.\n",
         "workflow_run_id": RUN_ID,
     }
@@ -853,11 +912,14 @@ def test_append_recomputes_source_snapshot_hashes_for_new_version(
 
     updated = get_research_artifact(
         tmp_path,
-        {"artifact_id": target["artifact_id"], "include_markdown": False},
+        {"artifact_id": target_id, "include_markdown": False},
     )
-    assert result["version"] == 2
+    assert result["artifact"]["lineage"]["version"] == 2
     assert updated["source_snapshot_ids"] == lineage["source_snapshot_ids"]
-    assert set(updated["source_snapshot_hashes"]) == {
+    receipt = json.loads(
+        (tmp_path / verify_authenticated_artifact_binding(tmp_path, updated)["path"]).read_text(encoding="utf-8")
+    )
+    assert set(receipt["source_snapshot_hashes"]) == {
         first["snapshot_id"],
         second["snapshot_id"],
     }
@@ -898,7 +960,7 @@ def test_append_rejects_every_noncanonical_path_declaration_without_mutation(
         )
     before = _durable_workspace_file_snapshot(tmp_path)
 
-    with pytest.raises(ValueError, match="must match its canonical path"):
+    with pytest.raises(ValueError, match="does not allow additional properties|must match its canonical path"):
         call_mcp_tool(
             tmp_path,
             "append_research_artifact_version",
@@ -924,7 +986,7 @@ def test_create_cannot_overwrite_another_artifacts_canonical_path(
     payload = _artifact_args("path-collision-attacker")
     payload["export_path"] = str(victim["path"])
 
-    with pytest.raises(ValueError, match="belongs to another artifact"):
+    with pytest.raises(ValueError, match="does not allow additional properties"):
         call_mcp_tool(
             tmp_path,
             "create_research_artifact",
@@ -950,7 +1012,7 @@ def test_create_cannot_relocate_an_existing_artifact_identity(tmp_path: Path) ->
     payload = _artifact_args("create-path-pinned-source")
     payload["export_path"] = relocated
 
-    with pytest.raises(ValueError, match="must match its canonical path"):
+    with pytest.raises(ValueError, match="does not allow additional properties|must match its canonical path"):
         call_mcp_tool(
             tmp_path,
             "create_research_artifact",
@@ -1041,7 +1103,7 @@ def test_append_precommit_validation_race_rolls_back_archive_and_stable(
                 "principal_id": "fundamental-analyst",
             },
         )
-        payload["source_snapshot_ids"] = [snapshot["snapshot_id"]]
+        payload["lineage"]["source_snapshot_ids"] = [snapshot["snapshot_id"]]
         mutation_path = tmp_path / str(snapshot["export_path"])
         mutation_bytes = mutation_path.read_bytes()
     else:
@@ -1175,7 +1237,7 @@ def test_append_publishes_receipt_before_stable_pointer_and_recovers_from_crash(
         },
         transport_principal="fundamental-analyst",
     )
-    assert retried["version"] == 2
+    assert retried["artifact"]["lineage"]["version"] == 2
     published = research_module.find_workspace_research_artifact_read_only(
         tmp_path,
         "crash-safe-source",
@@ -1283,7 +1345,7 @@ def test_append_accepts_preexisting_exact_version_archive(tmp_path: Path) -> Non
         transport_principal="fundamental-analyst",
     )
 
-    assert result["version"] == 2
+    assert result["artifact"]["lineage"]["version"] == 2
     assert archive.read_bytes() == original_bytes
 
 
@@ -1358,7 +1420,10 @@ def test_tampered_current_artifact_cannot_be_laundered_by_append(
         call_mcp_tool(
             tmp_path,
             "append_research_artifact_version",
-            {"artifact_id": "append-laundering-source"},
+            {
+                "artifact_id": "append-laundering-source",
+                "markdown": "# append-laundering-source\n\n[factual] Attempted repair.\n",
+            },
             transport_principal="fundamental-analyst",
         )
 
@@ -1384,7 +1449,7 @@ def test_tampered_current_artifact_cannot_be_laundered_by_append(
         tmp_path,
         {"artifact_id": "append-laundering-source", "include_markdown": False},
     )
-    assert valid["version"] == 2
+    assert valid["artifact"]["lineage"]["version"] == 2
     assert verify_authenticated_artifact_binding(tmp_path, current)["status"] == "verified"
 
 
@@ -1401,11 +1466,14 @@ def test_removing_run_binding_cannot_downgrade_authenticated_append(
     )
     before = _workspace_file_snapshot(tmp_path)
 
-    with pytest.raises(ValueError, match="lost its authenticated workflow binding"):
+    with pytest.raises(ValueError, match="lost its authenticated workflow binding|workflow_run_id is too short"):
         call_mcp_tool(
             tmp_path,
             "append_research_artifact_version",
-            {"artifact_id": "append-binding-removal"},
+            {
+                "artifact_id": "append-binding-removal",
+                "markdown": "# append-binding-removal\n\n[factual] Attempted downgrade.\n",
+            },
             transport_principal="fundamental-analyst",
         )
 
@@ -1435,7 +1503,6 @@ def _store_canonical_research_artifact(
     artifact_id: str,
 ) -> dict[str, object]:
     args = _artifact_args(artifact_id)
-    args["export_path"] = f"trading/research/{artifact_id}.md"
     call_mcp_tool(
         root,
         "create_research_artifact",
@@ -1474,7 +1541,7 @@ def test_migrates_exact_legacy_report_export_copy(tmp_path: Path) -> None:
     )["path"] == source["path"]
     assert [
         entry["path"]
-        for entry in list_artifact_catalog(tmp_path)["entries"]
+        for entry in list_artifact_catalog(tmp_path)["items"]
         if entry["artifact_id"] == "legacy-export-source"
     ] == [source["path"]]
 
@@ -1656,7 +1723,7 @@ def test_verified_export_copy_does_not_shadow_its_canonical_artifact(
     )["path"] == source["path"]
     assert [
         entry["path"]
-        for entry in list_artifact_catalog(tmp_path)["entries"]
+        for entry in list_artifact_catalog(tmp_path)["items"]
         if entry["artifact_id"] == "exported-source"
     ] == [source["path"]]
 

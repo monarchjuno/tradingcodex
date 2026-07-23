@@ -231,7 +231,10 @@ def bootstrap_workspace(
     existing_metadata = workspace_metadata_exists(target)
     validated_workspace: dict[str, Any] = {}
     if update:
-        validated_workspace = validate_generated_workspace(target)
+        validated_workspace = validate_generated_workspace(
+            target,
+            allow_previous_major=True,
+        )
     elif existing_metadata:
         raise ValueError(f"TradingCodex is already attached at {target}; use tcx update")
     elif target.exists() and not target_has_only_bootstrap_files(target):
@@ -1812,23 +1815,39 @@ def workspace_metadata_exists(target: Path) -> bool:
     return any((target / rel).exists() for rel in (".tradingcodex/workspace.json", ".tradingcodex/generated/module-lock.json"))
 
 
-def read_module_lock(target: Path, *, allow_newer: bool = False) -> dict[str, Any]:
+def read_module_lock(
+    target: Path,
+    *,
+    allow_newer: bool = False,
+    allow_previous_major: bool = False,
+) -> dict[str, Any]:
     path = target / ".tradingcodex" / "generated" / "module-lock.json"
     try:
         lock = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
-        raise ValueError(f"TradingCodex v1 module lock is missing: {path}") from exc
+        raise ValueError(f"TradingCodex module lock is missing: {path}") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise ValueError(f"TradingCodex module lock is invalid: {path}") from exc
-    _validate_module_lock(target, lock, allow_newer=allow_newer)
+    _validate_module_lock(
+        target,
+        lock,
+        allow_newer=allow_newer,
+        allow_previous_major=allow_previous_major,
+    )
     return lock
 
 
-def _validate_module_lock(target: Path, lock: Any, *, allow_newer: bool = False) -> None:
+def _validate_module_lock(
+    target: Path,
+    lock: Any,
+    *,
+    allow_newer: bool = False,
+    allow_previous_major: bool = False,
+) -> None:
     if not isinstance(lock, dict):
         raise ValueError("TradingCodex module lock must be an object")
     if lock.get("format") != MODULE_LOCK_FORMAT or lock.get("schema_version") != MODULE_LOCK_SCHEMA_VERSION:
-        raise ValueError("unsupported pre-v1 TradingCodex workspace; attach v1 to a clean workspace")
+        raise ValueError("unsupported pre-v1 TradingCodex workspace module lock; attach to a clean workspace")
     if set(lock) != MODULE_LOCK_FIELDS:
         raise ValueError("TradingCodex module lock fields do not match the v1 schema")
     if type(lock["schema_version"]) is not int:
@@ -1846,11 +1865,23 @@ def _validate_module_lock(target: Path, lock: Any, *, allow_newer: bool = False)
         raise ValueError("TradingCodex module lock version is invalid") from exc
     if str(parsed_workspace_version) != workspace_version:
         raise ValueError("TradingCodex module lock version must use canonical PEP 440 syntax")
+    supported_major_upgrade = (
+        allow_previous_major
+        and parsed_workspace_version.epoch == parsed_runtime_version.epoch
+        and parsed_workspace_version.major == 1
+        and parsed_runtime_version.major == 2
+    )
     if (
         parsed_workspace_version.epoch != parsed_runtime_version.epoch
-        or parsed_workspace_version.major != parsed_runtime_version.major
+        or (
+            parsed_workspace_version.major != parsed_runtime_version.major
+            and not supported_major_upgrade
+        )
     ):
-        raise ValueError("TradingCodex workspaces can only be updated within the same major version")
+        raise ValueError(
+            "TradingCodex workspaces can only be updated within the same major version "
+            "or through the supported v1-to-v2 transition"
+        )
     if parsed_workspace_version > parsed_runtime_version and not allow_newer:
         raise ValueError(
             f"TradingCodex workspace {workspace_version} is newer than runtime {TRADINGCODEX_VERSION}; "
@@ -1930,11 +1961,15 @@ def _is_canonical_generated_path(rel: str) -> bool:
     )
 
 
-def validate_generated_workspace(target: Path) -> dict[str, Any]:
+def validate_generated_workspace(
+    target: Path,
+    *,
+    allow_previous_major: bool = False,
+) -> dict[str, Any]:
     manifest = read_workspace_manifest(target)
     if not manifest:
         raise ValueError(f"Not a TradingCodex v1 workspace: {target}")
-    lock = read_module_lock(target)
+    lock = read_module_lock(target, allow_previous_major=allow_previous_major)
     if lock["workspace_id"] != manifest["workspace_id"]:
         raise ValueError("TradingCodex workspace manifest and module lock identities differ")
     return {"manifest": manifest, "module_lock": lock}

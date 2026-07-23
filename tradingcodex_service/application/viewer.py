@@ -16,6 +16,12 @@ from tradingcodex_service.application.agents import (
 from tradingcodex_service.application.codex_capabilities import list_codex_capabilities
 from tradingcodex_service.application.calculations import get_calculation_run, search_calculations
 from tradingcodex_service.application.datasets import get_dataset_manifest, profile_dataset, search_datasets
+from tradingcodex_service.application.decision_episodes import list_decision_episodes
+from tradingcodex_service.application.artifact_v2 import (
+    project_artifact,
+    project_authenticated_card,
+)
+from tradingcodex_service.application.artifact_bindings import verify_authenticated_artifact_binding
 from tradingcodex_service.application.brokers import list_broker_connections
 from tradingcodex_service.application.common import now_iso
 from tradingcodex_service.application.forecasting import calibration_report, list_forecasts
@@ -34,6 +40,7 @@ def viewer_snapshot(root: Path | str) -> dict[str, Any]:
     """Return the read-only workspace state used by the local web viewer."""
     root = Path(root).expanduser().resolve()
     sections: dict[str, dict[str, Any]] = {
+        "episodes": _section(lambda: list_decision_episodes(root, {"limit": 100})["items"]),
         "workspace": _section(
             lambda: {
                 "context": workspace_context_payload(root),
@@ -45,7 +52,12 @@ def viewer_snapshot(root: Path | str) -> dict[str, Any]:
         "skills": _section(lambda: skill_catalog(root)),
         "agents": _section(lambda: _agent_catalog(root)),
         "activity": _section(lambda: _recent_activity(root)),
-        "artifacts": _section(lambda: list_research_artifacts(root, {"limit": 100})["artifacts"]),
+        "artifacts": _section(
+            lambda: [
+                project_authenticated_card(root, item)
+                for item in list_research_artifacts(root, {"limit": 100})["artifacts"]
+            ]
+        ),
         "datasets": _section(lambda: search_datasets(root, {"limit": 100})["datasets"]),
         "calculations": _section(lambda: search_calculations(root, {"limit": 100})["calculations"]),
         "forecasts": _section(
@@ -121,12 +133,15 @@ def get_skill_detail(root: Path | str, skill_id: str) -> dict[str, Any]:
 def get_artifact_detail(root: Path | str, artifact_id: str) -> dict[str, Any]:
     artifact = get_research_artifact(root, {"artifact_id": artifact_id, "include_markdown": True})
     markdown = str(artifact.pop("markdown", ""))
+    if artifact.get("workflow_run_id"):
+        artifact["authentication"] = verify_authenticated_artifact_binding(root, artifact)
     preview = render_markdown_preview(
         markdown,
         source_file=str(artifact.get("path") or ""),
         source_label="research artifact",
     )
-    return _json_safe({**artifact, "preview": {"heading": preview.heading, "html": preview.html}})
+    detail = project_artifact({**artifact, "markdown": markdown}, include_markdown=True)
+    return _json_safe({**detail, "preview": {"heading": preview.heading, "html": preview.html}})
 
 
 def get_dataset_detail(root: Path | str, dataset_id: str) -> dict[str, Any]:

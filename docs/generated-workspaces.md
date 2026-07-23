@@ -20,7 +20,7 @@ binding load together. Start a new task after restart rather than resuming an
 already-open task, which can retain the prior generated hook snapshot.
 
 The template source tree may be refactored for maintainability, but generated
-output paths are the v1 release contract. Module ids, module dependency
+output paths are the current release contract. Module ids, module dependency
 resolution, and rendered paths such as `.codex/config.toml`, `.agents/skills/*`,
 `.tradingcodex/*`, `trading/*`, and `./tcx` must remain stable unless docs and
 tests intentionally change the generated workspace contract. The generated
@@ -256,9 +256,8 @@ Generated workspaces contain:
 - Codex-style operating style in the root `head-manager` prompt: scoped
   `AGENTS.md` handling, concise preambles, selective planning, exact safe
   workspace reads, native `apply_patch` edits, dirty-worktree respect, concise
-  maintenance handoffs, and brief chat replies that point to saved head-manager
-  synthesis reports once accepted artifacts exist without making the saved
-  research report shallow
+  maintenance handoffs, and self-contained user answers whose saved synthesis
+  link supplements rather than replaces the conclusion and evidence
 - instruction/skill separation: root `head-manager` instructions own identity,
   root coordination, durable root safety boundaries, fail-closed dispatch,
   skill routing, optional-skill management, and approved action boundaries;
@@ -390,12 +389,11 @@ Generated workspaces contain:
 - verification-budget copy is task-specific: native actions, connector, and
   strategy work verifies its own service or validation evidence instead of
   research source-freshness fields
-- context-efficient research handoffs: stored markdown frontmatter includes
-  `context_summary` so downstream roles can consume artifact paths and summaries
-  before opening full markdown; bounded name-only deferred-tool discovery plus
-  at most one selected schema avoids injecting whole provider catalogs or
-  multiple schemas into context; `reader_summary` and `next_action` keep the
-  first-read experience clear for non-expert users
+- context-efficient research handoffs: compact v2 frontmatter includes one
+  shared `summary`, two readiness axes, exact IDs, and only applicable blocks;
+  receipt-only hashes and run-context digests stay out of Markdown. Bounded
+  name-only deferred-tool discovery plus at most one selected schema avoids
+  injecting whole provider catalogs or multiple schemas into context
 - lightweight analysis run state:
   `.tradingcodex/mainagent/runs/<analysis-run-id>/run.json` stores only run
   identity, request hash/size, timestamps, and sealed strategy/Investor Context
@@ -646,9 +644,10 @@ a generated-file inventory. The module lock is an exact schema: it contains
 only `format`, `schema_version`, `generated_at`, `workspace_id`,
 `tradingcodex_version`, `tradingcodex_package_spec`, `tradingcodex_home`,
 `home_source`, `tradingcodex_db_path`, `db_source`, `modules`, and
-`generated_files`. Versions use canonical PEP 440 syntax and stay within the
-running package's major version; status inspection alone may read a newer
-same-major lock so it can direct the user to refresh the package. Module entries
+`generated_files`. Versions use canonical PEP 440 syntax. Routine updates stay
+within the running package's major version; the one explicit cross-major path is
+an authenticated v1 workspace updating to v2. Status inspection alone may read
+a newer same-major lock so it can direct the user to refresh the package. Module entries
 contain exactly `id`, `description`, and `capabilities` with unique ids.
 Generated-file records contain exactly a lowercase SHA-256 and an owner of
 `template` or `projection`. Timestamps must be timezone-aware, workspace ids use

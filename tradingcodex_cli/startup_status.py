@@ -116,7 +116,11 @@ def build_update_status(
 
     root = Path(workspace_root).expanduser().resolve()
     permission_status = permission_status or detect_codex_permission_status(root)
-    module_lock = read_module_lock(root, allow_newer=True)
+    module_lock = read_module_lock(
+        root,
+        allow_newer=True,
+        allow_previous_major=True,
+    )
     preference_path = tradingcodex_home() / UPDATE_PREFERENCES_REL
     preferences = _read_json(preference_path, {})
     workspace_version = str(module_lock["tradingcodex_version"])

@@ -285,6 +285,17 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     agent_toml = (workspace / ".codex" / "agents" / "fundamental-analyst.toml").read_text(encoding="utf-8")
     assert ".agents/skills/strategy-quality-income/SKILL.md" not in agent_toml
 
+    analysis_run = json.loads(
+        tcx(
+            workspace,
+            env_extra,
+            "workflow",
+            "begin",
+            "Record bounded NVDA evidence for the E2E scenario.",
+        ).stdout
+    )
+    workflow_run_id = analysis_run["workflow_run_id"]
+
     snapshot = json.loads(
         tcx(
             workspace,
@@ -317,68 +328,56 @@ def test_generated_workspace_codex_cli_user_scenario_matrix(tmp_path: Path) -> N
     assert snapshot["file_sot"] is True
     assert snapshot["export_path"].startswith("trading/research/source-snapshots/")
 
-    memo_path = workspace / "trading" / "research" / ".drafts" / "nvda-evidence.md"
-    memo_path.parent.mkdir(parents=True, exist_ok=True)
-    memo_path.write_text(
-        "---\nartifact_id: e2e-nvda-evidence-source\n---\n# NVDA Evidence\n\n[factual] Test evidence uses source/as-of metadata.\n",
-        encoding="utf-8",
-    )
+    artifact_request = {
+        "artifact_id": "e2e-nvda-evidence",
+        "artifact_type": "evidence_pack",
+        "title": "NVDA E2E Evidence",
+        "universe": "public_equity",
+        "symbol": "NVDA",
+        "markdown": "# NVDA Evidence\n\nTest evidence uses source/as-of metadata.\n",
+        "summary": "E2E source/as-of smoke evidence for downstream reuse.",
+        "status": {
+            "handoff": "accepted",
+            "evidence_readiness": "screen",
+            "action_readiness": "research-only",
+            "confidence": "medium",
+            "confidence_basis": "The source is authenticated but intentionally stale.",
+            "missing_evidence": ["updated filing snapshot"],
+            "blocked_actions": ["order_drafting"],
+        },
+        "lineage": {
+            "workflow_run_id": workflow_run_id,
+            "knowledge_cutoff": snapshot["known_at"],
+            "input_artifact_ids": [],
+            "source_snapshot_ids": [snapshot["snapshot_id"]],
+            "dataset_ids": [],
+            "calculation_run_ids": [],
+        },
+        "requirements": [],
+    }
     stored = json.loads(
         tcx(
             workspace,
             env_extra,
             "research",
             "create",
-            "--markdown-file",
-            "trading/research/.drafts/nvda-evidence.md",
-            "--artifact-id",
-            "e2e-nvda-evidence",
-            "--type",
-            "evidence_pack",
-            "--universe",
-            "public_equity",
-            "--symbol",
-            "NVDA",
-            "--title",
-            "NVDA E2E Evidence",
-            "--role",
-            "fundamental-analyst",
-            "--producer-role",
-            "fundamental-analyst",
-            "--source-as-of",
-            "2026-06-12T00:00:00Z",
-            "--readiness",
-            "research-grade",
-            "--context-summary",
-            "E2E source/as-of smoke evidence for downstream reuse.",
-            "--handoff-state",
-            "accepted",
-            "--confidence",
-            "medium",
-            "--missing-evidence",
-            "updated filing snapshot",
-            "--next-recipient",
-            "head-manager",
-            "--blocked-actions",
-            "order_drafting",
-            "--source-snapshot-ids",
-            snapshot["snapshot_id"],
-            "--knowledge-cutoff",
-            snapshot["known_at"],
+            "-",
             "--principal",
             "fundamental-analyst",
+            input_text=json.dumps(artifact_request),
         ).stdout
     )
-    assert stored["file_sot"] is True
-    assert stored["export_path"] == "trading/research/e2e-nvda-evidence.evidence.md"
-    assert json.loads(tcx(workspace, env_extra, "research", "search", "source/as-of").stdout)["artifacts"][0]["artifact_id"] == "e2e-nvda-evidence"
+    assert stored["artifact"]["id"] == "e2e-nvda-evidence"
+    assert stored["artifact"]["path"] == "trading/research/e2e-nvda-evidence.evidence.md"
+    search = json.loads(tcx(workspace, env_extra, "research", "search", "source/as-of").stdout)
+    assert search["items"][0]["id"] == "e2e-nvda-evidence"
     exported = json.loads(tcx(workspace, env_extra, "research", "export", "e2e-nvda-evidence", "--export-path", "trading/reports/fundamental/e2e-nvda.md").stdout)
     assert exported["export_path"] == "trading/reports/fundamental/e2e-nvda.md"
     quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/e2e-nvda-evidence.evidence.md").stdout)
     assert quality["status"] == "pass"
     strict_quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/e2e-nvda-evidence.evidence.md", "--strict").stdout)
     assert strict_quality["status"] == "pass"
-    assert strict_quality["context_efficiency"]["context_summary_present"] is True
+    assert strict_quality["artifact_schema_version"] == 2
     bad_json_path = workspace / "trading" / "research" / "bad.json"
     bad_json_path.write_text("{", encoding="utf-8")
     bad_quality = json.loads(tcx(workspace, env_extra, "quality-check", "trading/research/bad.json", expect_ok=False).stdout)
@@ -456,6 +455,22 @@ def test_long_multi_subagent_artifacts_keep_context_compact_without_lifecycle_st
     for round_index, (prompt, roles) in enumerate(scenarios, start=1):
         context = hook_context(workspace, prompt, env_extra)
         assert context is None
+        workflow_run_id = f"analysis-long-context-{round_index}"
+        tcx(
+            workspace,
+            env_extra,
+            "mcp",
+            "call",
+            "begin_analysis_run",
+            "--principal",
+            "head-manager",
+            json.dumps(
+                {
+                    "request": prompt,
+                    "workflow_run_id": workflow_run_id,
+                }
+            ),
+        )
 
         for role in roles:
             artifact_id = f"long-{round_index}-{role}"
@@ -475,45 +490,38 @@ def test_long_multi_subagent_artifacts_keep_context_compact_without_lifecycle_st
                     "create_research_artifact",
                     "--principal",
                     role,
-                    "--artifact-id",
-                    artifact_id,
-                    "--artifact-type",
-                    "evidence_pack",
-                    "--universe",
-                    "public_equity",
-                    "--symbol",
-                    "NVDA",
-                    "--role",
-                    role,
-                    "--title",
-                    f"{role} long context smoke",
-                    "--markdown",
-                    markdown,
-                    "--source-as-of",
-                    "2026-06-17",
-                    "--readiness",
-                    "research-grade",
-                    "--context-summary",
-                    f"{role} round {round_index} compact summary for downstream reuse.",
-                    "--reader-summary",
-                    f"{role} round {round_index} first-read summary for a non-expert user.",
-                    "--next-action",
-                    "Return to head-manager synthesis; do not draft or execute orders from this artifact alone.",
-                    "--handoff-state",
-                    "accepted",
-                    "--confidence",
-                    "medium",
-                    "--missing-evidence",
-                    "[]",
-                    "--next-recipient",
-                    "head-manager",
-                    "--blocked-actions",
-                    '["order_drafting","execution"]',
-                    "--source-snapshot-ids",
-                    "[]",
+                    json.dumps(
+                        {
+                            "artifact_id": artifact_id,
+                            "artifact_type": "evidence_pack",
+                            "universe": "public_equity",
+                            "symbol": "NVDA",
+                            "title": f"{role} long context smoke",
+                            "markdown": markdown,
+                            "summary": f"{role} round {round_index} compact summary for downstream reuse.",
+                            "status": {
+                                "handoff": "accepted",
+                                "evidence_readiness": "factual",
+                                "action_readiness": "research-only",
+                                "confidence": "medium",
+                                "confidence_basis": "Authenticated bounded role evidence.",
+                                "missing_evidence": [],
+                                "blocked_actions": ["order_drafting", "execution"],
+                            },
+                            "lineage": {
+                                "workflow_run_id": workflow_run_id,
+                                "knowledge_cutoff": "2026-06-17T00:00:00Z",
+                                "input_artifact_ids": [],
+                                "source_snapshot_ids": [],
+                                "dataset_ids": [],
+                                "calculation_run_ids": [],
+                            },
+                            "requirements": [],
+                        }
+                    ),
                 ).stdout
             )
-            assert stored["export_path"] == f"trading/research/{artifact_id}.evidence.md"
+            assert stored["artifact"]["path"] == f"trading/research/{artifact_id}.evidence.md"
             created_artifacts += 1
 
     assert created_artifacts

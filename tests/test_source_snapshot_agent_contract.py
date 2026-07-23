@@ -203,7 +203,7 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     assert "Treat\nOpenBB as access to its returned provider" in source_gate
     assert "Secondary does not mean screen-only" in source_gate
     assert "do not require a fixed source count" in source_gate
-    assert "Use `ready-for-portfolio-risk` when every\nconclusion-driving claim" in source_gate
+    assert "Use `evidence_readiness: decision-grade` when every\nconclusion-driving claim" in source_gate
     assert "not merely because a primary source is\nabsent" in source_gate
     assert "latest completed period can be the current usable anchor" in source_gate
     assert "convert epoch values\nexactly once" in source_gate
@@ -225,7 +225,7 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
 
     artifact_cutoff = TOOL_REGISTRY["create_research_artifact"].input_schema[
         "properties"
-    ]["knowledge_cutoff"]["description"]
+    ]["lineage"]["properties"]["knowledge_cutoff"]["description"]
     assert "explicit timezone" in artifact_cutoff
     assert "maximum service-returned snapshot known_at" in artifact_cutoff
     assert "must not be later than the service receipt time" in artifact_cutoff

@@ -6,6 +6,8 @@ import os
 import re
 import secrets
 import stat
+import json
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +34,7 @@ from tradingcodex_service.application.runtime import (
 )
 
 
-ARTIFACT_BINDING_SCHEMA_VERSION = 3
+ARTIFACT_BINDING_SCHEMA_VERSION = 4
 ARTIFACT_BINDING_DIR = "artifact-bindings"
 ARTIFACT_BINDING_SIGNING_KEY_FILE = "artifact-receipt-signing.key"
 ARTIFACT_BINDING_SIGNATURE_ALGORITHM = "hmac-sha256"
@@ -79,7 +81,8 @@ ARTIFACT_BINDING_FIELDS_V3 = ARTIFACT_BINDING_FIELDS_V2 | {
     "dataset_ids",
     "dataset_manifest_hashes",
 }
-ARTIFACT_BINDING_FIELDS = ARTIFACT_BINDING_FIELDS_V3
+ARTIFACT_BINDING_FIELDS_V4 = ARTIFACT_BINDING_FIELDS_V3 | {"memory_ref_hashes"}
+ARTIFACT_BINDING_FIELDS = ARTIFACT_BINDING_FIELDS_V4
 _AUTHENTICATED_SERVICE_BINDING_WRITE = object()
 _PENDING_AUTHENTICATED_ARTIFACT_WRITE = object()
 _HISTORICAL_ARCHIVE_VERIFICATION = object()
@@ -209,12 +212,31 @@ def verify_authenticated_artifact_binding(
     _require_regular_workspace_path(root, path.relative_to(root), require_file=True)
     _validate_receipt_signature(root, receipt, path)
     verified_artifact = artifact
+    if int(artifact.get("artifact_schema_version") or 1) >= 2:
+        run_lineage = (
+            receipt.get("run_lineage")
+            if isinstance(receipt.get("run_lineage"), dict)
+            else {}
+        )
+        verified_artifact = {
+            **artifact,
+            **run_lineage,
+            "role": receipt.get("role", artifact.get("producer_role", "")),
+            "producer_role": receipt.get("producer_role", artifact.get("producer_role", "")),
+            "created_by": receipt.get("created_by", ""),
+            "recorded_at": receipt.get("artifact_recorded_at", artifact.get("recorded_at", "")),
+            "input_artifact_hashes": receipt.get("input_artifact_hashes", {}),
+            "source_snapshot_hashes": receipt.get("source_snapshot_hashes", {}),
+            "dataset_manifest_hashes": receipt.get("dataset_manifest_hashes", {}),
+            "calculation_run_hashes": receipt.get("calculation_run_hashes", {}),
+            "calculation_reuse_origins": receipt.get("calculation_reuse_origins", {}),
+        }
     if (
         artifact.get("_historical_archive_verification")
         is _HISTORICAL_ARCHIVE_VERIFICATION
     ):
         verified_artifact = {
-            **artifact,
+            **verified_artifact,
             "_receipt_artifact_path": receipt["artifact_path"],
         }
     material = _expected_receipt_material(
@@ -225,7 +247,7 @@ def verify_authenticated_artifact_binding(
     )
     expected = _seal_receipt(root, material, create_signing_key=False)
     _validate_receipt(root, receipt, expected, path)
-    return {
+    verification = {
         "status": "verified",
         "path": path.relative_to(root).as_posix(),
         "receipt_hash": receipt["receipt_hash"],
@@ -233,6 +255,15 @@ def verify_authenticated_artifact_binding(
         "producer_role": receipt["producer_role"],
         "run_record_hash": receipt["run_record_hash"],
     }
+    if int(receipt.get("schema_version") or 1) >= 4:
+        verification["run_lineage"] = dict(receipt.get("run_lineage") or {})
+        verification["input_artifact_hashes"] = dict(
+            receipt.get("input_artifact_hashes") or {}
+        )
+        verification["input_artifact_versions"] = dict(
+            receipt.get("input_artifact_versions") or {}
+        )
+    return verification
 
 
 def verify_current_artifact_binding_before_append(
@@ -563,8 +594,10 @@ def _expected_receipt_material(
             "authenticated artifact calculation reuse origins must match current runs"
         )
     has_data_lineage = bool(dataset_ids)
-    if has_data_lineage:
+    if artifact_schema_version >= 2:
         receipt_schema_version = ARTIFACT_BINDING_SCHEMA_VERSION
+    elif has_data_lineage:
+        receipt_schema_version = 3
     elif normalized_calculation_run_ids:
         receipt_schema_version = 2
     else:
@@ -598,7 +631,13 @@ def _expected_receipt_material(
         "run_lineage": {field: artifact.get(field) for field in RUN_LINEAGE_FIELDS},
         "signature_algorithm": ARTIFACT_BINDING_SIGNATURE_ALGORITHM,
     }
-    if normalized_calculation_run_ids or has_data_lineage:
+    if artifact_schema_version >= 2:
+        receipt["memory_ref_hashes"] = _memory_ref_hashes(
+            root,
+            artifact.get("memory"),
+            str(artifact.get("knowledge_cutoff") or ""),
+        )
+    if artifact_schema_version >= 2 or normalized_calculation_run_ids or has_data_lineage:
         receipt.update(
             {
                 "calculation_run_ids": normalized_calculation_run_ids,
@@ -612,7 +651,7 @@ def _expected_receipt_material(
                 },
             }
         )
-    if has_data_lineage:
+    if artifact_schema_version >= 2 or has_data_lineage:
         receipt.update(
             {
                 "dataset_ids": list(dataset_ids),
@@ -627,6 +666,71 @@ def _expected_receipt_material(
     if not receipt["created_by"] or not receipt["artifact_recorded_at"]:
         raise ValueError("authenticated artifact binding requires creator and recorded_at")
     return receipt
+
+
+def _memory_ref_hashes(root: Path, memory: Any, artifact_cutoff: str) -> dict[str, str]:
+    if memory in (None, {}):
+        return {}
+    if not isinstance(memory, dict):
+        raise ValueError("artifact memory must be an object")
+    cutoff = _receipt_datetime(str(memory.get("cutoff") or ""), "memory cutoff")
+    if artifact_cutoff and cutoff > _receipt_datetime(artifact_cutoff, "artifact knowledge_cutoff"):
+        raise ValueError("memory cutoff must not exceed artifact knowledge_cutoff")
+    refs = memory.get("refs")
+    if not isinstance(refs, list) or not refs:
+        raise ValueError("artifact memory refs must be a non-empty array")
+    hashes: dict[str, str] = {}
+    for raw in refs:
+        if not isinstance(raw, dict):
+            raise ValueError("artifact memory refs must contain objects")
+        kind = str(raw.get("kind") or "")
+        ref_id = str(raw.get("id") or "")
+        if kind == "judgment_snapshot":
+            from tradingcodex_service.application.judgments import get_judgment_snapshot
+
+            record = get_judgment_snapshot(root, ref_id)["judgment_snapshot"]
+            digest = str(record.get("snapshot_hash") or "")
+            known_at = str(record.get("recorded_at") or "")
+        elif kind == "decision_snapshot":
+            from tradingcodex_service.application.decision_packages import verify_decision_snapshot
+
+            record = verify_decision_snapshot(root, ref_id)["decision_snapshot"]
+            digest = str(record.get("snapshot_hash") or "")
+            known_at = str(record.get("recorded_at") or record.get("created_at") or "")
+        elif kind == "postmortem":
+            from tradingcodex_service.application.postmortems import get_postmortem
+
+            record = get_postmortem(root, ref_id)["postmortem"]
+            digest = str(record.get("report_hash") or "")
+            known_at = str(record.get("known_at") or record.get("recorded_at") or "")
+        elif kind == "lesson":
+            from tradingcodex_service.application.postmortems import verified_lesson_records
+
+            record = next(
+                (item for item in verified_lesson_records(root) if item.get("lesson_id") == ref_id),
+                None,
+            )
+            if record is None:
+                raise ValueError(f"memory lesson reference is unavailable: {ref_id}")
+            digest = str(record.get("lesson_event_hash") or "")
+            known_at = str(record.get("known_at") or record.get("recorded_at") or "")
+        else:
+            raise ValueError(f"unsupported memory reference kind: {kind}")
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError(f"memory reference has no canonical hash: {kind}:{ref_id}")
+        if known_at and _receipt_datetime(known_at, f"memory ref {kind}:{ref_id} known_at") > cutoff:
+            raise ValueError(f"memory reference was not known at cutoff: {kind}:{ref_id}")
+        hashes[f"{kind}:{ref_id}"] = digest
+    return {key: hashes[key] for key in sorted(hashes)}
+
+def _receipt_datetime(value: str, field: str) -> datetime:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError(f"{field} must be RFC 3339") from exc
+    if parsed.tzinfo is None:
+        raise ValueError(f"{field} must include timezone")
+    return parsed
 
 
 def _seal_receipt(
@@ -748,8 +852,10 @@ def _receipt_fields_for_schema(schema_version: Any) -> set[str]:
         return ARTIFACT_BINDING_FIELDS_V1
     if schema_version == 2:
         return ARTIFACT_BINDING_FIELDS_V2
-    if schema_version == ARTIFACT_BINDING_SCHEMA_VERSION:
+    if schema_version == 3:
         return ARTIFACT_BINDING_FIELDS_V3
+    if schema_version == ARTIFACT_BINDING_SCHEMA_VERSION:
+        return ARTIFACT_BINDING_FIELDS_V4
     return set()
 
 

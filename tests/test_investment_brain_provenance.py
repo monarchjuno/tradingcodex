@@ -15,9 +15,9 @@ from tradingcodex_service.application.analysis_runs import (
     begin_analysis_run,
     explicit_investment_brain_invocation,
 )
-from tradingcodex_service.application.decision_packages import (
-    get_decision_snapshot,
-    record_decision_snapshot,
+from tradingcodex_service.application.judgments import (
+    get_judgment_snapshot,
+    record_judgment_snapshot,
 )
 from tradingcodex_service.application.investment_brains import (
     install_investment_brain,
@@ -89,29 +89,36 @@ def brain_workspace(tmp_path: Path) -> tuple[Path, dict[str, object]]:
 
 
 def _research_args(artifact_id: str, artifact_type: str, run_id: str, *, inputs: list[str]) -> dict[str, object]:
-    return {
+    request: dict[str, object] = {
         "artifact_id": artifact_id,
         "artifact_type": artifact_type,
         "universe": "public_equity",
-        "workflow_type": "investment_research",
         "title": artifact_id.replace("-", " ").title(),
         "markdown": f"# {artifact_id}\n\n[factual] Bounded fixture evidence for lineage verification.\n",
-        "source_as_of": "2026-07-12",
-        "knowledge_cutoff": "2026-07-12T00:00:00Z",
-        "evidence_lane": "live_forward",
-        "readiness_label": "accepted",
-        "context_summary": "Bounded lineage fixture.",
-        "reader_summary": "Lineage fixture.",
-        "handoff_state": "accepted",
-        "confidence": "high",
-        "missing_evidence": [],
-        "next_recipient": "head-manager",
-        "next_action": "Review the recorded lineage.",
-        "blocked_actions": ["order", "execution"],
-        "source_snapshot_ids": [],
-        "workflow_run_id": run_id,
-        "input_artifact_ids": inputs,
+        "summary": "Bounded lineage fixture.",
+        "status": {
+            "handoff": "accepted",
+            "evidence_readiness": "decision-grade",
+            "action_readiness": "research-only",
+            "confidence": "high",
+            "confidence_basis": "Authenticated bounded lineage evidence.",
+            "missing_evidence": [],
+            "blocked_actions": ["order", "execution"],
+        },
+        "lineage": {
+            "workflow_run_id": run_id,
+            "knowledge_cutoff": "2026-07-12T00:00:00Z",
+            "evidence_lane": "live_forward",
+            "input_artifact_ids": inputs,
+            "source_snapshot_ids": [],
+            "dataset_ids": [],
+            "calculation_run_ids": [],
+        },
+        "requirements": [],
     }
+    if artifact_type == "synthesis_report":
+        request.pop("artifact_id")
+    return request
 
 
 def test_explicit_brain_invocation_is_exact_and_single() -> None:
@@ -254,23 +261,24 @@ def test_artifacts_and_decision_memory_derive_immutable_brain_lineage(
         _research_args("brain-synthesis", "synthesis_report", run_id, inputs=["brain-source"]),
         transport_principal="head-manager",
     )
-    assert producer["status"] == "stored"
-    assert synthesis["status"] == "stored"
+    assert producer["artifact"]["id"] == "brain-source"
+    assert synthesis["artifact"]["id"] == f"synthesis-{run_id}"
     stored = call_mcp_tool(
         workspace,
         "get_research_artifact",
-        {"artifact_id": "brain-synthesis", "include_markdown": False},
+        {"artifact_id": f"synthesis-{run_id}", "include_markdown": False},
         transport_principal="head-manager",
     )
-    assert stored["investment_brain_id"] == BRAIN_ID
-    assert stored["investment_brain_version"] == "1.2.3"
-    assert stored["investment_brain_content_digest"] == installed["content_digest"]
-    assert stored["strategy_name"] == ""
-    assert stored["investor_context_applied"] is False
+    brain = stored["artifact"]["lineage"]["investment_brain"]
+    assert brain["id"] == BRAIN_ID
+    assert brain["version"] == "1.2.3"
+    assert brain["content_digest"] == installed["content_digest"]
+    assert "strategy" not in stored["artifact"]["lineage"]
+    assert "investor_context" not in stored["artifact"]["lineage"]
 
     forged = _research_args("brain-forged", "research_memo", run_id, inputs=[])
     forged["investment_brain_version"] = "9.9.9"
-    with pytest.raises(ValueError, match="service-derived"):
+    with pytest.raises(ValueError, match="does not allow additional properties"):
         call_mcp_tool(
             workspace,
             "create_research_artifact",
@@ -278,24 +286,17 @@ def test_artifacts_and_decision_memory_derive_immutable_brain_lineage(
             transport_principal="fundamental-analyst",
         )
 
-    snapshot = record_decision_snapshot(
+    snapshot = record_judgment_snapshot(
         workspace,
         {
-            "decision_id": "brain-decision",
+            "judgment_id": "brain-judgment",
             "workflow_run_id": run_id,
-            "decision_artifact_path": stored["path"],
-            "knowledge_cutoff": stored["knowledge_cutoff"],
-            "decided_at": stored["recorded_at"],
             "created_by": "head-manager",
-            "evidence_lane": "live_forward",
             "forecast_block_reason": "No forecast was required for this lineage fixture.",
         },
-    )["decision_snapshot"]
-    brain_ref = snapshot["investment_brain_ref"]
-    assert brain_ref["brain_id"] == BRAIN_ID
-    assert brain_ref["version"] == "1.2.3"
-    assert brain_ref["content_digest"] == installed["content_digest"]
-    assert get_decision_snapshot(workspace, "brain-decision")["verification_status"] == "verified"
+    )["judgment_snapshot"]
+    assert snapshot["run_context"]["investment_brain_content_digest"] == installed["content_digest"]
+    assert get_judgment_snapshot(workspace, "brain-judgment")["verification_status"] == "verified"
 
 
 def test_generated_hook_leaves_explicit_brain_binding_to_analysis_run(

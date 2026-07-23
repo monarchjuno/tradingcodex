@@ -10,6 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from tradingcodex_service.application.common import atomic_write_text, exclusive_file_lock, file_hash, now_iso, safe_workspace_path, sanitize_id, stable_hash
+from tradingcodex_service.application.artifact_v2 import (
+    ARTIFACT_SCHEMA_VERSION,
+    compact_frontmatter,
+)
 from tradingcodex_service.application.markdown_preview import split_markdown_frontmatter
 from tradingcodex_service.application.research_specs import EVIDENCE_LANES
 from tradingcodex_service.application.runtime import (
@@ -303,9 +307,9 @@ def list_workflow_artifacts(
             "workflow_type",
             "workflow_run_id",
             "symbol",
-            "readiness_label",
+            "evidence_readiness",
+            "action_readiness",
             "handoff_state",
-            "created_by",
             "producer_role",
             "limit",
             "detail_level",
@@ -332,6 +336,13 @@ def list_workflow_artifacts(
 
 def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -> dict[str, Any]:
     root = Path(workspace_root)
+    if (
+        any(field in args for field in ("status", "lineage", "requirements", "memory"))
+        and args.get("_service_authority") is not _AUTHENTICATED_SERVICE_WRITE
+    ):
+        raise PermissionError(
+            "v2 research artifacts require an authenticated TradingCodex MCP principal"
+        )
     if "created_by" in args:
         raise ValueError("created_by is derived from principal_id")
     markdown = args.get("markdown")
@@ -351,7 +362,13 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
     if not universe:
         raise ValueError("research artifact universe is required")
     content_hash = hashlib.sha256(markdown_body.encode("utf-8")).hexdigest()
-    artifact_id = str(args.get("artifact_id") or source_frontmatter.get("artifact_id") or f"{sanitize_id(artifact_type)}-{sanitize_id(symbol or title)}-{content_hash[:12]}")
+    workflow_run_id = str(
+        args.get("workflow_run_id") or source_frontmatter.get("workflow_run_id") or ""
+    ).strip()
+    if artifact_type == "synthesis_report" and workflow_run_id:
+        artifact_id = f"synthesis-{workflow_run_id}"
+    else:
+        artifact_id = str(args.get("artifact_id") or source_frontmatter.get("artifact_id") or f"{sanitize_id(artifact_type)}-{sanitize_id(symbol or title)}-{content_hash[:12]}")
     metadata = args.get("metadata") if isinstance(args.get("metadata"), dict) else {}
     if args.get("role") and not metadata.get("role"):
         metadata = {**metadata, "role": args.get("role")}
@@ -403,12 +420,16 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
         )
         requested_export_path = canonical_existing_path
     else:
-        requested_export_path = str(
-            args.get("export_path")
-            or default_research_export_path_from_values(
-                artifact_id,
-                artifact_type,
-                metadata,
+        requested_export_path = (
+            f"trading/reports/head-manager/{artifact_id}.md"
+            if artifact_type == "synthesis_report" and workflow_run_id
+            else str(
+                args.get("export_path")
+                or default_research_export_path_from_values(
+                    artifact_id,
+                    artifact_type,
+                    metadata,
+                )
             )
         )
     path = safe_workspace_path(
@@ -449,6 +470,10 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
         "reader_summary": _frontmatter_value(args, metadata, source_frontmatter, "reader_summary", ""),
         "handoff_state": _frontmatter_value(args, metadata, source_frontmatter, "handoff_state", ""),
         "confidence": _frontmatter_value(args, metadata, source_frontmatter, "confidence", ""),
+        "confidence_basis": _frontmatter_value(args, metadata, source_frontmatter, "confidence_basis", ""),
+        "summary": _frontmatter_value(args, metadata, source_frontmatter, "summary", ""),
+        "evidence_readiness": _frontmatter_value(args, metadata, source_frontmatter, "evidence_readiness", ""),
+        "action_readiness": _frontmatter_value(args, metadata, source_frontmatter, "action_readiness", ""),
         "missing_evidence": _frontmatter_list(args, metadata, source_frontmatter, "missing_evidence"),
         "next_recipient": _frontmatter_value(args, metadata, source_frontmatter, "next_recipient", ""),
         "next_action": _frontmatter_value(args, metadata, source_frontmatter, "next_action", ""),
@@ -540,6 +565,12 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
             {},
         ),
         "knowledge_cutoff": _frontmatter_value(args, metadata, source_frontmatter, "knowledge_cutoff", existing.get("knowledge_cutoff") if existing else ""),
+        "requirements": _frontmatter_list(args, metadata, source_frontmatter, "requirements"),
+        "decision_quality": _frontmatter_value(args, metadata, source_frontmatter, "decision_quality", {}),
+        "memory": _frontmatter_value(args, metadata, source_frontmatter, "memory", {}),
+        "forecast": _frontmatter_value(args, metadata, source_frontmatter, "forecast", {}),
+        "valuation": _frontmatter_value(args, metadata, source_frontmatter, "valuation", {}),
+        "anti_overfit": _frontmatter_value(args, metadata, source_frontmatter, "anti_overfit", {}),
         "follow_up_requests": _frontmatter_list(args, metadata, source_frontmatter, "follow_up_requests"),
         "improvements": _frontmatter_list(args, metadata, source_frontmatter, "improvements"),
         "version": 1,
@@ -730,8 +761,17 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
                         archive,
                         current_bytes,
                     )
-            rendered_artifact = _render_research_markdown(frontmatter, markdown_body)
-            if run_bound and frontmatter.get("handoff_state") == "accepted":
+            rendered_frontmatter = (
+                compact_frontmatter(frontmatter)
+                if int(frontmatter.get("artifact_schema_version") or 1) >= ARTIFACT_SCHEMA_VERSION
+                else frontmatter
+            )
+            rendered_artifact = _render_research_markdown(rendered_frontmatter, markdown_body)
+            if (
+                run_bound
+                and frontmatter.get("handoff_state") == "accepted"
+                and int(frontmatter.get("artifact_schema_version") or 1) < ARTIFACT_SCHEMA_VERSION
+            ):
                 from tradingcodex_service.application.artifact_quality import (
                     evaluate_artifact_quality_text,
                 )
@@ -771,10 +811,19 @@ def create_research_artifact(workspace_root: Path | str, args: dict[str, Any]) -
             if run_bound:
                 from tradingcodex_service.application import artifact_bindings
 
-                stored_artifact = _artifact_binding_payload_from_rendered(
-                    root,
-                    path,
-                    rendered_artifact,
+                stored_artifact = (
+                    _artifact_binding_payload_from_internal_envelope(
+                        root,
+                        path,
+                        rendered_artifact,
+                        frontmatter,
+                    )
+                    if int(frontmatter.get("artifact_schema_version") or 1) >= ARTIFACT_SCHEMA_VERSION
+                    else _artifact_binding_payload_from_rendered(
+                        root,
+                        path,
+                        rendered_artifact,
+                    )
                 )
                 authorized_artifact = (
                     artifact_bindings.authenticated_service_artifact_binding_args(
@@ -895,6 +944,28 @@ def _artifact_binding_payload_from_rendered(
         "investor_context_hash": str(
             frontmatter.get("investor_context_hash") or ""
         ),
+    }
+    _validate_stored_research_artifact_data_lineage(root, payload)
+    return payload
+
+
+def _artifact_binding_payload_from_internal_envelope(
+    root: Path,
+    path: Path,
+    rendered_artifact: str,
+    envelope: dict[str, Any],
+) -> dict[str, Any]:
+    """Build v2 receipt material without rehydrating receipt-only data from Markdown."""
+
+    document = split_markdown_frontmatter(rendered_artifact)
+    body_hash = hashlib.sha256(document.body.encode("utf-8")).hexdigest()
+    if str(envelope.get("content_hash") or "") != body_hash:
+        raise ValueError("intended research artifact content_hash does not match its body")
+    payload = {
+        **envelope,
+        "path": path.relative_to(root).as_posix(),
+        "export_path": path.relative_to(root).as_posix(),
+        "content_hash": body_hash,
     }
     _validate_stored_research_artifact_data_lineage(root, payload)
     return payload
@@ -1326,14 +1397,23 @@ def list_research_artifacts(workspace_root: Path | str, args: dict[str, Any] | N
         "workflow_type",
         "workflow_run_id",
         "symbol",
-        "readiness_label",
         "handoff_state",
-        "created_by",
         "producer_role",
     ]:
         value = args.get(field)
         if value:
             artifacts = [artifact for artifact in artifacts if str(artifact.get(field) or "").lower() == str(value).lower()]
+    for field in ("evidence_readiness", "action_readiness"):
+        value = args.get(field)
+        if value:
+            from tradingcodex_service.application.artifact_v2 import project_artifact
+
+            artifacts = [
+                artifact
+                for artifact in artifacts
+                if str(project_artifact(artifact)["artifact"]["status"].get(field) or "").casefold()
+                == str(value).casefold()
+            ]
     limit = max(1, min(int(args.get("limit") or 50), 200))
     detail_level = str(args.get("detail_level") or "full").strip().lower()
     if detail_level not in {"full", "card"}:
@@ -1946,10 +2026,6 @@ def list_workspace_research_artifacts(root: Path, *, include_markdown: bool = Fa
             path = safe_workspace_path(root, entry["path"], allowed_roots=RESEARCH_FILE_ROOTS)
             payload["markdown"] = _read_research_markdown_body(path)
         records.append(payload)
-    if not records:
-        diagnostics = research_repository_diagnostics(root)
-        if diagnostics:
-            raise ValueError(str(diagnostics[0]["error"]))
     return sorted(records, key=lambda item: item["updated_at"], reverse=True)
 
 
@@ -2101,7 +2177,8 @@ def _refresh_research_index(root: Path) -> dict[str, dict[str, Any]]:
 def _indexed_payload(root: Path, entry: dict[str, Any]) -> dict[str, Any]:
     raw = entry.get("payload") if isinstance(entry.get("payload"), dict) else {}
     payload = dict(raw)
-    _validate_stored_research_artifact_data_lineage(root, payload)
+    if int(payload.get("artifact_schema_version") or 1) < ARTIFACT_SCHEMA_VERSION:
+        _validate_stored_research_artifact_data_lineage(root, payload)
     payload["workspace_context"] = workspace_context_payload(root)
     return payload
 
@@ -2695,6 +2772,10 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "reader_summary": str(frontmatter.get("reader_summary") or ""),
         "handoff_state": str(frontmatter.get("handoff_state") or ""),
         "confidence": str(frontmatter.get("confidence") or ""),
+        "confidence_basis": str(frontmatter.get("confidence_basis") or ""),
+        "summary": str(frontmatter.get("summary") or ""),
+        "evidence_readiness": str(frontmatter.get("evidence_readiness") or ""),
+        "action_readiness": str(frontmatter.get("action_readiness") or ""),
         "missing_evidence": _coerce_list(frontmatter.get("missing_evidence")),
         "next_recipient": str(frontmatter.get("next_recipient") or ""),
         "next_action": str(frontmatter.get("next_action") or ""),
@@ -2759,6 +2840,12 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "calculation_run_hashes": frontmatter.get("calculation_run_hashes") if isinstance(frontmatter.get("calculation_run_hashes"), dict) else {},
         "calculation_reuse_origins": frontmatter.get("calculation_reuse_origins") if isinstance(frontmatter.get("calculation_reuse_origins"), dict) else {},
         "knowledge_cutoff": str(frontmatter.get("knowledge_cutoff") or ""),
+        "requirements": _coerce_list(frontmatter.get("requirements")),
+        "decision_quality": frontmatter.get("decision_quality") if isinstance(frontmatter.get("decision_quality"), dict) else {},
+        "memory": frontmatter.get("memory") if isinstance(frontmatter.get("memory"), dict) else {},
+        "forecast": frontmatter.get("forecast") if isinstance(frontmatter.get("forecast"), dict) else {},
+        "valuation": frontmatter.get("valuation") if isinstance(frontmatter.get("valuation"), dict) else {},
+        "anti_overfit": frontmatter.get("anti_overfit") if isinstance(frontmatter.get("anti_overfit"), dict) else {},
         "follow_up_requests": _coerce_list(frontmatter.get("follow_up_requests")),
         "improvements": _coerce_list(frontmatter.get("improvements")),
         "created_by": str(frontmatter.get("created_by") or "workspace"),
@@ -2772,7 +2859,8 @@ def _research_file_payload(root: Path, path: Path, *, include_markdown: bool = F
         "file_sot": True,
         "workspace_native": True,
     }
-    _validate_stored_research_artifact_data_lineage(resolved_root, payload)
+    if payload["artifact_schema_version"] < ARTIFACT_SCHEMA_VERSION:
+        _validate_stored_research_artifact_data_lineage(resolved_root, payload)
     if include_markdown:
         payload["markdown"] = body
     return payload

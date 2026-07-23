@@ -115,10 +115,10 @@ def test_cli_hook_dispatch_preserves_standard_input_and_output(
     }
 
 
-def test_v1_package_metadata_has_one_stable_version_source() -> None:
+def test_v2_package_metadata_has_one_stable_version_source() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert TRADINGCODEX_VERSION == "1.2.2"
+    assert TRADINGCODEX_VERSION == "2.1.0"
     assert str(Version(TRADINGCODEX_VERSION)) == TRADINGCODEX_VERSION
     assert project["project"]["dynamic"] == ["version"]
     assert "version" not in project["project"]
@@ -241,12 +241,12 @@ def test_posix_installer_rejects_credentials_without_echoing_them(tmp_path: Path
     assert not (tmp_path / "workspace").exists()
 
 
-def test_installation_research_create_example_supplies_required_universe() -> None:
+def test_installation_research_create_example_uses_v2_payload_and_principal() -> None:
     installation = (ROOT / "installation.md").read_text(encoding="utf-8")
     command = next(line for line in installation.splitlines() if line.startswith("./tcx research create "))
 
-    assert "--markdown-file " in command
-    assert "--universe " in command
+    assert "note-v2.json" in command
+    assert "--principal fundamental-analyst" in command
 
 
 def test_startup_snapshot_does_not_hide_configuration_errors(monkeypatch, tmp_path: Path) -> None:

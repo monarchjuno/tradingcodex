@@ -61,9 +61,11 @@ from tradingcodex_service.application.common import (
 )
 from tradingcodex_service.application.analysis_runs import begin_analysis_run
 from tradingcodex_service.application.research import (
+    authenticated_service_research_args,
     create_research_artifact,
     get_research_artifact,
     is_research_artifact_export_copy,
+    store_authenticated_research_artifact,
 )
 from tradingcodex_service.application.runtime import require_workspace_context_binding
 from tradingcodex_service.mcp_runtime import call_mcp_tool
@@ -1075,13 +1077,16 @@ def test_v1_update_migrates_an_exact_legacy_report_export(tmp_path: Path) -> Non
         run_id=run_id,
         apply_investor_context=False,
     )
-    call_mcp_tool(
+    store_authenticated_research_artifact(
         workspace,
-        "create_research_artifact",
-        {
+        authenticated_service_research_args({
             "artifact_id": "legacy-upgrade-export",
+            "artifact_schema_version": 1,
             "artifact_type": "research_memo",
             "universe": "public_equity",
+            "role": "fundamental-analyst",
+            "producer_role": "fundamental-analyst",
+            "principal_id": "fundamental-analyst",
             "title": "Legacy upgrade export",
             "markdown": "# Legacy upgrade export\n\n[factual] Exact historical export.\n",
             "workflow_type": "release_upgrade_test",
@@ -1098,10 +1103,23 @@ def test_v1_update_migrates_an_exact_legacy_report_export(tmp_path: Path) -> Non
             "next_action": "Verify the migration result.",
             "blocked_actions": ["order", "execution"],
             "source_snapshot_ids": [],
+            "source_snapshot_hashes": {},
+            "dataset_ids": [],
+            "dataset_manifest_hashes": {},
+            "calculation_run_ids": [],
+            "calculation_run_hashes": {},
+            "calculation_reuse_origins": {},
             "workflow_run_id": run_id,
             "input_artifact_ids": [],
-        },
-        transport_principal="fundamental-analyst",
+            "input_artifact_hashes": {},
+            "strategy_name": "",
+            "strategy_hash": "",
+            "investment_brain_id": "",
+            "investment_brain_version": "",
+            "investment_brain_content_digest": "",
+            "investor_context_applied": False,
+            "investor_context_hash": "",
+        }),
     )
     source = get_research_artifact(
         workspace,

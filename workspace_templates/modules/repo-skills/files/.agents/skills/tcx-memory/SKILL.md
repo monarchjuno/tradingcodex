@@ -35,7 +35,11 @@ the canonical record.
    `list_forecasts`, `get_forecast`, and
    `get_forecast_calibration_report`.
 2. For a current decision, record the independent initial view before retrieving
-   similar cases. After retrieval, show what changed and why.
+   similar cases. After retrieval, show what changed and why. When Memory changes
+   a synthesis, store only the compact `memory` block: cutoff, initial view,
+   canonical Judgment/Postmortem/Lesson refs, and a delta direction of
+   `unchanged`, `strengthened`, `weakened`, or `reversed` with its reason. Omit
+   the block entirely when Memory was not used; the receipt seals exact hashes.
 3. For historical replay, reject sources whose `known_at` exceeds the cutoff.
    Preserve data vintage, universe membership, delistings, corporate actions,
    costs, model/prompt/tool hashes, and every attempted hypothesis or parameter
@@ -49,11 +53,10 @@ the canonical record.
    and `score_forecast` MCP tools for the append-only lifecycle. Dispatch the
    registered independent reviewer for resolution when required by the tool
    contract.
-5. Once accepted decision-time artifacts are frozen, record the immutable
-   snapshot only through the user-terminal handoff below. Prepare a reviewable
-   payload that references the sealed analysis run and its authenticated
-   decision-time artifact; never substitute the currently active Brain,
-   Strategy, or Investor Context.
+5. Once an accepted synthesis has future evaluation value, Head Manager records
+   its immutable JudgmentSnapshot with `record_judgment_snapshot`. It freezes
+   the canonical synthesis receipt, run context, cutoff, and forecast refs or
+   forecast block reason. It remains `evidence_only`.
 6. Before any outcome is recorded or revealed, reconstruct intent, evidence,
    alternatives, assumptions, guardrails, and the decision-time process from
    durable artifacts. Prepare a process-review payload without outcome
@@ -76,16 +79,15 @@ the canonical record.
    caller-supplied role is not reviewer authentication. Historical replay
    evidence alone cannot become holdout or live-forward validation.
 
-## User-Terminal Handoff
+## User Adoption And Terminal Handoff
 
-DecisionSnapshot and postmortem records do not have an agent-authorized MCP
-write path. Codex may prepare and review a JSON payload in the conversation,
-but must not invoke shell or file-edit tools for these commands. Tell the user
-or maintainer to save the approved payload in the workspace and run the one
-applicable command interactively:
+Never infer that the user adopted a Judgment. When the user explicitly chooses
+to adopt one, prepare a payload with `judgment_id`, the user's decision, and an
+optional superseded adoption reference. Codex must not run the adoption command
+or write the event directly. Tell the user to run it interactively:
 
 ```text
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} decision snapshot record <payload.json>
+{{TRADINGCODEX_WORKSPACE_LAUNCHER}} decision adopt <payload.json>
 {{TRADINGCODEX_WORKSPACE_LAUNCHER}} postmortem process-review <payload.json>
 {{TRADINGCODEX_WORKSPACE_LAUNCHER}} postmortem create <payload.json>
 ```
@@ -95,8 +97,6 @@ record, hand off one read-only terminal command and ask the user to return its
 output:
 
 ```text
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} decision snapshot list
-{{TRADINGCODEX_WORKSPACE_LAUNCHER}} decision snapshot show <decision-id>
 {{TRADINGCODEX_WORKSPACE_LAUNCHER}} postmortem list
 {{TRADINGCODEX_WORKSPACE_LAUNCHER}} postmortem show <report-id>
 ```
@@ -114,8 +114,8 @@ Never claim that a handed-off command ran until the user returns its output.
 - Do not silently change a strategy, skill, prompt, role, policy, approval,
   broker, or execution setting. Produce a reviewable change proposal instead.
 - Do not replace a structured TradingCodex MCP operation with a launcher, shell,
-  or direct file edit. The terminal-only exception is the explicit
-  DecisionSnapshot and postmortem handoff above.
+  or direct file edit. User Adoption and postmortem handoffs are the explicit
+  terminal-only exceptions.
 - Do not draft, approve, or execute an order from memory evidence alone.
 
 Return the relevant artifact paths, the applicable strategy snapshot, the

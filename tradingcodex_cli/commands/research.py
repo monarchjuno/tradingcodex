@@ -9,15 +9,10 @@ from tradingcodex_service.application.artifact_catalog import (
 )
 from tradingcodex_service.application.research import (
     create_evidence_run_card,
-    create_research_artifact,
     create_validation_card,
     export_research_artifact_md,
-    get_research_artifact,
     get_source_snapshot,
-    append_research_artifact_version,
-    list_research_artifacts,
     rebuild_research_index,
-    search_research_artifacts,
 )
 from tradingcodex_service.application.datasets import export_dataset_csv, get_dataset_rows
 from tradingcodex_service.application.research_specs import (
@@ -116,7 +111,8 @@ def research(root: Path, argv: list[str]) -> None:
             "universe": _option_value(action_args, "--universe"),
             "symbol": _option_value(action_args, "--symbol"),
             "workflow_run_id": _option_value(action_args, "--workflow-run-id"),
-            "readiness_label": _option_value(action_args, "--readiness"),
+            "evidence_readiness": _option_value(action_args, "--evidence-readiness"),
+            "action_readiness": _option_value(action_args, "--action-readiness"),
             "handoff_state": _option_value(action_args, "--handoff-state"),
             "compatibility": _option_value(action_args, "--compatibility"),
             "knowledge_cutoff": _option_value(action_args, "--knowledge-cutoff"),
@@ -197,64 +193,32 @@ def research(root: Path, argv: list[str]) -> None:
         print_json(rebuild_research_index(root))
         return
     if sub == "create":
-        markdown_file = _option_value(args, "--markdown-file")
-        universe = _option_value(args, "--universe")
-        if not markdown_file or not universe:
-            raise ValueError("Usage: tcx research create --markdown-file <file.md> --universe <universe> [--artifact-id <id>] [--title <title>] [--source-as-of <date>]")
-        payload = {
-            "artifact_id": _option_value(args, "--artifact-id"),
-            "artifact_type": _option_value(args, "--type") or "research_memo",
-            "universe": universe,
-            "workflow_type": _option_value(args, "--workflow-type") or "",
-            "symbol": _option_value(args, "--symbol") or "",
-            "role": _option_value(args, "--role"),
-            "producer_role": _option_value(args, "--producer-role"),
-            "title": _option_value(args, "--title"),
-            "markdown_path": markdown_file,
-            "source_as_of": _option_value(args, "--source-as-of") or "",
-            "knowledge_cutoff": _option_value(args, "--knowledge-cutoff") or "",
-            "readiness_label": _option_value(args, "--readiness") or "",
-            "context_summary": _option_value(args, "--context-summary") or "",
-            "reader_summary": _option_value(args, "--reader-summary") or "",
-            "handoff_state": _option_value(args, "--handoff-state") or "",
-            "confidence": _option_value(args, "--confidence") or "",
-            "missing_evidence": _list_option(args, "--missing-evidence") or [],
-            "next_recipient": _option_value(args, "--next-recipient") or "",
-            "next_action": _option_value(args, "--next-action") or "",
-            "blocked_actions": _list_option(args, "--blocked-actions") or [],
-            "source_snapshot_ids": _list_option(args, "--source-snapshot-ids") or [],
-            "follow_up_requests": _list_option(args, "--follow-up-requests") or [],
-            "improvements": _list_option(args, "--improvements") or [],
-            "principal_id": _option_value(args, "--principal") or "head-manager",
-            "export_path": _option_value(args, "--export-path"),
-        }
-        print_json(create_research_artifact(root, payload))
+        usage = "Usage: tcx research create <payload.json|-> --principal <role>"
+        input_path = _option_value(args, "--json-file") or (
+            args[0] if args and not args[0].startswith("--") else None
+        )
+        payload = json_object_input(root, input_path, usage)
+        print_json(
+            call_mcp_tool(
+                root,
+                "create_research_artifact",
+                {**payload, "principal_id": _required_principal(args, usage)},
+            )
+        )
         return
     if sub == "append":
-        artifact_id = args[0] if args and not args[0].startswith("--") else _option_value(args, "--artifact-id")
-        markdown_file = _option_value(args, "--markdown-file")
-        if not artifact_id or not markdown_file:
-            raise ValueError("Usage: tcx research append <artifact-id> --markdown-file <file.md> [--source-as-of <date>]")
-        print_json(append_research_artifact_version(root, {
-            "artifact_id": artifact_id,
-            "markdown_path": markdown_file,
-            "source_as_of": _option_value(args, "--source-as-of") or "",
-            "knowledge_cutoff": _option_value(args, "--knowledge-cutoff") or "",
-            "readiness_label": _option_value(args, "--readiness") or "",
-            "context_summary": _option_value(args, "--context-summary") or "",
-            "reader_summary": _option_value(args, "--reader-summary") or "",
-            "handoff_state": _option_value(args, "--handoff-state") or "",
-            "confidence": _option_value(args, "--confidence") or "",
-            "missing_evidence": _list_option(args, "--missing-evidence"),
-            "next_recipient": _option_value(args, "--next-recipient") or "",
-            "next_action": _option_value(args, "--next-action") or "",
-            "blocked_actions": _list_option(args, "--blocked-actions"),
-            "source_snapshot_ids": _list_option(args, "--source-snapshot-ids"),
-            "follow_up_requests": _list_option(args, "--follow-up-requests"),
-            "improvements": _list_option(args, "--improvements"),
-            "principal_id": _option_value(args, "--principal") or "head-manager",
-            "export_path": _option_value(args, "--export-path"),
-        }))
+        usage = "Usage: tcx research append <payload.json|-> --principal <role>"
+        input_path = _option_value(args, "--json-file") or (
+            args[0] if args and not args[0].startswith("--") else None
+        )
+        payload = json_object_input(root, input_path, usage)
+        print_json(
+            call_mcp_tool(
+                root,
+                "append_research_artifact_version",
+                {**payload, "principal_id": _required_principal(args, usage)},
+            )
+        )
         return
     if sub == "run-card":
         artifact_path = args[0] if args and not args[0].startswith("--") else None
@@ -293,13 +257,16 @@ def research(root: Path, argv: list[str]) -> None:
         artifact_id = args[0] if args and not args[0].startswith("--") else None
         if not artifact_id:
             raise ValueError("Usage: tcx research get <artifact-id>")
-        print_json(get_research_artifact(root, {"artifact_id": artifact_id}))
+        print_json(call_mcp_tool(root, "get_research_artifact", {"artifact_id": artifact_id}))
         return
     if sub == "list":
-        print_json(list_research_artifacts(root, {
+        print_json(call_mcp_tool(root, "list_research_artifacts", {
             "artifact_type": _option_value(args, "--type"),
             "universe": _option_value(args, "--universe"),
             "symbol": _option_value(args, "--symbol"),
+            "workflow_run_id": _option_value(args, "--workflow-run-id"),
+            "evidence_readiness": _option_value(args, "--evidence-readiness"),
+            "action_readiness": _option_value(args, "--action-readiness"),
             "limit": _option_value(args, "--limit") or 50,
         }))
         return
@@ -307,7 +274,7 @@ def research(root: Path, argv: list[str]) -> None:
         query = " ".join(args).strip()
         if not query:
             raise ValueError("Usage: tcx research search <query>")
-        print_json(search_research_artifacts(root, {"query": query}))
+        print_json(call_mcp_tool(root, "search_research_artifacts", {"query": query}))
         return
     if sub == "export":
         artifact_id = args[0] if args and not args[0].startswith("--") else None

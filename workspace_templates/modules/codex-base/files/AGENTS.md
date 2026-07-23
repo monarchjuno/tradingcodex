@@ -97,7 +97,7 @@ Repository expectations:
   purpose-named paths. Put shared standing child behavior in the compact
   fixed-role base, specialist identity and tool configuration in role TOML,
   and generated indexes under `.tradingcodex/generated/`.
-- Keep handoffs context-efficient: pass artifact paths, `context_summary`,
+- Keep handoffs context-efficient: pass artifact paths, the compact `summary`,
   source/as-of metadata, and source snapshot IDs before pasting full artifacts.
 - Assign each external data need to one evidence-producing role and use
   `tcx-source-gate`; non-owners consume compact Snapshot/Dataset/Artifact IDs.

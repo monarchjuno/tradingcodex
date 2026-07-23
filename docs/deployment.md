@@ -8,18 +8,24 @@ templates, Django Admin, MCP gateway, and the committed React viewer build.
 Django and WhiteNoise serve the viewer. End users and generated workspaces
 do not need Node or npm.
 
-## v1 Release Contract
+## v2 Release Contract
 
-`1.0.0` is the first supported public contract for the current Web, Admin, API,
-CLI, MCP, generated workspace, application-service, policy, approval, audit,
-and execution boundaries.
+`2.0.0` introduced the breaking public contract for compact Artifact v2,
+receipt v4,
+JudgmentSnapshot/User Adoption, and Decision Episode reads across Web, API,
+CLI, MCP, and application services. Existing authenticated v1 Markdown,
+version archives, and receipts remain byte-preserved and readable through the
+v2 projection; all new artifact writes use v2. `2.1.0` is the first hardened
+minor release of that contract, adding fail-closed public projections,
+outcome-blind ordering enforcement, and complete Episode lifecycle detail.
 
-The v1 baseline is intentionally clean:
+The release baseline is intentionally clean:
 
 - new installations attach an empty workspace with `tcx attach`
-- v1 workspaces update through the documented v1 package and workspace flow
-- generated files, runtime state, and database schema use the v1 contract
-- historical prerelease compatibility surfaces are not part of the v1 runtime
+- v1 workspaces upgrade only through the explicit documented v1-to-v2 update
+  path; other major-version mismatches fail closed
+- generated files, runtime state, and database schema use the v2 contract
+- old public artifact request fields are rejected rather than accepted as aliases
 - paper execution is built in; live execution remains disabled by default and
   requires an installed provider plus every policy, approval, idempotency,
   connection, confirmation, sync, and audit gate
@@ -28,7 +34,7 @@ If the selected runtime database contains prerelease migrations or project
 tables without clean v1 migration history, startup and bootstrap fail closed.
 The error reports the selected `TRADINGCODEX_HOME` and database path.
 TradingCodex does not migrate, delete, archive, or back up incompatible
-prerelease/non-v1 state.
+prerelease state.
 
 The operator must choose one explicit recovery path:
 
@@ -38,7 +44,7 @@ The operator must choose one explicit recovery path:
 2. Stop every TradingCodex process, then archive or remove the old selected
    home/database manually before retrying.
 
-There is no automatic prerelease migration or fallback path in v1.
+There is no automatic prerelease migration or fallback path.
 
 TradingCodex releases software; they do not promote a model policy or establish
 investment-performance claims. Those claims require the independent evidence
@@ -297,14 +303,14 @@ uvx --refresh --from "tradingcodex==$ReleaseVersion" tcx attach . --from "tradin
 Verify the PyPI project page, filenames, metadata, and release notes after the
 smokes pass.
 
-## v1 Update Policy
+## v2 Update Policy
 
-TradingCodex has two update layers within the v1 line:
+TradingCodex has two update layers within the v2 line:
 
 - package update: run the desired package with `uvx --refresh`, upgrade an
   installed `uv` tool, or use `install.sh --update`
 - workspace update: run `tcx update <workspace>` from that package to refresh
-  generated files, indexes, project MCP configuration, hooks, and the v1 schema
+  generated files, indexes, project MCP configuration, hooks, and the v2 schema
 
 `tcx update` preserves workspace identity and workspace-native user artifacts.
 It may replace only generated paths owned by
@@ -313,7 +319,7 @@ Codex and open a new task so project configuration, prompts, skills, hooks, and
 MCP state reload together.
 
 A future major-version migration requires its own explicit product contract and
-validation. v1 release automation does not infer one.
+validation. Release automation does not infer one.
 
 ## What Is Not Deployed
 

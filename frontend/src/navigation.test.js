@@ -6,13 +6,13 @@ import { hashForSection, matchesSearch, sectionFromHash } from "./navigation.js"
 import { collectionViewState, sectionData, snapshotSections } from "./viewer-data.js";
 
 test("hash navigation stays inside the viewer sections", () => {
-  assert.equal(sectionFromHash("#/skills"), "library");
+  assert.equal(sectionFromHash("#/skills"), "episodes");
   assert.equal(sectionFromHash("#/wiki/local/pages/example.md"), "wiki");
   assert.equal(sectionFromHash("#library?artifact=a"), "library");
-  assert.equal(sectionFromHash("#/work"), "library");
-  assert.equal(sectionFromHash("#/unknown"), "library");
+  assert.equal(sectionFromHash("#/work"), "episodes");
+  assert.equal(sectionFromHash("#/unknown"), "episodes");
   assert.equal(hashForSection("system"), "#/system");
-  assert.equal(hashForSection("admin"), "#/library");
+  assert.equal(hashForSection("admin"), "#/episodes");
 });
 
 test("search matches labels and metadata without case sensitivity", () => {
@@ -64,6 +64,20 @@ test("narrow detail transitions preserve keyboard focus", async () => {
 test("workspace switching returns focus to the updated main view", async () => {
   const app = await readFile(new URL("./App.tsx", import.meta.url), "utf8");
   assert.match(app, /loadState\(\)\.finally\(\(\) => requestAnimationFrame\(\(\) => mainRef\.current\?\.focus\(\{ preventScroll: true \}\)\)\)/);
+});
+
+test("episode detail exposes lifecycle records through a keyboard button", async () => {
+  const episodes = await readFile(new URL("./features/EpisodesPage.tsx", import.meta.url), "utf8");
+  assert.match(episodes, /aria-pressed=\{selected === id\}/);
+  assert.doesNotMatch(episodes, /<Card[^>]+onClick=/);
+  for (const heading of [
+    "Judgment snapshots",
+    "User adoption",
+    "Forecast records",
+    "Locked process reviews",
+    "Postmortems",
+    "Lessons",
+  ]) assert.match(episodes, new RegExp(heading));
 });
 
 test("half-width desktop uses the compact workspace and single-pane reader layout", async () => {

@@ -89,7 +89,13 @@ and service gates.
 
 The Django product web is a separate read-only viewer. It selects only a
 registered, currently valid attached workspace and returns a canonical snapshot
-plus sanitized Wiki, artifact, Dataset, and Calculation detail. Dataset views
+plus sanitized Decision Episode, Wiki, artifact, Dataset, and Calculation detail.
+Episodes are the default section and project synthesis, two readiness axes,
+Judgment, User Adoption, Memory delta, Forecast, locked process review,
+Postmortem, Lesson, and source links without persisting workflow state.
+Lifecycle detail shows bounded record summaries and paths. Every run-bound
+card and Episode lineage projection fails closed unless its service receipt
+verifies. Dataset views
 show cards, manifest/schema/profile metadata, lineage, and payload availability;
 Calculation views show cards, metrics, diagnostics, warnings, and reuse lineage.
 The viewer never returns an unbounded Dataset payload or private
@@ -113,6 +119,9 @@ keeps general Computer Use and full CDP access disabled.
   The snapshot includes bounded `datasets` and `calculations` card sections.
 - `GET /api/viewer/skills/{skill_id}` and
   `GET /api/viewer/artifacts/{artifact_id}` return sanitized detail.
+- `GET /api/viewer/episodes/` and
+  `GET /api/viewer/episodes/{workflow_run_id}/` return read-only Decision
+  Episode cards and detail.
 - `GET /api/viewer/datasets/{dataset_id}` returns manifest, schema/profile,
   lineage, quality warnings, withdrawal posture, and payload availability.
 - `GET /api/viewer/calculations/{calculation_run_id}` returns verified typed
@@ -122,7 +131,7 @@ keeps general Computer Use and full CDP access disabled.
   runs `tcx-calc`, creates a reuse record, or records a Run.
 - The root SPA remains available when a query contains an invalid workspace id
   so the API error can render in the viewer; the API never silently falls back.
-- The viewer exposes Library, Skills, and System only. Its left rail is the
+- The viewer exposes Episodes, Library, Wiki, and System. Its left rail is the
   registered-workspace selector.
 - The viewer has no POST, PATCH, or DELETE route and no loopback mutation
   exception. Administrative mutations remain on authenticated canonical
@@ -186,11 +195,13 @@ exception:
 - `GET /api/health/live`
 - `GET /api/health/ready`
 - `GET /api/viewer/` returns one canonical selected-workspace snapshot for
-  Library, Skills, and System as `{generated_at, sections}`, where every
+  Episodes, Library, Wiki, and System as `{generated_at, sections}`, where every
   section is either `{ok: true, data}` or `{ok: false, error}`. Strategies and
   optional skills are snapshot sections rather than a second frontend load path.
 - `GET /api/viewer/skills/{skill_id}`
 - `GET /api/viewer/artifacts/{artifact_id}`
+- `GET /api/viewer/episodes/`
+- `GET /api/viewer/episodes/{workflow_run_id}/`
 - `GET /api/viewer/datasets/{dataset_id}`
 - `GET /api/viewer/calculations/{calculation_run_id}`
 - `GET /api/harness/status`
@@ -227,6 +238,13 @@ Broker connection responses expose the required exact `provider_id` and
 - `POST /api/research/artifacts`
 - `GET /api/research/artifacts`
 - `GET /api/research/artifacts/{artifact_id}`
+
+Research artifact writes use the nested v2 contract: identity/content,
+`status`, `lineage`, `requirements`, and applicable optional blocks. Flat v1
+write fields are validation errors. Detail returns `artifact`, optional
+`markdown_window`, and Markdown; list/search returns `items` and page metadata.
+Immutable v1 canonical files are adapted into this response shape with
+compatibility warnings and are never rewritten.
 - `POST /api/research/artifacts/{artifact_id}/export`
 - `POST /api/research/search`
 - `GET /api/research/catalog`
@@ -483,26 +501,17 @@ rather than inviting or forbidding an unchanged retry without evidence. They
 are not disguised as JSON-RPC server failures. Unknown RPC methods remain
 protocol errors. A deterministic caller error permits only a supported changed
 call.
-`get_research_artifact.detail_level` is `full`, `review`, or `card`. `full`
-is backward-compatible; `review` projects the authenticated body and
-conclusion-relevant provenance, quality, and lineage; `card` omits Markdown and
-returns routing metadata under a 10,000-character serialized response bound,
-truncating or omitting oversized optional card summaries/collections and
-reporting the affected fields while preserving artifact identity, version, and
-content hash. `review` and explicit
-`full` reads can request deterministic Markdown character windows through
-`markdown_start` and bounded `markdown_max_chars`; the response returns
-`markdown_window.next_start` and `has_more` for exact continuation. Projection
-happens only after canonical artifact and receipt verification. The complete
-serialized `review` projection is capped at 18,000 characters; optional fields
-are bounded and named in `review_truncated_fields`, and the Markdown interval is
-shortened before its next offset is returned when the envelope needs space.
+`get_research_artifact.detail_level` is `full`, `review`, or `card`, but every
+public response uses the v2 envelope: `artifact`, `path`, `authentication`,
+`markdown_window`, and `markdown`. `card` omits Markdown; `review` and `full`
+can request deterministic Markdown character windows through `markdown_start`
+and bounded `markdown_max_chars`. Projection happens only after canonical
+artifact and receipt verification. Immutable v1 files pass through an internal
+adapter and expose only this v2 response, including explicit compatibility
+warnings for unknown legacy readiness.
 `list_research_artifacts` and `list_workflow_artifacts` accept exact run,
-producer, handoff, and related metadata filters plus `detail_level=card` for a
-bounded receipt-recovery result. Their complete pretty-printed MCP text is
-capped at 12,000 characters so the enclosing deferred-tool output stays within
-the 20,000-character observable-context gate. It returns deterministic
-`artifact_page` metadata with `next_offset` when more cards remain. Head Manager
+producer, handoff, and related metadata filters and return v2 cards under
+`items` with deterministic page metadata and `next_offset`. Head Manager
 treats a result as unique only when `returned_count=1`, `has_more=false`, and
 the run-bound authentication summary verifies exactly one artifact. Head
 Manager retains that recovery surface; fixed children receive
@@ -653,7 +662,8 @@ workspace-facing surface is grouped as follows:
 - workspace setup and health: `tcx attach`, `update`, `doctor`, `service`,
   `home`, and `workspace`
 - analysis and durable context: `tcx workflow begin|show`, `tcx decision list|show|export`,
-  `tcx decision snapshot list|record|show`, `tcx profile`, and
+  `tcx decision judgment list|show`, explicit `tcx decision adopt`, legacy
+  read-only `tcx decision snapshot list|show`, `tcx profile`, and
   `tcx investor-context`
 - roles and reusable capability: `tcx subagents
   list|status|inspect|diff|project|skills|prompt`,

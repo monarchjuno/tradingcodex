@@ -106,7 +106,11 @@ def postmortem(root: Path, argv: list[str]) -> None:
         input_path = _option_value(args, "--json-file") or (args[0] if args and not args[0].startswith("--") else None)
         payload = json_object_input(root, input_path, usage)
         created_by = _option_value(args, "--created-by") or str(payload.get("created_by") or "head-manager")
-        result = record_postmortem_process_review(root, {**payload, "created_by": created_by})
+        if payload.get("judgment_id"):
+            from tradingcodex_service.application.judgment_postmortems import record_judgment_process_review
+            result = record_judgment_process_review(root, {**payload, "created_by": created_by})
+        else:
+            result = record_postmortem_process_review(root, {**payload, "created_by": created_by})
         write_audit_event(
             root,
             {
@@ -129,7 +133,11 @@ def postmortem(root: Path, argv: list[str]) -> None:
     input_path = _option_value(args, "--json-file") or (args[0] if args and not args[0].startswith("--") else None)
     payload = json_object_input(root, input_path, usage)
     created_by = _option_value(args, "--created-by") or str(payload.get("created_by") or "head-manager")
-    result = create_postmortem(root, {**payload, "created_by": created_by})
+    if payload.get("judgment_id"):
+        from tradingcodex_service.application.judgment_postmortems import create_judgment_postmortem
+        result = create_judgment_postmortem(root, {**payload, "created_by": created_by})
+    else:
+        result = create_postmortem(root, {**payload, "created_by": created_by})
     report = result["postmortem"]
     write_audit_event(
         root,

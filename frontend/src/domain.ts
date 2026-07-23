@@ -1,5 +1,5 @@
 export type RecordValue = Record<string, unknown>;
-export type Section = "library" | "wiki" | "system";
+export type Section = "episodes" | "library" | "wiki" | "system";
 export type Theme = "auto" | "dark" | "light";
 
 export type Artifact = {
@@ -78,16 +78,17 @@ export function sectionError(state: RecordValue, key: string): string {
 }
 
 export function normalizeArtifact(value: RecordValue, index: number): Artifact {
-  const id = asText(value.artifact_id, `artifact-${index + 1}`);
+  const id = asText(value.id, asText(value.artifact_id, `artifact-${index + 1}`));
+  const status = asRecord(value.status);
   return {
     id,
     title: asText(value.title, titleCase(id)),
-    type: asText(value.artifact_type, "research artifact"),
-    sourceAsOf: asText(value.source_as_of),
-    confidence: asText(value.confidence, "not stated"),
-    readiness: asText(value.readiness_label, asText(value.handoff_state, "waiting")),
-    summary: asText(value.reader_summary),
-    missingEvidence: asStringList(value.missing_evidence),
+    type: asText(value.type, asText(value.artifact_type, "research artifact")),
+    sourceAsOf: asText(value.recorded_at, asText(value.source_as_of)),
+    confidence: asText(status.confidence, asText(value.confidence, "not stated")),
+    readiness: asText(status.evidence_readiness, asText(value.readiness_label, asText(value.handoff_state, "waiting"))),
+    summary: asText(value.summary, asText(value.reader_summary)),
+    missingEvidence: asStringList(status.missing_evidence ?? value.missing_evidence),
     resourceKind: "artifact",
     detailPath: `/api/viewer/artifacts/${encodeURIComponent(id)}/`,
     raw: value,

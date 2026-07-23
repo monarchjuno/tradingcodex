@@ -18,9 +18,9 @@ from tradingcodex_service.application.markdown_preview import split_markdown_fro
 from tradingcodex_service.application.runtime import workspace_context_payload
 
 
-ARTIFACT_CATALOG_PATH = Path("trading/research/.index/artifact-catalog-v2.json")
-ARTIFACT_CATALOG_SCHEMA_VERSION = 2
-ARTIFACT_CATALOG_PROJECTOR_VERSION = 2
+ARTIFACT_CATALOG_PATH = Path("trading/research/.index/artifact-catalog-v3.json")
+ARTIFACT_CATALOG_SCHEMA_VERSION = 3
+ARTIFACT_CATALOG_PROJECTOR_VERSION = 3
 ARTIFACT_CATALOG_ROOTS = (
     Path("trading/research"),
     Path("trading/reports"),
@@ -36,6 +36,8 @@ _IDENTITY_FIELDS = (
     "artifact_id",
     "catalog_id",
     "decision_id",
+    "judgment_id",
+    "adoption_id",
     "forecast_id",
     "snapshot_id",
     "dataset_id",
@@ -71,6 +73,9 @@ _SEARCHABLE_STRUCTURED_FIELDS = frozenset(
         "evidence_lane",
         "status",
         "readiness_label",
+        "evidence_readiness",
+        "action_readiness",
+        "summary",
         "handoff_state",
         "hypothesis",
         "economic_mechanism",
@@ -123,6 +128,8 @@ _PRIMARY_ID_BY_TYPE = {
     "two_pass_judgment_review": "analysis_id",
     "decision_package": "decision_id",
     "decision_snapshot": "decision_id",
+    "judgment_snapshot": "judgment_id",
+    "decision_adoption": "adoption_id",
     "forecast": "forecast_id",
     "postmortem_process_review": "id",
     "postmortem_report": "id",
@@ -145,6 +152,7 @@ def list_artifact_catalog(
         entries = [entry for entry in entries if entry.get("compatibility") != "invalid"]
     entries.sort(key=lambda item: (str(item.get("updated_at") or ""), str(item.get("catalog_id") or "")), reverse=True)
     limit = max(1, min(int(args.get("limit") or 100), 1000))
+    items = [_public_entry(entry) for entry in entries[:limit]]
     return {
         "catalog_schema_version": ARTIFACT_CATALOG_SCHEMA_VERSION,
         "projector_version": ARTIFACT_CATALOG_PROJECTOR_VERSION,
@@ -152,7 +160,12 @@ def list_artifact_catalog(
         "generated_at": document["generated_at"],
         "file_sot": True,
         "workspace_native": True,
-        "entries": [_public_entry(entry) for entry in entries[:limit]],
+        "items": items,
+        "page": {
+            "returned_count": len(items),
+            "total_count": len(entries),
+            "has_more": len(entries) > limit,
+        },
         "coverage": _coverage(document["entries"].values()),
         "workspace_context": workspace_context_payload(root),
     }
@@ -207,13 +220,19 @@ def search_artifact_catalog(
         reverse=True,
     )
     limit = max(1, min(int(args.get("limit") or 20), 200))
+    items = [_public_entry(entry) for _, entry in scored[:limit]]
     return {
         "query": query,
         "catalog_schema_version": ARTIFACT_CATALOG_SCHEMA_VERSION,
         "index_path": ARTIFACT_CATALOG_PATH.as_posix(),
         "file_sot": True,
         "workspace_native": True,
-        "entries": [_public_entry(entry) for _, entry in scored[:limit]],
+        "items": items,
+        "page": {
+            "returned_count": len(items),
+            "total_count": len(scored),
+            "has_more": len(scored) > limit,
+        },
         "cutoff_excluded_count": cutoff_excluded,
         "coverage": _coverage(document["entries"].values()),
         "workspace_context": workspace_context_payload(root),
@@ -501,6 +520,9 @@ def _base_entry(
         "role": metadata.get("role") or metadata.get("producer_role") or metadata.get("created_by") or "",
         "status": metadata.get("status") or metadata.get("result_status") or "",
         "readiness_label": metadata.get("readiness_label") or "",
+        "evidence_readiness": metadata.get("evidence_readiness") or "",
+        "action_readiness": metadata.get("action_readiness") or "",
+        "summary": metadata.get("summary") or metadata.get("reader_summary") or metadata.get("context_summary") or "",
         "handoff_state": metadata.get("handoff_state") or "",
         "relation_ids": relation_ids,
     }
@@ -536,6 +558,9 @@ def _base_entry(
         "source_as_of": str(metadata.get("source_as_of") or metadata.get("as_of") or ""),
         "updated_at": updated_at,
         "readiness_label": str(metadata.get("readiness_label") or ""),
+        "evidence_readiness": str(metadata.get("evidence_readiness") or ""),
+        "action_readiness": str(metadata.get("action_readiness") or ""),
+        "summary": str(metadata.get("summary") or metadata.get("reader_summary") or metadata.get("context_summary") or ""),
         "handoff_state": str(metadata.get("handoff_state") or ""),
         "status": str(
             metadata.get("status")
@@ -571,6 +596,9 @@ def _invalid_entry(relative: str, error: str) -> dict[str, Any]:
         "source_as_of": "",
         "updated_at": "",
         "readiness_label": "",
+        "evidence_readiness": "",
+        "action_readiness": "",
+        "summary": "",
         "handoff_state": "",
         "status": "invalid",
         "relation_ids": [],
@@ -593,6 +621,8 @@ def _filter_entries(
         "symbol",
         "workflow_run_id",
         "readiness_label",
+        "evidence_readiness",
+        "action_readiness",
         "handoff_state",
         "compatibility",
     ):
@@ -648,6 +678,10 @@ def _infer_structured_type(relative: str) -> str:
         return "validation_card"
     if relative.endswith(".decision-snapshot.json"):
         return "decision_snapshot"
+    if relative.endswith(".judgment-snapshot.json"):
+        return "judgment_snapshot"
+    if relative.endswith(".decision-adoption.json"):
+        return "decision_adoption"
     if relative.endswith(".process-review.json"):
         return "postmortem_process_review"
     if relative.endswith(".postmortem_report.json"):

@@ -4,7 +4,8 @@ import { ReactNode, RefObject, useEffect, useState } from "react";
 import { Section, Theme } from "./domain";
 import { hashForSection } from "./navigation.js";
 
-const NAV_ITEMS: Array<{ id: Section; label: string; icon: "folder-open" | "manual" | "cog" }> = [
+const NAV_ITEMS: Array<{ id: Section; label: string; icon: "timeline-events" | "folder-open" | "manual" | "cog" }> = [
+  { id: "episodes", label: "Episodes", icon: "timeline-events" },
   { id: "library", label: "Library", icon: "folder-open" },
   { id: "wiki", label: "Wiki", icon: "manual" },
   { id: "system", label: "System", icon: "cog" },
@@ -36,7 +37,7 @@ export function ViewerShell({
       <NavbarGroup align="left">
         <NavbarHeading><a className="brand" href={hashForSection("library")}><Icon icon="chart" size={18} /><strong>TradingCodex</strong></a></NavbarHeading>
       </NavbarGroup>
-      <NavbarGroup className="primary-nav" align="center">{NAV_ITEMS.map((item) => <AnchorButton key={item.id} href={hashForSection(item.id)} icon={item.icon} minimal active={section === item.id} text={item.label} />)}</NavbarGroup>
+      <NavbarGroup className="primary-nav" align="left">{NAV_ITEMS.map((item) => <AnchorButton key={item.id} href={hashForSection(item.id)} icon={item.icon} minimal active={section === item.id} text={item.label} />)}</NavbarGroup>
       <NavbarGroup align="right"><Button aria-label={`Theme is ${theme}. Change theme.`} icon={theme === "dark" ? "moon" : theme === "light" ? "flash" : "contrast"} minimal onClick={cycleTheme} /></NavbarGroup>
     </Navbar>
 

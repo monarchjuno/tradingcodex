@@ -16,6 +16,8 @@ from pydantic import Field
 
 from tradingcodex_service import __version__
 from tradingcodex_service.application.artifact_catalog import list_artifact_catalog
+from tradingcodex_service.application.artifact_bindings import verify_authenticated_artifact_binding
+from tradingcodex_service.application.artifact_v2 import project_artifact, project_card
 from tradingcodex_service.application.common import local_or_staff_source
 from tradingcodex_service.application.analysis_runs import begin_analysis_run, read_analysis_run
 from tradingcodex_service.application.health import liveness_payload, readiness_payload
@@ -210,72 +212,50 @@ class AnalysisRunRequest(Schema):
     workflow_run_id: str | None = Field(default=None, max_length=180)
 
 
-class ResearchArtifactRequest(Schema):
-    artifact_id: str | None = None
-    artifact_type: str = "research_memo"
-    universe: str = ""
-    workflow_type: str = ""
+class ArtifactStatusRequest(Schema):
+    model_config = {"extra": "forbid"}
+
+    handoff: Literal["accepted", "revise", "blocked", "waiting"]
+    evidence_readiness: Literal["factual", "screen", "decision-grade", "insufficient"]
+    action_readiness: Literal["research-only", "portfolio-review", "draft-eligible", "blocked"]
+    confidence: Literal["low", "medium", "high"]
+    confidence_basis: str = Field(min_length=1)
+    missing_evidence: list[str] = Field(default_factory=list)
+    blocked_actions: list[str] = Field(default_factory=list)
+
+
+class ArtifactLineageRequest(Schema):
+    model_config = {"extra": "forbid"}
+
     workflow_run_id: str = ""
-    input_artifact_ids: list[str] = Field(default_factory=list)
-    role: str | None = None
-    symbol: str = ""
-    title: str
-    markdown: str
-    metadata: dict[str, Any] | None = None
-    source_as_of: str = ""
-    readiness_label: str = ""
-    context_summary: str = ""
-    reader_summary: str = ""
-    handoff_state: str = ""
-    confidence: str = ""
-    missing_evidence: list[Any] | None = None
-    next_recipient: str = ""
-    next_action: str = ""
-    blocked_actions: list[Any] | None = None
-    source_snapshot_ids: list[str] | None = None
+    knowledge_cutoff: str = ""
+    input_artifact_ids: list[str] = Field(default_factory=list, max_length=50)
+    source_snapshot_ids: list[str] = Field(default_factory=list, max_length=50)
     dataset_ids: list[str] = Field(default_factory=list, max_length=50)
     calculation_run_ids: list[str] = Field(default_factory=list, max_length=50)
     evidence_lane: Literal["historical_replay", "historical_holdout", "live_forward"] | None = None
     research_spec_id: str = ""
     replay_manifest_id: str = ""
-    decision_snapshot_id: str = ""
-    strategy_name: str = ""
-    strategy_hash: str = ""
-    investor_context_applied: bool | None = None
-    investor_context_hash: str = ""
-    decision_memory_consulted: bool | None = None
-    decision_memory_cutoff: str = ""
-    forecast_required: bool | None = None
-    decision_quality_required: bool | None = None
-    investor_context_gate_required: bool | None = None
-    anti_overfit_required: bool | None = None
-    anti_overfit_checks: dict[str, Any] | None = None
-    forecast_allowed: bool | None = None
-    forecast_block_reason: str = ""
-    forecast_target: str = ""
-    forecast_horizon: str = ""
-    probability: Any = None
-    probability_range: Any = None
-    base_rate: Any = None
-    missing_base_rate_note: str = ""
-    evidence_ids: list[Any] | None = None
-    contrary_evidence: list[Any] | None = None
-    resolution_source: str = ""
-    review_date: str = ""
-    update_triggers: list[Any] | None = None
-    invalidation_conditions: list[Any] | None = None
-    source_trust_notes: list[Any] | None = None
-    scenario_cases: list[Any] | None = None
-    scenario_summary: str = ""
-    thesis_lifecycle: dict[str, Any] | None = None
-    current_price_as_of: str = ""
-    market_anchor_as_of: str = ""
-    investor_context_gaps: list[Any] | None = None
-    producer_role: str = ""
-    knowledge_cutoff: str = ""
-    follow_up_requests: list[Any] | None = None
-    improvements: list[Any] | None = None
-    export_path: str | None = None
+
+
+class ResearchArtifactRequest(Schema):
+    model_config = {"extra": "forbid"}
+    artifact_id: str | None = None
+    artifact_type: str = Field(min_length=1)
+    universe: str = Field(min_length=1)
+    symbol: str = ""
+    title: str = Field(min_length=1)
+    markdown: str = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    status: ArtifactStatusRequest
+    lineage: ArtifactLineageRequest
+    requirements: list[Literal["decision_quality", "forecast", "investor_context", "anti_overfit"]] = Field(default_factory=list)
+    decision_quality: dict[str, Any] | None = None
+    memory: dict[str, Any] | None = None
+    forecast: dict[str, Any] | None = None
+    valuation: dict[str, Any] | None = None
+    anti_overfit: dict[str, Any] | None = None
+    follow_up_requests: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ResearchSearchRequest(Schema):
@@ -291,8 +271,9 @@ class ArtifactCatalogSearchRequest(Schema):
     artifact_type: str | None = None
     symbol: str | None = None
     workflow_run_id: str | None = None
-    readiness_label: str | None = None
-    handoff_state: str | None = None
+    evidence_readiness: Literal["factual", "screen", "decision-grade", "insufficient"] | None = None
+    action_readiness: Literal["research-only", "portfolio-review", "draft-eligible", "blocked"] | None = None
+    handoff: Literal["accepted", "revise", "blocked", "waiting"] | None = None
     compatibility: str | None = None
     knowledge_cutoff: str | None = None
     limit: int = 20
@@ -913,9 +894,6 @@ def mcp_tools(request):
 @research_router.post("/artifacts")
 def create_research(request, payload: ResearchArtifactRequest):
     data = _payload(payload)
-    for field in ("handoff_state", "workflow_run_id"):
-        if not data.get(field):
-            data.pop(field, None)
     return _call_mutation_tool(
         request,
         "create_research_artifact",
@@ -924,13 +902,42 @@ def create_research(request, payload: ResearchArtifactRequest):
 
 
 @research_router.get("/artifacts")
-def list_research(request, artifact_type: str | None = None, universe: str | None = None, symbol: str | None = None, limit: int = 50):
-    return list_research_artifacts(workspace_root(), {"artifact_type": artifact_type, "universe": universe, "symbol": symbol, "limit": limit})
+def list_research(
+    request,
+    artifact_type: str | None = None,
+    universe: str | None = None,
+    symbol: str | None = None,
+    evidence_readiness: str | None = None,
+    action_readiness: str | None = None,
+    handoff: str | None = None,
+    limit: int = 50,
+):
+    root = workspace_root()
+    response = list_research_artifacts(root, {
+        "artifact_type": artifact_type,
+        "universe": universe,
+        "symbol": symbol,
+        "evidence_readiness": evidence_readiness,
+        "action_readiness": action_readiness,
+        "handoff_state": handoff,
+        "limit": limit,
+    })
+    items = []
+    for artifact in response["artifacts"]:
+        if artifact.get("workflow_run_id"):
+            verify_authenticated_artifact_binding(root, artifact)
+        items.append(project_card(artifact))
+    return {"items": items, "page": {"returned_count": len(items), "total_count": len(items), "has_more": False}}
 
 
 @research_router.get("/artifacts/{artifact_id}")
 def get_research(request, artifact_id: str):
-    return get_research_artifact(workspace_root(), {"artifact_id": artifact_id})
+    root = workspace_root()
+    artifact = get_research_artifact(root, {"artifact_id": artifact_id, "include_markdown": True})
+    if artifact.get("workflow_run_id"):
+        authentication = verify_authenticated_artifact_binding(root, artifact)
+        artifact["authentication"] = authentication
+    return project_artifact(artifact, include_markdown=True)
 
 
 @research_router.post("/artifacts/{artifact_id}/export")
@@ -954,6 +961,9 @@ def list_catalog(
     universe: str | None = None,
     symbol: str | None = None,
     workflow_run_id: str | None = None,
+    evidence_readiness: str | None = None,
+    action_readiness: str | None = None,
+    handoff: str | None = None,
     compatibility: str | None = None,
     knowledge_cutoff: str | None = None,
     limit: int = 100,
@@ -965,6 +975,9 @@ def list_catalog(
             "universe": universe,
             "symbol": symbol,
             "workflow_run_id": workflow_run_id,
+            "evidence_readiness": evidence_readiness,
+            "action_readiness": action_readiness,
+            "handoff_state": handoff,
             "compatibility": compatibility,
             "knowledge_cutoff": knowledge_cutoff,
             "limit": limit,

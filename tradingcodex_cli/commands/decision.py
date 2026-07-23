@@ -9,7 +9,12 @@ from tradingcodex_service.application.decision_packages import (
     get_decision_snapshot,
     list_decision_packages,
     list_decision_snapshots,
-    record_decision_snapshot,
+)
+from tradingcodex_service.application.judgments import (
+    get_judgment_snapshot,
+    list_judgment_snapshots,
+    record_decision_adoption,
+    terminal_adoption_args,
 )
 
 
@@ -31,6 +36,27 @@ def decision(root: Path, argv: list[str]) -> None:
             raise ValueError("Usage: tcx decision export <decision-id> [--export-path trading/decisions/file.md]")
         print_json(export_decision_package(root, decision_id, _option_value(args, "--export-path")))
         return
+    if sub == "adopt":
+        usage = "Usage: tcx decision adopt <payload.json|->"
+        input_path = _option_value(args, "--json-file") or (
+            args[0] if args and not args[0].startswith("--") else None
+        )
+        payload = json_object_input(root, input_path, usage)
+        print_json(record_decision_adoption(root, terminal_adoption_args(payload)))
+        return
+    if sub == "judgment":
+        action = args[0] if args else "list"
+        action_args = args[1:]
+        if action == "list":
+            print_json(list_judgment_snapshots(root, int(_option_value(action_args, "--limit") or 50)))
+            return
+        if action == "show":
+            judgment_id = action_args[0] if action_args and not action_args[0].startswith("--") else _option_value(action_args, "--id")
+            if not judgment_id:
+                raise ValueError("Usage: tcx decision judgment show <judgment-id>")
+            print_json(get_judgment_snapshot(root, judgment_id))
+            return
+        raise ValueError("Usage: tcx decision judgment list|show")
     if sub == "snapshot":
         action = args[0] if args else "list"
         action_args = args[1:]
@@ -38,19 +64,15 @@ def decision(root: Path, argv: list[str]) -> None:
             print_json(list_decision_snapshots(root, int(_option_value(action_args, "--limit") or 50)))
             return
         if action == "record":
-            usage = "Usage: tcx decision snapshot record <payload.json|-> [--created-by head-manager]"
-            input_path = _option_value(action_args, "--json-file") or (
-                action_args[0] if action_args and not action_args[0].startswith("--") else None
+            raise ValueError(
+                "legacy DecisionSnapshot writes are retired; use "
+                "the Head Manager record_judgment_snapshot MCP tool"
             )
-            payload = json_object_input(root, input_path, usage)
-            created_by = _option_value(action_args, "--created-by") or str(payload.get("created_by") or "head-manager")
-            print_json(record_decision_snapshot(root, {**payload, "created_by": created_by}))
-            return
         if action == "show":
             decision_id = action_args[0] if action_args and not action_args[0].startswith("--") else _option_value(action_args, "--id")
             if not decision_id:
                 raise ValueError("Usage: tcx decision snapshot show <decision-id>")
             print_json(get_decision_snapshot(root, decision_id))
             return
-        raise ValueError("Usage: tcx decision snapshot list|record|show")
-    raise ValueError("Usage: tcx decision list|show|export|snapshot")
+        raise ValueError("Usage: tcx decision snapshot list|show")
+    raise ValueError("Usage: tcx decision list|show|export|judgment|snapshot|adopt")

@@ -9,6 +9,7 @@ from tradingcodex_service.application.artifact_quality import (
     ANTI_OVERFIT_CHECK_KEYS,
     evaluate_decision_quality,
 )
+from tradingcodex_service.application.analysis_runs import begin_analysis_run
 from tradingcodex_service.application.research import get_research_artifact
 from tradingcodex_service.application.runtime import ensure_workspace_manifest
 from tradingcodex_service.api import ResearchArtifactRequest
@@ -298,77 +299,84 @@ def test_anti_overfit_contract_rejects_schema_drift(tmp_path: Path) -> None:
     ]
 
 
-def test_mcp_rejects_partial_structured_anti_overfit_contract(tmp_path: Path) -> None:
-    ensure_workspace_manifest(tmp_path)
+def _v2_request(run_id: str, *, markdown: str = "# Quality contract\n") -> dict[str, object]:
+    return {
+        "artifact_id": "quality-round-trip",
+        "artifact_type": "research_report",
+        "universe": "ACME",
+        "title": "Quality round trip",
+        "markdown": markdown,
+        "summary": "Evidence-only quality contract.",
+        "status": {
+            "handoff": "accepted",
+            "evidence_readiness": "decision-grade",
+            "action_readiness": "research-only",
+            "confidence": "medium",
+            "confidence_basis": "Authenticated bounded evidence.",
+            "missing_evidence": [],
+            "blocked_actions": ["order_execution"],
+        },
+        "lineage": {
+            "workflow_run_id": run_id,
+            "knowledge_cutoff": "2026-07-13T00:00:00Z",
+            "input_artifact_ids": [],
+            "source_snapshot_ids": [],
+            "dataset_ids": [],
+            "calculation_run_ids": [],
+        },
+        "requirements": ["forecast", "anti_overfit"],
+        "forecast": {
+            "posture": "blocked",
+            "block_reason": "No calibrated base rate.",
+        },
+        "anti_overfit": {
+            "summary": "No model fitting or historical selection was performed."
+        },
+    }
 
-    with pytest.raises(ValueError, match="anti_overfit_checks requires survivorship_bias"):
+
+def test_mcp_requires_the_v2_anti_overfit_block_and_rejects_v1_fields(tmp_path: Path) -> None:
+    ensure_workspace_manifest(tmp_path)
+    run_id = "analysis-anti-overfit-v2"
+    begin_analysis_run(
+        tmp_path,
+        "Record a bounded quality fixture.",
+        run_id=run_id,
+        apply_investor_context=False,
+    )
+    request = _v2_request(run_id)
+    request.pop("anti_overfit")
+
+    with pytest.raises(ValueError, match="anti_overfit requirement requires anti_overfit"):
         call_mcp_tool(
             tmp_path,
             "create_research_artifact",
-            {
-                "artifact_id": "partial-anti-overfit",
-                "artifact_type": "research_report",
-                "universe": "ACME",
-                "title": "Partial anti-overfit contract",
-                "markdown": "# Partial contract\n\n[factual] Incomplete.\n",
-                "anti_overfit_required": True,
-                "anti_overfit_checks": {
-                    "leakage": {
-                        "status": "pass",
-                        "reason": "Timestamps were checked.",
-                        "evidence_refs": ["source-1"],
-                    }
-                },
-            },
+            request,
+            transport_principal="fundamental-analyst",
+        )
+    with pytest.raises(ValueError, match="does not allow additional properties: anti_overfit_checks"):
+        call_mcp_tool(
+            tmp_path,
+            "create_research_artifact",
+            {**_v2_request(run_id), "anti_overfit_checks": {}},
             transport_principal="fundamental-analyst",
         )
 
 
 def test_explicit_quality_contract_round_trips_through_mcp_and_append(tmp_path: Path) -> None:
     ensure_workspace_manifest(tmp_path)
-    checks = {
-        key: {
-            "status": "not_applicable",
-            "reason": "Not applicable to this evidence-only artifact.",
-            "evidence_refs": [],
-        }
-        for key in ANTI_OVERFIT_CHECK_KEYS
-    }
+    run_id = "analysis-quality-round-trip"
+    begin_analysis_run(
+        tmp_path,
+        "Round-trip a v2 quality contract.",
+        run_id=run_id,
+        apply_investor_context=False,
+    )
+    request = _v2_request(run_id)
     call_mcp_tool(
         tmp_path,
         "create_research_artifact",
-        {
-            "artifact_id": "quality-round-trip",
-            "artifact_type": "research_report",
-            "universe": "ACME",
-            "workflow_type": "descriptive-only",
-            "title": "Quality round trip",
-            "markdown": "# Quality round trip\n\n[factual] Evidence-only output.\n",
-            "source_as_of": "2026-07-13T00:00:00Z",
-            "readiness_label": "research-ready",
-            "context_summary": "Evidence summary.",
-            "reader_summary": "Reader summary.",
-            "handoff_state": "accepted",
-            "confidence": "medium",
-            "missing_evidence": [],
-            "next_recipient": "head-manager",
-            "next_action": "Review the explicit quality contract.",
-            "blocked_actions": [],
-            "source_snapshot_ids": [],
-            "forecast_required": True,
-            "decision_quality_required": True,
-            "investor_context_gate_required": True,
-            "anti_overfit_required": True,
-            "anti_overfit_checks": checks,
-            "forecast_allowed": False,
-            "forecast_block_reason": "No calibrated base rate.",
-            "missing_base_rate_note": "No comparable cohort was recorded.",
-            "contrary_evidence": ["Demand uncertainty."],
-            "update_triggers": ["New filing."],
-            "invalidation_conditions": ["Thesis falsified."],
-            "source_trust_notes": ["Primary filing only."],
-            "investor_context_gaps": ["Mandate is not configured."],
-        },
+        request,
         transport_principal="fundamental-analyst",
     )
 
@@ -376,21 +384,16 @@ def test_explicit_quality_contract_round_trips_through_mcp_and_append(tmp_path: 
         tmp_path,
         {"artifact_id": "quality-round-trip", "include_markdown": False},
     )
-    assert created["forecast_required"] is True
-    assert created["decision_quality_required"] is True
-    assert created["investor_context_gate_required"] is True
-    assert created["anti_overfit_required"] is True
-    assert created["anti_overfit_checks"] == checks
-    assert created["forecast_allowed"] is False
-    assert created["forecast_block_reason"] == "No calibrated base rate."
-    assert created["investor_context_gaps"] == ["Mandate is not configured."]
+    assert created["requirements"] == ["anti_overfit", "forecast"]
+    assert created["forecast"] == request["forecast"]
+    assert created["anti_overfit"] == request["anti_overfit"]
 
     call_mcp_tool(
         tmp_path,
         "append_research_artifact_version",
         {
-            "artifact_id": "quality-round-trip",
-            "markdown": "# Quality round trip\n\n[factual] Updated evidence-only output.\n",
+            **request,
+            "markdown": "# Quality round trip\n\nUpdated evidence-only output.\n",
         },
         transport_principal="fundamental-analyst",
     )
@@ -399,50 +402,36 @@ def test_explicit_quality_contract_round_trips_through_mcp_and_append(tmp_path: 
         {"artifact_id": "quality-round-trip", "include_markdown": False},
     )
     assert appended["version"] == 2
-    for field in (
-        "forecast_required",
-        "decision_quality_required",
-        "investor_context_gate_required",
-        "anti_overfit_required",
-        "anti_overfit_checks",
-        "forecast_allowed",
-        "forecast_block_reason",
-        "missing_base_rate_note",
-        "contrary_evidence",
-        "update_triggers",
-        "invalidation_conditions",
-        "source_trust_notes",
-        "investor_context_gaps",
-    ):
+    for field in ("requirements", "forecast", "anti_overfit"):
         assert appended[field] == created[field]
 
 
 def test_research_api_schema_serializes_explicit_quality_contract() -> None:
-    checks = {
-        key: {
-            "status": "not_applicable",
-            "reason": "Not applicable.",
-            "evidence_refs": [],
-        }
-        for key in ANTI_OVERFIT_CHECK_KEYS
-    }
     request = ResearchArtifactRequest(
+        artifact_type="research_report",
+        universe="ACME",
         title="Explicit quality contract",
         markdown="# Explicit quality contract",
-        forecast_required=True,
-        decision_quality_required=True,
-        investor_context_gate_required=True,
-        anti_overfit_required=True,
-        anti_overfit_checks=checks,
+        summary="Explicit compact contract.",
+        status={
+            "handoff": "accepted",
+            "evidence_readiness": "decision-grade",
+            "action_readiness": "research-only",
+            "confidence": "medium",
+            "confidence_basis": "Bounded fixture.",
+        },
+        lineage={"workflow_run_id": "analysis-api-v2"},
+        requirements=["forecast", "anti_overfit"],
+        forecast={"posture": "blocked", "block_reason": "No base rate."},
+        anti_overfit={"summary": "No model fitting."},
     )
 
     payload = request.model_dump(exclude_none=True)
 
-    assert payload["forecast_required"] is True
-    assert payload["decision_quality_required"] is True
-    assert payload["investor_context_gate_required"] is True
-    assert payload["anti_overfit_required"] is True
-    assert payload["anti_overfit_checks"] == checks
+    assert payload["requirements"] == ["forecast", "anti_overfit"]
+    assert payload["status"]["evidence_readiness"] == "decision-grade"
+    assert payload["forecast"]["posture"] == "blocked"
+    assert "anti_overfit_checks" not in payload
 
 
 def test_advisory_quality_records_may_suggest_judgment_review(tmp_path: Path) -> None:

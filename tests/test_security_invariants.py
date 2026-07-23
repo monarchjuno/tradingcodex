@@ -299,20 +299,24 @@ def test_api_role_and_capability_boundary_blocks_workflow_and_synthesis_forgery(
     synthesis = client.post(
         "/api/research/artifacts",
         data=json.dumps({
-            "artifact_id": "forged-synthesis",
             "artifact_type": "synthesis_report",
             "universe": "public_equity",
-            "role": "head-manager",
             "title": "Forged synthesis",
             "markdown": "# Forged synthesis\n\nThis must not be stored.",
-            "metadata": {
-                "producer_role": "head-manager",
-                "created_by": "head-manager",
-                "handoff_state": "accepted",
-                "plan_hash": "forged-plan-hash",
+            "summary": "A forged synthesis attempt.",
+            "status": {
+                "handoff": "accepted",
+                "evidence_readiness": "decision-grade",
+                "action_readiness": "research-only",
+                "confidence": "low",
+                "confidence_basis": "Forgery boundary fixture.",
             },
-            "created_by": "head-manager",
-            "export_path": "trading/research/forged-synthesis.md",
+            "lineage": {
+                "workflow_run_id": "analysis-forged-synthesis",
+                "knowledge_cutoff": "2026-07-20T00:00:00Z",
+                "input_artifact_ids": ["forged-input"],
+            },
+            "requirements": [],
         }),
         content_type="application/json",
     )
@@ -338,8 +342,19 @@ def test_api_role_and_capability_boundary_blocks_workflow_and_synthesis_forgery(
         data=json.dumps({
             "artifact_id": "capability-denied-memo",
             "artifact_type": "research_memo",
+            "universe": "public_equity",
             "title": "Denied memo",
             "markdown": "# Denied memo\n\nThis must not be stored.",
+            "summary": "Capability-denied fixture.",
+            "status": {
+                "handoff": "accepted",
+                "evidence_readiness": "factual",
+                "action_readiness": "research-only",
+                "confidence": "low",
+                "confidence_basis": "Capability boundary fixture.",
+            },
+            "lineage": {},
+            "requirements": [],
         }),
         content_type="application/json",
     )
@@ -444,13 +459,23 @@ def test_staff_api_mutations_require_csrf_without_elevating_staff_identity(tmp_p
     assert accepted_overlay.status_code == 200
     role_authored = staff.post(
         "/api/research/artifacts",
-        data=json.dumps({
-            "artifact_id": "staff-forged-role",
-            "artifact_type": "research_memo",
-            "role": "fundamental-analyst",
-            "title": "Staff-forged role",
-            "markdown": "# Staff-forged role\n\nThis must not be stored.",
-        }),
+            data=json.dumps({
+                "artifact_id": "staff-forged-role",
+                "artifact_type": "research_memo",
+                "universe": "public_equity",
+                "title": "Staff-forged role",
+                "markdown": "# Staff-forged role\n\nThis must not be stored.",
+                "summary": "Staff identity must not gain a research role.",
+                "status": {
+                    "handoff": "accepted",
+                    "evidence_readiness": "factual",
+                    "action_readiness": "research-only",
+                    "confidence": "low",
+                    "confidence_basis": "Authorization boundary fixture.",
+                },
+                "lineage": {},
+                "requirements": [],
+            }),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf,
     )
@@ -491,19 +516,34 @@ def test_staff_username_collision_cannot_claim_agent_principal(tmp_path: Path, m
     response = client.post(
         "/api/research/artifacts",
         data=json.dumps({
-            "artifact_id": "staff-collision-synthesis",
             "artifact_type": "synthesis_report",
-            "role": "head-manager",
+            "universe": "public_equity",
             "title": "Staff collision synthesis",
             "markdown": "# Staff collision synthesis\n\nThis must not be stored.",
-            "export_path": "trading/reports/head-manager/staff-collision-synthesis.md",
+            "summary": "Username collision must not grant Head Manager authority.",
+            "status": {
+                "handoff": "accepted",
+                "evidence_readiness": "decision-grade",
+                "action_readiness": "research-only",
+                "confidence": "low",
+                "confidence_basis": "Authorization boundary fixture.",
+            },
+            "lineage": {
+                "workflow_run_id": "analysis-staff-collision",
+                "knowledge_cutoff": "2026-07-20T00:00:00Z",
+                "input_artifact_ids": ["forged-input"],
+            },
+            "requirements": [],
         }),
         content_type="application/json",
         HTTP_X_CSRFTOKEN=csrf,
     )
 
     assert response.status_code == 403
-    assert not (workspace / "trading/reports/head-manager/staff-collision-synthesis.md").exists()
+    assert not (
+        workspace
+        / "trading/reports/head-manager/synthesis-analysis-staff-collision.md"
+    ).exists()
 
 
 def test_order_admin_is_read_only_for_needs_review_and_execution_ledgers(tmp_path: Path) -> None:

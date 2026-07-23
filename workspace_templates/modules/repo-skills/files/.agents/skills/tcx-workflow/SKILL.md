@@ -60,11 +60,10 @@ that needs fresh evidence or more than one distinct expertise.
    target in this run and only while that child has useful work. Otherwise do
    not call it. Update only on observable material change; a timeout is not
    progress.
-9. Save an authenticated research artifact when external evidence changes a
-   conclusion, supports a consequential judgment or handoff, records a material
-   conflict or gap, or informs order/execution readiness. Otherwise return the
-   bounded answer. Read only the exact artifact needed and retain its provenance
-   and content hash.
+9. Save an authenticated role artifact when evidence changes a conclusion,
+   supports a consequential judgment or handoff, records a material conflict or
+   gap, or has future reuse or audit value. Do not save a narrow fact, status,
+   temporary exploration, or restatement of one existing artifact.
 10. After each accepted result, apply the Feedback Loop below. Synthesize only
     accepted, authenticated, run-local artifacts.
 
@@ -112,8 +111,27 @@ Illustrative ownership examples, not a mandatory sequence:
   limit.
 - Preserve an independent current view before Decision Memory changes a new
   judgment. Memory is evidence, not authority.
-- Persist a synthesis only when a workflow produced decision-relevant evidence.
-  Preserve disagreements, suitability gaps, and blocked actions.
+- Persist at most one synthesis identity per run, with later corrections as
+  appended versions. Save it only when multiple artifacts are actually
+  integrated; a recommendation, valuation, forecast, portfolio/risk judgment,
+  durable abstention, Memory delta, future Decision/Postmortem baseline, or
+  user-requested durable report needs it. Do not save simple facts, status,
+  single-artifact restatements, or follow-ups with no new judgment.
+- Synthesis is a point-in-time integrated judgment, not a role-by-role digest.
+  Directly answer the question and connect 3–7 load-bearing claims from evidence
+  to implication to judgment. Preserve conflicts, strongest contrary evidence,
+  uncertainty, update triggers, invalidation, readiness, possible next steps,
+  and blocked actions. Add specialized modules only when applicable; do not
+  force headings or prose tags.
+- After an accepted decision-grade synthesis with future evaluation value,
+  autonomously call `record_judgment_snapshot`. Do not freeze factual or
+  screening synthesis. A JudgmentSnapshot is evidence-only, not user adoption
+  or execution permission.
+- The final chat answer must stand alone. Give the conclusion, decisive evidence
+  and implications, contrary evidence and uncertainty, both readiness axes, and
+  useful next actions at suitable detail. Never narrate the report's table of
+  contents. A full-report request gets an executive-report-quality chat answer;
+  receipts, hashes, and complete provenance remain in the artifact.
 - After an authenticated Head Manager `synthesis_report` receipt, link its
   saved report in the final reply. Resolve the returned `path` against the
   current workspace root and use its service-returned path:

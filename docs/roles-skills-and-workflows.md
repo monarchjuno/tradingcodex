@@ -1,6 +1,6 @@
 # Roles, Skills, And Workflows
 
-This document owns v1 role identity, skill responsibility, dynamic investment
+This document owns current role identity, skill responsibility, dynamic investment
 orchestration, handoffs, overlays, and execution separation.
 
 ## Responsibility Split

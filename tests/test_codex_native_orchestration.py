@@ -13,9 +13,10 @@ import pytest
 from tradingcodex_cli.generator import bootstrap_workspace
 from tradingcodex_service.application.agents import AGENT_SPECS, EXPECTED_SUBAGENTS
 from tradingcodex_service.application.analysis_runs import begin_analysis_run, read_analysis_run
+from tradingcodex_service.application.artifact_bindings import verify_authenticated_artifact_binding
+from tradingcodex_service.application.research import find_workspace_research_artifact_read_only
 from tradingcodex_service.application.runtime import ensure_workspace_manifest
 from tradingcodex_service.mcp_runtime import (
-    RESEARCH_ARTIFACT_METADATA_FIELDS,
     TOOL_REGISTRY,
     call_mcp_tool,
 )
@@ -175,12 +176,12 @@ def test_child_briefs_and_artifact_skills_keep_capabilities_and_lineage_distinct
     assert "no target ID and an explicit `create new artifact` instruction" in flat_workflow
     assert "Never print full tool records, scan descriptions, or repeat a schema lookup" in flat_workflow
 
-    assert "canonical owner of the shared artifact quality floor" in flat_artifact
-    assert "target `artifact_id` separate from triggering cross-role `input_artifact_ids`" in flat_artifact
-    assert "Use authenticated IDs and service receipts/hashes" in flat_artifact
-    assert "at most two submissions for one artifact write" in flat_artifact
-    assert "even if another correction seems possible" in flat_artifact
-    assert "Never print full tool records, scan descriptions, or repeat a schema lookup" in flat_artifact
+    assert "compact TradingCodex v2 research artifacts" in flat_artifact
+    assert "keep the target `artifact_id` separate from consumed input IDs" in flat_artifact
+    assert "The receipt owns hashes and exact input versions" in flat_artifact
+    assert "one evidence-backed corrected retry" in flat_artifact
+    assert "stop as `waiting` with the bounded error and owner" in flat_artifact
+    assert "Omit empty optional blocks" in flat_artifact
     assert "`evidence_pack` under `trading/research/` only when" in flat_evidence
     assert "`role_report` under `trading/reports/<role>/`" in flat_evidence
     assert "an evidence pack is not a prerequisite or default duplicate" in flat_evidence
@@ -295,40 +296,50 @@ def test_mcp_surface_has_one_lightweight_run_tool_and_no_server_orchestrator() -
     append_properties = TOOL_REGISTRY["append_research_artifact_version"].input_schema[
         "properties"
     ]
-    assert set(RESEARCH_ARTIFACT_METADATA_FIELDS) <= set(artifact_properties)
-    assert set(RESEARCH_ARTIFACT_METADATA_FIELDS) <= set(append_properties)
     artifact_schema = TOOL_REGISTRY["create_research_artifact"].input_schema
-    assert artifact_schema["$defs"]["antiOverfitCheck"]["required"] == [
+    expected_properties = {
+        "principal_id",
+        "artifact_id",
+        "artifact_type",
+        "title",
+        "universe",
+        "symbol",
+        "markdown",
+        "summary",
         "status",
-        "reason",
-        "evidence_refs",
-    ]
-    assert artifact_properties["anti_overfit_checks"]["properties"]["leakage"] == {
-        "$ref": "#/$defs/antiOverfitCheck"
+        "lineage",
+        "requirements",
+        "decision_quality",
+        "memory",
+        "forecast",
+        "valuation",
+        "anti_overfit",
+        "follow_up_requests",
     }
+    assert set(artifact_properties) == expected_properties
+    assert set(append_properties) == expected_properties
+    assert artifact_schema["additionalProperties"] is False
+    assert artifact_properties["status"]["additionalProperties"] is False
+    assert artifact_properties["lineage"]["additionalProperties"] is False
+    assert artifact_properties["memory"]["additionalProperties"] is False
+    assert artifact_properties["status"]["required"] == [
+        "handoff",
+        "evidence_readiness",
+        "action_readiness",
+        "confidence",
+        "confidence_basis",
+    ]
+    assert artifact_properties["requirements"]["items"]["enum"] == [
+        "decision_quality",
+        "forecast",
+        "investor_context",
+        "anti_overfit",
+    ]
     follow_up_item = artifact_properties["follow_up_requests"]["items"]
     assert follow_up_item["type"] == "object"
-    assert follow_up_item["additionalProperties"] is False
-    assert set(follow_up_item["required"]) == {
-        "trigger",
-        "suggested_role",
-        "question",
-        "reason",
-        "materiality",
-    }
-    improvement_item = artifact_properties["improvements"]["items"]
-    assert improvement_item["type"] == "object"
-    assert improvement_item["additionalProperties"] is False
-    lifecycle = artifact_properties["thesis_lifecycle"]
-    assert lifecycle["required"] == ["state"]
-    assert lifecycle["properties"]["state"]["enum"] == [
-        "exploring",
-        "testing",
-        "validated",
-        "rejected",
-        "monitoring",
-    ]
-    assert {"monitoring_artifact", "review_cadence"} <= set(lifecycle["properties"])
+    assert "improvements" not in artifact_properties
+    assert "thesis_lifecycle" not in artifact_properties
+    assert "anti_overfit_checks" not in artifact_properties
     forecast_properties = TOOL_REGISTRY["issue_forecast"].input_schema["properties"]
     assert forecast_properties["horizon"]["format"] == "date-time"
     assert forecast_properties["issued_at"]["description"].startswith("Optional")
@@ -366,22 +377,27 @@ def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
             "artifact_id": "acme-facts",
             "artifact_type": "research_memo",
             "universe": "public_equity",
-            "workflow_type": "factual_profile",
             "title": "ACME facts",
             "markdown": "# ACME facts\n\n[factual] ACME is the subject of this bounded fixture.\n",
-            "source_as_of": "2026-07-12",
-            "readiness_label": "factual-baseline",
-            "context_summary": "Bounded ACME facts.",
-            "reader_summary": "ACME fixture facts.",
-            "handoff_state": "accepted",
-            "confidence": "high",
-            "missing_evidence": [],
-            "next_recipient": "head-manager",
-            "next_action": "Head Manager review.",
-            "blocked_actions": ["order", "execution"],
-            "source_snapshot_ids": [],
-            "workflow_run_id": run_id,
-            "input_artifact_ids": [],
+            "summary": "Bounded ACME fixture facts.",
+            "status": {
+                "handoff": "accepted",
+                "evidence_readiness": "factual",
+                "action_readiness": "research-only",
+                "confidence": "high",
+                "confidence_basis": "Authenticated bounded fixture evidence.",
+                "missing_evidence": [],
+                "blocked_actions": ["order", "execution"],
+            },
+            "lineage": {
+                "workflow_run_id": run_id,
+                "knowledge_cutoff": "2026-07-12T00:00:00Z",
+                "input_artifact_ids": [],
+                "source_snapshot_ids": [],
+                "dataset_ids": [],
+                "calculation_run_ids": [],
+            },
+            "requirements": [],
         },
         transport_principal="fundamental-analyst",
     )
@@ -389,48 +405,77 @@ def test_authenticated_artifacts_bind_run_local_lineage(tmp_path: Path) -> None:
         tmp_path,
         "create_research_artifact",
         {
-            "artifact_id": "acme-synthesis",
             "artifact_type": "synthesis_report",
             "universe": "public_equity",
-            "workflow_type": "factual_profile",
             "title": "ACME synthesis",
             "markdown": "# ACME synthesis\n\n[factual] This synthesis consumes the role artifact.\n",
-            "source_as_of": "2026-07-12",
-            "readiness_label": "accepted",
-            "context_summary": "Synthesis of ACME facts.",
-            "reader_summary": "ACME synthesis.",
-            "handoff_state": "accepted",
-            "confidence": "high",
-            "missing_evidence": [],
-            "next_recipient": "user",
-            "next_action": "No action requested.",
-            "blocked_actions": ["order", "execution"],
-            "source_snapshot_ids": [],
-            "workflow_run_id": run_id,
-            "input_artifact_ids": ["acme-facts"],
+            "summary": "Synthesis of ACME facts.",
+            "status": {
+                "handoff": "accepted",
+                "evidence_readiness": "factual",
+                "action_readiness": "research-only",
+                "confidence": "high",
+                "confidence_basis": "One authenticated current-run input.",
+                "missing_evidence": [],
+                "blocked_actions": ["order", "execution"],
+            },
+            "lineage": {
+                "workflow_run_id": run_id,
+                "knowledge_cutoff": "2026-07-12T00:00:00Z",
+                "input_artifact_ids": ["acme-facts"],
+                "source_snapshot_ids": [],
+                "dataset_ids": [],
+                "calculation_run_ids": [],
+            },
+            "requirements": [],
         },
         transport_principal="head-manager",
     )
     stored = call_mcp_tool(
         tmp_path,
         "get_research_artifact",
-        {"artifact_id": "acme-synthesis", "include_markdown": False},
+        {"artifact_id": f"synthesis-{run_id}", "include_markdown": False},
         transport_principal="head-manager",
     )
-    assert synthesis["status"] == "stored"
-    assert stored["input_artifact_ids"] == ["acme-facts"]
-    assert stored["input_artifact_hashes"] == {"acme-facts": producer["content_hash"]}
+    assert synthesis["artifact"]["id"] == f"synthesis-{run_id}"
+    assert stored["artifact"]["lineage"]["input_artifacts"] == [
+        {
+            "id": "acme-facts",
+            "version": 1,
+                "content_hash": producer["artifact"]["content_hash"],
+        }
+    ]
+    canonical = find_workspace_research_artifact_read_only(tmp_path, f"synthesis-{run_id}")
+    assert canonical is not None
+    verification = verify_authenticated_artifact_binding(tmp_path, canonical)
+    receipt = json.loads((tmp_path / verification["path"]).read_text(encoding="utf-8"))
+    assert receipt["input_artifact_hashes"] == {
+        "acme-facts": producer["artifact"]["content_hash"]
+    }
 
-    with pytest.raises(ValueError, match="plan_hash, stage_id, or task_id"):
+    with pytest.raises(ValueError, match="does not allow additional properties: plan_hash"):
         call_mcp_tool(
             tmp_path,
             "create_research_artifact",
             {
                 "artifact_id": "old-binding",
+                "artifact_type": "research_memo",
                 "universe": "public_equity",
                 "title": "Old binding",
                 "markdown": "# Old binding\n",
-                "workflow_run_id": run_id,
+                "summary": "Old workflow binding must be rejected.",
+                "status": {
+                    "handoff": "accepted",
+                    "evidence_readiness": "factual",
+                    "action_readiness": "research-only",
+                    "confidence": "low",
+                    "confidence_basis": "Schema rejection fixture.",
+                },
+                "lineage": {
+                    "workflow_run_id": run_id,
+                    "knowledge_cutoff": "2026-07-12T00:00:00Z",
+                },
+                "requirements": [],
                 "plan_hash": "a" * 64,
             },
             transport_principal="fundamental-analyst",
@@ -580,10 +625,14 @@ def test_generated_contract_inherits_root_model_and_keeps_role_profiles_optional
     assert "targetless native wait" not in flat_skill.lower()
     assert "an empty target list alone is not failure" not in flat_skill.lower()
     assert "child-lifecycle results in this run" in flat_skill
-    assert "Save an authenticated research artifact when external evidence changes" in skill
+    assert "Save an authenticated role artifact when evidence changes a conclusion" in skill
+    assert "Do not save simple facts, status" in flat_skill
+    assert "Never narrate the report's table of contents" in flat_skill
+    assert "executive-report-quality chat answer" in flat_skill
     assert "$tcx-source-gate" in skill
     assert "current-workflow Snapshot/Dataset candidates" in skill
-    assert "order/execution readiness" in skill
+    assert "both readiness axes" in skill
+    assert "Analysis cannot create policy, approval, broker, or execution authority" in skill
     assert "[Research Framing playbook](playbooks/research-framing.md)" in skill
     assert "provisional causal map" in flat_framing
     assert "coverage is underspecified" in flat_framing

@@ -1,6 +1,6 @@
 # Codex-Native Orchestration
 
-Status: v1 contract
+Status: current contract
 
 TradingCodex uses Codex itself as the investment research orchestrator. Head
 Manager interprets the user's original language, answers narrow trusted facts

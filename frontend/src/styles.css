@@ -209,3 +209,19 @@ main { min-width: 0; height: 100%; overflow: hidden; outline: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; animation-iteration-count: 1 !important; }
 }
+.episode-layout { display: grid; grid-template-columns: minmax(18rem, 0.8fr) minmax(24rem, 1.2fr); gap: 1rem; align-items: start; }
+.episode-list { display: grid; gap: .75rem; }
+.episode-card { cursor: default; }
+.episode-card.is-selected { outline: 2px solid var(--accent, #2d72d2); }
+.episode-card h2, .episode-detail-card h2 { margin-top: 0; }
+.episode-states, .episode-readiness { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+.episode-detail { position: sticky; top: 5rem; }
+.episode-conclusion { font-size: 1.05rem; line-height: 1.65; }
+.episode-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.episode-facts div { padding: .75rem; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: .4rem; }
+.episode-facts dt { font-size: .78rem; opacity: .7; text-transform: uppercase; letter-spacing: .04em; }
+.episode-facts dd { margin: .35rem 0 0; }
+.episode-records ul { display: grid; gap: .5rem; padding-left: 1.1rem; }
+.episode-records li { line-height: 1.45; }
+.episode-records li span, .episode-records li code { display: block; margin-top: .15rem; color: var(--ink-2); overflow-wrap: anywhere; }
+@media (max-width: 900px) { .episode-layout { grid-template-columns: 1fr; } .episode-detail { position: static; } }

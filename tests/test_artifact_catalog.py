@@ -94,7 +94,7 @@ def test_v2_catalog_lazily_indexes_new_legacy_and_structured_artifacts_without_r
     original = _write_mixed_artifacts(root, monkeypatch)
 
     catalog = list_artifact_catalog(root, {"include_invalid": True})
-    by_type = {entry["artifact_type"]: entry for entry in catalog["entries"]}
+    by_type = {entry["artifact_type"]: entry for entry in catalog["items"]}
 
     assert catalog["coverage"] == {
         "total": 5,
@@ -124,14 +124,14 @@ def test_catalog_search_ranks_content_and_fails_closed_for_missing_or_future_cut
     _write_mixed_artifacts(root, monkeypatch)
 
     current = search_artifact_catalog(root, {"query": "demand recovery"})
-    assert current["entries"][0]["artifact_type"] == "forecast"
-    assert {entry["artifact_type"] for entry in current["entries"]} == {
+    assert current["items"][0]["artifact_type"] == "forecast"
+    assert {entry["artifact_type"] for entry in current["items"]} == {
         "forecast",
         "research_memo",
         "postmortem_report",
         "decision_package",
     }
-    assert all(entry["compatibility"] != "invalid" for entry in current["entries"])
+    assert all(entry["compatibility"] != "invalid" for entry in current["items"])
     historical = search_artifact_catalog(
         root,
         {
@@ -139,7 +139,7 @@ def test_catalog_search_ranks_content_and_fails_closed_for_missing_or_future_cut
             "knowledge_cutoff": "2025-12-31T23:59:59Z",
         },
     )
-    assert [entry["catalog_id"] for entry in historical["entries"]] == ["forecast-demand"]
+    assert [entry["catalog_id"] for entry in historical["items"]] == ["forecast-demand"]
     assert historical["cutoff_excluded_count"] == 3
 
 
@@ -167,12 +167,12 @@ def test_catalog_reuses_unchanged_projection_then_refreshes_changes_and_removals
     legacy = root / "trading/decisions/legacy-decision.md"
     legacy.write_text("# Legacy decision\n\nA changed margin thesis.\n", encoding="utf-8")
     changed = search_artifact_catalog(root, {"query": "changed margin"})
-    assert [entry["artifact_type"] for entry in changed["entries"]] == ["decision_package"]
+    assert [entry["artifact_type"] for entry in changed["items"]] == ["decision_package"]
     assert index_path.read_bytes() != dependency_refreshed
 
     legacy.unlink()
     refreshed = list_artifact_catalog(root, {"include_invalid": True})
-    assert all(entry["path"] != "trading/decisions/legacy-decision.md" for entry in refreshed["entries"])
+    assert all(entry["path"] != "trading/decisions/legacy-decision.md" for entry in refreshed["items"])
 
 
 def test_catalog_cli_and_mcp_expose_parallel_read_and_rebuild_surfaces(
@@ -185,7 +185,7 @@ def test_catalog_cli_and_mcp_expose_parallel_read_and_rebuild_surfaces(
 
     research_command(root, ["catalog", "search", "demand", "--limit", "2"])
     cli_search = json.loads(capsys.readouterr().out)
-    assert len(cli_search["entries"]) == 2
+    assert len(cli_search["items"]) == 2
     research_command(root, ["catalog", "rebuild"])
     assert json.loads(capsys.readouterr().out)["status"] == "rebuilt"
 
@@ -197,7 +197,7 @@ def test_catalog_cli_and_mcp_expose_parallel_read_and_rebuild_surfaces(
         {"query": "demand", "limit": 1},
         transport_principal="head-manager",
     )
-    assert len(mcp_search["entries"]) == 1
+    assert len(mcp_search["items"]) == 1
 
     rebuilt = rebuild_artifact_catalog(root)
     assert rebuilt["coverage"]["legacy_partial"] == 1

@@ -1,7 +1,7 @@
 # Research Memory And Artifacts
 
 This document owns TradingCodex research handoff memory, source/as-of posture,
-artifact paths, report quality floor, readiness labels, and artifact contracts.
+artifact paths, report quality floor, the two readiness axes, and artifact contracts.
 Research memory is part of the harness Improvement subsystem; see
 [improvement-loop.md](./improvement-loop.md). Ledger-first decision episodes,
 historical replay, lessons, strategy snapshots, and generated Wiki/graph views
@@ -28,11 +28,13 @@ these files, but the file is the source of truth for handoff-ready research.
 If a workspace has no matching markdown file, the product web and CLI should
 not pretend a canonical research artifact exists only because a DB row exists.
 
-Markdown being prepared for `tcx research create --markdown-file` belongs under
-`trading/research/.drafts/`. Drafts are deliberately excluded from the research
-index until the service writes the canonical artifact envelope. Indexed
-research markdown must declare non-empty `artifact_id`, `artifact_type`, and
-`universe` fields; v1 never infers those identities from a filename or path.
+Markdown bodies may be prepared under `trading/research/.drafts/` and supplied
+inside the v2 JSON request accepted by `tcx research create`. Drafts are
+deliberately excluded from the research index until the service writes the
+canonical artifact envelope. Indexed research markdown must declare non-empty
+`artifact_id`, `artifact_type`, and `universe` fields. The one exception is a
+Head Manager synthesis: the service derives its id and canonical path from the
+analysis run.
 Markdown run cards and validation cards are validated by their own card
 contracts and are not research-index entries.
 
@@ -61,7 +63,7 @@ Non-artifact research freshness records are also file-native:
 - `trading/research/.index/research-object-catalog-v3.sqlite3` for the current
   rebuildable structured and FTS research-object projection
 - `trading/research/.index/research-index.json` and
-  `trading/research/.index/artifact-catalog-v2.json` for one-release
+  `trading/research/.index/artifact-catalog-v3.json` for rebuildable
   compatibility exports emitted from the same projection rules; files remain
   canonical
 - `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json`
@@ -72,9 +74,9 @@ Non-artifact research freshness records are also file-native:
   packages, or other workflow artifacts for evidence-quality validation
   metadata
 - `trading/forecasts/*.jsonl` for append-only forecast ledger records
-- `trading/decisions/*.md` for planned Decision Packages and
-  `*.decision-snapshot.json` for frozen accepted decisions that bind the
-  applicable strategy, investor-context, and forecast snapshots
+- `trading/decisions/*.judgment-snapshot.json` for frozen evaluable synthesis,
+  `*.decision-adoption.json` for explicit immutable user-adoption events, and
+  legacy `*.decision-snapshot.json` records retained read-only
 - `trading/reports/postmortem/*.postmortem_report.json` for outcome-separated
   episode review and lesson candidates
 
@@ -91,96 +93,57 @@ are rebuildable read projections over these files. They are never canonical
 research or decision memory. A derived view must retain source artifact ids and
 hashes and may not erase contrary, superseded, retired, or failed cases.
 
-## Research Artifact Fields
+## Compact Artifact v2
 
-Research markdown frontmatter should preserve:
+New writes use a small common frontmatter envelope. It contains identity
+(`artifact_schema_version`, id, type, title, universe, optional symbol), run
+(`workflow_run_id`, producer, version, recorded time, cutoff), status, one
+shared `summary`, canonical input/Snapshot/Dataset/Calculation IDs, inherited
+requirements, gaps, and body `content_hash`. Empty optional values are omitted.
 
-- `artifact_id`
-- `artifact_type`
-- `universe`
-- `workflow_type`
-- `role`
-- `symbol` or instrument identifiers where applicable
-- `title`
-- `source_as_of`
-- `readiness_label`
-- `context_summary`: concise downstream context before opening full markdown
-- `reader_summary`: plain-language first-read summary for non-expert users
-- `next_action`: the next allowed action, wait state, or reviewer to use
-  without implying an order or recommendation
-- `handoff_state`: `accepted`, `revise`, `blocked`, or `waiting`
-- `confidence`: a conservative confidence label or score
-- `missing_evidence`: explicit missing, stale, or weak evidence as a list
-- `next_recipient`: the next eligible role or reviewer, or a terminal state such
-  as `none`
-- `blocked_actions`: actions still blocked by evidence, role boundary, policy,
-  approval, execution, or user scope
-- `source_snapshot_ids`: source snapshot files that support the artifact, when
-  available
-- `source_snapshot_hashes`: service-derived exact snapshot-id-to-envelope-hash
-  bindings authenticated with the artifact receipt
-- `dataset_ids` and `dataset_manifest_hashes`: exact immutable Datasets used by
-  the artifact and service-derived manifest-hash bindings
-- `workflow_run_id`: lightweight Codex-native run/provenance binding
-- `investment_brain_id`, `investment_brain_version`, and
-  `investment_brain_content_digest`: service-derived lineage for the one
-  explicitly selected Investment Brain, or empty baseline values when no Brain
-  is bound
-- `strategy_name` and `strategy_hash`, plus `investor_context_applied` and
-  `investor_context_hash`: service-derived sealed Strategy and suitability
-  lineage for the run
-- `input_artifact_ids` and `input_artifact_hashes`: exact run-local lineage for
-  every upstream artifact actually consumed
-- `calculation_run_ids`: exact current-workflow CalculationRun records that
-  support a conclusion. A reused result records both the current reuse Run and
-  its original successful Run rather than silently citing only the cached
-  origin
-- `calculation_run_hashes` and calculation reuse-origin bindings are
-  service-derived and sealed into the authenticated artifact receipt; callers
-  provide Run ids only
-- `producer_role`, `artifact_schema_version`, and `knowledge_cutoff`:
-  producer/schema/provenance fields checked by the artifact gate
-- `follow_up_requests`: optional structured artifact-driven follow-up proposals
-  with trigger, suggested fixed role, delta question, reason, materiality,
-  provenance, advisory consent posture, and blocked actions; these proposals do
-  not dispatch subagents or decide analysis scope
-- `improvements`: optional structured judgment improvements with improvement
-  type, improvement, reason, materiality, suggested role, applies-to tags,
-  evidence refs, and blocked actions; these can be recorded as reusable
-  investment-analysis context but do not apply skill, policy, prompt, approval,
-  execution, broker, or MCP changes
-- evidence-only fields for narrow research: source/as-of posture, confidence,
-  missing evidence, source snapshot ids, next recipient, and blocked actions
-- decision-quality fields when applicable: `evidence_grade`,
-  `source_freshness`, `source_quality`, `conflict_status`,
-  `decision_readiness`, forecast permission fields, scenario cases, contrary
-  evidence, update triggers, invalidation conditions, source trust notes,
-  thesis lifecycle notes, and investor-context gaps
-- `version`
-- `content_hash`
-- `workspace_native`
-- `created_by`
+Readiness has two independent axes:
 
-`workflow_type` is descriptive artifact metadata only. It does not select a
-server lane, role roster, or quality profile. The applicable quality checks are
-derived from the artifact type and explicit fields such as
-`forecast_required`, `decision_quality_required`, and
-`investor_context_gate_required`; Head Manager decides when those judgments are
-needed from the live request and evidence.
+- evidence: `factual`, `screen`, `decision-grade`, or `insufficient`;
+- action: `research-only`, `portfolio-review`, `draft-eligible`, or `blocked`.
 
-An `accepted` run-bound artifact must pass the strict artifact-quality contract
-against the exact rendered bytes before the service creates a receipt or
-publishes the stable file. A failed write leaves no accepted file or receipt so
-the producing role can correct and resubmit it. In particular,
-`follow_up_requests` and `improvements` are structured objects, not shorthand
-strings. Non-accepted `revise`, `blocked`, and `waiting` artifacts may record an
-incomplete handoff, but Head Manager synthesis accepts only authenticated,
-current-run inputs whose handoff state is `accepted`.
+Portfolio review and draft eligibility require decision-grade evidence. Draft
+eligibility additionally requires accepted portfolio and risk inputs plus an
+applicable Investor Context. `handoff_state: accepted` means the report is a
+complete handoff; it never grants portfolio, order, approval, or execution
+authority. Confidence is `low`, `medium`, or `high` and always has a separate
+basis. Requirements are the inherited union of `decision_quality`, `forecast`,
+`investor_context`, and `anti_overfit` and cannot be lowered.
 
-The markdown body should preserve source-aware claims, evidence, assumptions,
-handoff conclusions, and any role-owned limitations. Use headings or natural
-prose to make the distinction clear when it affects downstream use; inline
-machine labels are not required.
+Optional compact blocks are `decision_quality`, `memory`, `forecast`,
+`valuation`, `anti_overfit`, and `follow_up_requests`. Detailed scenarios,
+contrary evidence, trust explanation, and analysis belong in Markdown or the
+owning reviewer artifact. Actual probabilities, base rates, resolution, and
+scores live only in the Forecast ledger. Improvements live in Judgment Review
+or Postmortem, not generic artifact metadata.
+
+Receipt v4 owns what frontmatter intentionally omits: exact input versions and
+hashes, Snapshot/Dataset/Calculation hashes, reuse origin, sealed Strategy,
+Investment Brain and Investor Context lineage, creator/role authentication, and
+Memory reference hashes. The writer normalizes one internal envelope, validates
+lineage, renders compact Markdown, creates the receipt from the internal
+envelope, records the receipt, and atomically replaces the stable Markdown.
+Verification combines Markdown identity/body hash with the receipt. Existing
+v1 Markdown, archives, and signed receipts are never rewritten or re-signed;
+public reads adapt them into the v2 response shape.
+
+A canonical Head Manager synthesis uses
+`synthesis-<workflow_run_id>` at
+`trading/reports/head-manager/synthesis-<workflow_run_id>.md`. The service
+derives both values and requires at least one verified accepted run-local input.
+Corrections append a version to the same run identity. A materially different
+cutoff, run context, or evidence basis starts a new run.
+
+The Markdown body remains professional free-form analysis. A synthesis is a
+point-in-time integrated judgment, not a role report digest: it directly
+answers the question, connects load-bearing evidence to implications and
+judgment, preserves conflicts and uncertainty, defines update and invalidation
+triggers, and states readiness and allowed next steps. The service validates
+structured lineage and gates, not prose headings or keywords.
 
 ## Source Snapshot Discipline
 
@@ -188,7 +151,7 @@ Search results are discovery aids, not evidence records. Before extracting a
 precise fact or storing a populated Source Snapshot, the producing role opens or
 fetches the cited primary page, filing, release, dataset, or provider record. If
 direct retrieval is blocked, the artifact preserves the locator and retrieval
-gap as screen-grade context instead of promoting a search snippet into a
+gap with `screen` evidence readiness instead of promoting a search snippet into a
 precise payload.
 
 Market-sensitive and source-sensitive claims should record:
@@ -215,7 +178,7 @@ non-empty `snapshot_id`, and carries verified payload and envelope hashes.
 `known_at`, `retrieved_at`, `recorded_at`, and `system_recorded_at` are required,
 timezone-aware timestamps and must satisfy `known_at <= retrieved_at <=
 recorded_at <= system_recorded_at`. The writer and all research-spec,
-forecasting, and investment-analysis consumers enforce this same v1 contract.
+forecasting, and investment-analysis consumers enforce this same snapshot contract.
 An artifact or replay manifest rejects a snapshot that does not exist or whose
 `known_at` is later than its declared `knowledge_cutoff`.
 Source-specific point-in-time evidence also preserves the identity needed to
@@ -249,10 +212,10 @@ timestamp overrides remain available for controlled replay/import paths, but
 naive, future, and misordered values fail rather than being repaired or ignored.
 
 These time fields are independent: `as_of`, `observed_at`, `published_at`, and
-`known_at` are never substituted for one another. Artifact `readiness_label`,
-`producer_role`, and `knowledge_cutoff` likewise come only from their named
-frontmatter fields. Service callers identify the acting principal with
-`principal_id`; durable files record that identity as `created_by`.
+`known_at` are never substituted for one another. V2 artifact readiness comes
+from `status.evidence_readiness` and `status.action_readiness`; lineage cutoff
+comes from `lineage.knowledge_cutoff`. The authenticated principal becomes the
+single stored `producer_role`.
 
 Research quality focuses on source/as-of discipline, retrieved-at metadata,
 stale-data warnings, versioning, and invalidation rather than long-lived
@@ -471,13 +434,11 @@ snapshot files and seals them into the artifact and HMAC receipt.
 
 `tcx quality-check <artifact-path>` gives a friendly diagnostic pass/fail for
 empty files and invalid JSON while surfacing warnings for weak research
-metadata and context size. `tcx quality-check <artifact-path> --strict` is the
-handoff gate for research markdown: it fails when source/as-of posture,
-`context_summary`, handoff state, confidence, missing-evidence
-fields, next-recipient routing, or source snapshot metadata are absent.
-`reader_summary` and `next_action` are preserved and surfaced for better
-reader UX. Missing values produce warnings because those reader-first fields
-are advisory for otherwise current-schema artifacts.
+metadata and context size. For v2 research markdown, strict validation checks
+the compact envelope, non-empty `summary`, both readiness axes, confidence and
+its basis, requirements, lineage, and body hash. Empty optional fields and
+receipt-only hashes are omitted. Legacy v1 artifacts retain their original
+strict checks and are never rewritten merely to satisfy the v2 contract.
 
 Forecast ledger records under `trading/forecasts/forecast-ledger.jsonl` are
 managed as immutable issue, revision, resolution, and score events. Binary,
@@ -663,7 +624,7 @@ canonical workspace files. The catalog never becomes evidence, policy, or
 execution authority.
 
 For one compatibility release, the same projector rules continue emitting
-`research-index.json` and `artifact-catalog-v2.json` with their existing public
+`research-index.json` and `artifact-catalog-v3.json` with their current public
 CLI/API/MCP response shapes. These JSON files are compatibility exports rather
 than parallel search truth. Catalog search retains lexical relevance plus
 artifact type, universe, symbol, workflow, readiness, handoff, compatibility,
@@ -730,30 +691,23 @@ allowed for the operation: research markdown under `trading/research/` or
 and execution state are central-DB records addressed through service tools, not
 workspace artifact paths.
 
-`create_research_artifact` creates or updates a workspace file. It must not
-silently overwrite an existing artifact id with different content in the same
-workspace. Use `append_research_artifact_version` or
-`./tcx research append <artifact-id>` for intentional version updates.
+`create_research_artifact` creates a workspace file. It must not silently
+overwrite an existing artifact id with different content in the same workspace.
+Use `append_research_artifact_version` or `./tcx research append
+<payload.json|-> --principal <role>` for an intentional same-run version.
+Changing the cutoff or sealed Strategy, Brain, Investor Context, or material
+evidence starts a new analysis run instead of mutating the old judgment point.
 
-`get_research_artifact` supports response detail levels without weakening
-authentication. `full` preserves the compatibility response, `review` keeps
-the body plus the provenance, quality, handoff, source, lineage, and decision
-fields needed for review or synthesis, and `card` returns compact routing and
-identity fields without Markdown. Cards have a hard serialized response cap;
-oversized summary strings and collections are deterministically shortened and
-named in `card_truncated_fields`, while artifact id, version, and content hash
-remain exact. A `review` projection also caps its complete serialized payload
-at 18,000 characters, preserving exact identity and lineage while naming
-shortened or omitted optional fields in `review_truncated_fields`. Its Markdown
-window shrinks when necessary so the next service-returned offset reconstructs
-the complete body without a transport-sized response. Review/full callers can
-bound Markdown with `markdown_start` and
-`markdown_max_chars`; `markdown_window` records the exact returned interval,
-total character count, continuation state, and next offset. The service always
-reads and verifies the complete canonical artifact first and projects the
-response only afterward. Card projections are capped at 10,000 serialized
-characters. Head Manager uses cards before opening selected
-review bodies one at a time and follows only returned continuation offsets.
+`get_research_artifact` always returns the public v2 shape: `artifact`
+(identity, summary, subject, status, lineage, requirements, and applicable
+decision/memory blocks), `path`, `authentication`, `markdown_window`, and
+`markdown`. Detail levels only control how much verified Markdown and optional
+review material enters that shape. Cards omit Markdown and remain bounded;
+review/full reads can request deterministic character windows with
+`markdown_start` and `markdown_max_chars`. The service verifies the complete
+canonical file and receipt before any projection. Lists and searches return
+v2 cards under `items` with page metadata, including when the source file is an
+immutable v1 artifact adapted by the compatibility reader.
 
 Successful authenticated writes return exact `artifact_id`, `path`,
 `handoff_state`, and content identity. Producers pass those service-returned
@@ -766,9 +720,9 @@ the assigned `workflow_run_id`, and exact `input_artifact_ids` when it consumes
 upstream work. Its Research profile keeps `trading/` read-only even though
 user-owned paths outside that tree are writable, so the final role report is
 written only through the authenticated MCP writer. The service authenticates
-the producer, verifies every input belongs to the same run, derives input
-hashes, and writes the schema version, body hash, version, creator, and sealed
-run overlay lineage. For a Brain-bound run, it derives
+the producer, verifies every input belongs to the same run, writes the compact
+Markdown envelope, and seals exact hashes, versions, and run overlay lineage
+in receipt v4. For a Brain-bound run, it derives
 `investment_brain_id`, `investment_brain_version`, and
 `investment_brain_content_digest`; callers cannot supply or override those
 fields. It applies the same service-derived rule to `strategy_name`,
@@ -895,7 +849,7 @@ files. That is expected because research handoff state is workspace-native.
 | Causal analyses and judgment reviews | `trading/research/analyses/*.json`, `trading/research/judgment-priors/*.json`, `trading/research/judgment-reviews/*.json` |
 | Model-upgrade evaluation artifacts | `trading/evaluations/{corpora,runs,blind-review-assignments,blind-reviews,comparisons}/*.json` |
 | Rebuildable research index | `trading/research/.index/research-index.json` |
-| Rebuildable cross-artifact catalog | `trading/research/.index/artifact-catalog-v2.json` |
+| Rebuildable cross-artifact catalog | `trading/research/.index/artifact-catalog-v3.json` |
 | Rebuildable research-object catalog | `trading/research/.index/research-object-catalog-v3.sqlite3` |
 | Order tickets | central DB `OrderTicket` records |
 | Postmortems | `trading/reports/postmortem/*.postmortem_report.json` |
@@ -928,21 +882,29 @@ Investment reports, role handoffs, and final syntheses share a quality floor.
 | Forecast discipline | Required forecasts must be horizon-bound, evidence-aware, updateable, and either valid for the ledger or blocked with `forecast_block_reason`. |
 | Anti-overfit validation | When explicitly required, structured `anti_overfit_checks` must address leakage, survivorship bias, data snooping, out-of-sample coverage, costs, capacity, regime sensitivity, and live friction with typed status, reason, and evidence refs. |
 
-## Readiness Labels
+## Readiness Axes
 
-| Label | Meaning |
+Evidence readiness describes how strongly the evidence supports the claims;
+action readiness describes what may happen next. Acceptance means a report is
+complete, not that an action is authorized.
+
+| Evidence value | Meaning |
 | --- | --- |
-| `factual-baseline` | Verified descriptive facts are present; no recommendation or implementation posture. |
-| `screen-grade` | A material thesis, valuation, market-anchor, or risk input lacks fit-for-purpose support; useful for triage/watchlist work but not decision support. |
-| `not-decision-ready` | A conclusion-driving gap, stale input, unsupported assumption, or unresolved material conflict blocks decision support. |
-| `ready-for-portfolio-risk` | Every conclusion-driving claim has current, attributable, fit-for-purpose support and material uncertainty is explicit; mixed official, provider/OpenBB, and reputable secondary sources are allowed. Not execution-ready. |
-| `ready-for-draft` | Portfolio and risk context support draft order-ticket creation, subject to schema and policy checks. |
-| `blocked` | Policy, data quality, role boundary, adapter support, or user instruction blocks the workflow. |
+| `factual` | Supported descriptive facts without a decision posture. |
+| `screen` | Useful for triage, but a material decision input remains weak or absent. |
+| `decision-grade` | Conclusion-driving claims are current, attributable, and fit for the stated judgment. |
+| `insufficient` | A material conflict, stale input, unsupported assumption, or missing anchor prevents the stated judgment. |
 
-Valuation artifacts without a real current-price or market-as-of anchor must
-include `not-decision-ready` as an exact readiness token. Free-form absence
-placeholders such as `N/A`, `Unknown`, or `Not provided` do not satisfy the
-market-anchor field; an actual anchor remains valid with other readiness text.
+| Action value | Meaning |
+| --- | --- |
+| `research-only` | Continue analysis or monitoring; no portfolio implication is asserted. |
+| `portfolio-review` | Portfolio and risk roles may review the decision-grade judgment. |
+| `draft-eligible` | Accepted portfolio/risk evidence and applicable Investor Context allow order-ticket drafting, still subject to policy and approval. |
+| `blocked` | A named evidence, policy, role, or user boundary blocks the next action. |
+
+`portfolio-review` and `draft-eligible` require `decision-grade` evidence.
+Valuation without a real current-price or market-as-of anchor is
+`insufficient`; placeholder text never substitutes for an anchor.
 
 ## File Behavior
 
@@ -950,17 +912,14 @@ Research file writes should be deterministic enough for review:
 
 - preserve artifact ID and version
 - include source/as-of metadata
-- include readiness label
-- include concise `context_summary` so downstream roles can start from bounded
-  context
-- include handoff state, confidence, missing-evidence, next-recipient, blocked
-  actions, and source snapshot IDs
+- include one concise `summary` shared by agents and users
+- include handoff state, both readiness axes, confidence and its basis,
+  missing evidence, blocked actions, requirements, and source snapshot IDs
 - use only exact service-returned source snapshot IDs, or an empty list when no
   snapshot was recorded
 - include content hash
-- include the exact run binding and consumed input-artifact hashes for every
-  run-bound artifact; include service-derived Brain id/version/digest when the
-  run selected one
+- include the exact run and input IDs in Markdown while sealing exact input
+  versions/hashes and Brain/Strategy/Investor Context lineage in receipt v4
 - include exact current-workflow `calculation_run_ids` for every numerical
   result used in a conclusion; an exact reuse preserves both the reuse Run and
   original successful Run lineage

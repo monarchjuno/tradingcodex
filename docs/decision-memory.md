@@ -34,13 +34,13 @@ tools, persistence, memory, policy, approval, broker, order, or execution.
 ## Canonical Architecture
 
 ```text
-raw source snapshots
+Research Artifacts
         |
-immutable ResearchSpec + replay manifest
+point-in-time Synthesis
         |
-frozen decision package + forecast events
+Judgment Snapshot + optional User Adoption
         |
-separately observed outcome + proper score
+Forecast outcome + proper score
         |
 two-pass postmortem
         |
@@ -61,8 +61,9 @@ The source of truth is the existing file-native record:
 - immutable ResearchSpecs and replay manifests;
 - experiment runs that bind code, data, config, model, prompt, tool, and trial
   provenance;
-- planned Decision Packages, immutable accepted decision snapshots, and
-  accepted role artifacts;
+- accepted role artifacts and canonical synthesis, immutable JudgmentSnapshots,
+  explicit User Adoption events, and legacy DecisionSnapshots retained
+  read-only;
 - append-only forecast issue, revision, resolution, dispute, and score events;
 - audit-backed postmortems and append-only improve records; and
 - Investment Brain id/version/content digest, Strategy hash, and Investor
@@ -71,7 +72,7 @@ The source of truth is the existing file-native record:
 Existing events are not edited to make history look cleaner. Corrections,
 revisions, supersession, disputes, and retirement are new records.
 
-The rebuildable v2 artifact catalog provides a discovery projection across
+The rebuildable v3 artifact catalog provides a discovery projection across
 these file-native records without becoming Decision Memory itself. New
 type-specific service output projects with full canonical identity metadata;
 older files remain unchanged and may project as `legacy_partial`. Malformed
@@ -260,15 +261,42 @@ selection bias.
 A good process can have a bad outcome, and a poor process can have a profitable
 outcome. Outcome knowledge must not rewrite what was reasonably knowable.
 
-The skill seals accepted decision-time state with `./tcx decision snapshot
-record`, locks the outcome-blind first pass with `./tcx postmortem
-process-review`, and only then creates the outcome-attached report with `./tcx
-postmortem create`. These commands accept a JSON payload file or `-` for stdin;
-they validate recorded workflow, artifact, forecast, strategy, and
-investor-context hashes instead of trusting free-form Markdown. Lesson
+Head Manager autonomously seals an evaluable accepted synthesis with the
+role-scoped `record_judgment_snapshot` MCP tool. Factual and screening synthesis
+is not frozen. A durable `insufficient` abstention may still be frozen when its
+future process or outcome is worth evaluating; it remains action-blocked. The
+snapshot binds the canonical synthesis receipt, analysis run context, cutoff,
+and Forecast refs or the canonical reason Forecast was inapplicable. Caller
+input cannot contradict the synthesis Forecast posture. It has
+`authority: evidence_only` and creates no execution permission.
+
+User Adoption is separate. TradingCodex never infers it from conversation,
+viewer activity, a recommendation, or order preparation. The user explicitly
+records an immutable event with `./tcx decision adopt <payload.json|->`; it
+binds the Judgment hash and user's decision statement and may supersede an
+earlier Adoption. Adoption still is not order approval or execution authority.
+
+Postmortem locks the outcome-blind first pass with `./tcx postmortem
+process-review`, then creates the outcome-attached report with `./tcx
+postmortem create`. Process quality can be assessed against Judgment alone;
+claims about what the user actually decided require an Adoption ref. Lesson
 promotion has no direct or generic CLI path: an authenticated
 `judgment-reviewer` performs it through the role-scoped `promote_lesson` MCP
 tool.
+
+### Decision Episode projection
+
+`Decision Episode` is a read model, not stored workflow state. It groups by
+`workflow_run_id`: run record, verified synthesis and role artifacts, Forecast
+events, JudgmentSnapshot, User Adoption, process review/Postmortem, and Lesson
+status. Analysis, judgment, adoption, forecast, postmortem, and lesson keep
+separate statuses; there is no lifecycle enum that falsely implies a single
+linear state machine. Legacy runs with one synthesis use it; multiple legacy
+synthesis candidates produce `ambiguous_legacy_synthesis` and are never
+resolved by guessing. Public cards, search, Library, and Episode projections
+verify every run-bound artifact receipt before displaying its fields or using
+its Dataset and Calculation lineage. The Episode exposes a locked process
+review independently from a completed Postmortem.
 
 ### Separate error loops
 

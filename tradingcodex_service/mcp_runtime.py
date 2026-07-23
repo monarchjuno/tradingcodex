@@ -13,14 +13,6 @@ from typing import Any, Callable, Mapping
 from urllib.parse import urlsplit
 
 from tradingcodex_service.application.agents import AGENT_SPECS
-from tradingcodex_service.application.artifact_quality import (
-    ANTI_OVERFIT_CHECK_KEYS,
-    FOLLOW_UP_CONSENT_POSTURE,
-    FOLLOW_UP_MATERIALITY,
-    FOLLOW_UP_ROLES,
-    FOLLOW_UP_TRIGGERS,
-    IMPROVEMENT_TYPES,
-)
 from tradingcodex_service.application.build_gateway import (
     BUILD_PROTECTED_MCP_TOOLS,
     WORKSPACE_PROTECTED_MCP_TOOLS,
@@ -66,6 +58,10 @@ SAFE_HOME_TOOL_NAMES = frozenset({
     "get_forecast",
     "list_forecasts",
     "get_forecast_calibration_report",
+    "get_judgment_snapshot",
+    "list_judgment_snapshots",
+    "list_decision_episodes",
+    "get_decision_episode",
 })
 REGISTRY_FAILURE_SAFE_READ_TOOLS = frozenset({
     "get_tradingcodex_status",
@@ -185,19 +181,6 @@ def object_schema(
     return json_object_schema(merged, required, additional_properties=additional_properties)
 
 
-ANTI_OVERFIT_CHECK_SCHEMA = json_object_schema(
-    {
-        "status": {"type": "string", "enum": ["pass", "fail", "not_applicable"]},
-        "reason": {"type": "string", "minLength": 1},
-        "evidence_refs": {
-            "type": "array",
-            "items": {"type": "string", "minLength": 1},
-        },
-    },
-    ["status", "reason", "evidence_refs"],
-    additional_properties=False,
-)
-
 CALCULATION_METRIC_SCHEMA = {
     "oneOf": [
         {"type": "string", "minLength": 1},
@@ -229,16 +212,10 @@ CALCULATION_OUTPUT_SCHEMA = json_object_schema(
     ["metrics"],
     additional_properties=False,
 )
-ANTI_OVERFIT_CHECKS_SCHEMA = json_object_schema(
-    {key: {"$ref": "#/$defs/antiOverfitCheck"} for key in ANTI_OVERFIT_CHECK_KEYS},
-    list(ANTI_OVERFIT_CHECK_KEYS),
-    additional_properties=False,
-)
 STRING_LIST_DEFINITION = {
     "type": "array",
     "items": {"type": "string", "minLength": 1},
 }
-STRING_LIST_SCHEMA = {"$ref": "#/$defs/stringList"}
 PROBABILITY_RANGE_SCHEMA = {
     "type": ["array", "string"],
     "description": (
@@ -249,26 +226,6 @@ PROBABILITY_RANGE_SCHEMA = {
     "minItems": 2,
     "maxItems": 2,
 }
-THESIS_LIFECYCLE_SCHEMA = json_object_schema(
-    {
-        "state": {
-            "type": "string",
-            "enum": ["exploring", "testing", "validated", "rejected", "monitoring"],
-            "description": "Current thesis state; state-specific evidence is required by the artifact quality gate.",
-        },
-        "evidence_refs": STRING_LIST_SCHEMA,
-        "evidence_run_card": {"type": ["object", "string"]},
-        "evidence_run_cards": {"type": "array"},
-        "validation_card": {"type": ["object", "string"]},
-        "validation_cards": {"type": "array"},
-        "reviewer_acceptance": {"type": ["object", "string"]},
-        "invalidation_note": {"type": "string", "minLength": 1},
-        "monitoring_artifact": {"type": ["object", "string"]},
-        "review_cadence": {"type": "string", "minLength": 1},
-    },
-    ["state"],
-    additional_properties=True,
-)
 FORECAST_BASE_RATE_SCHEMA = json_object_schema(
     {
         "cohort": {"type": "string", "minLength": 1},
@@ -290,145 +247,83 @@ FORECAST_BASE_RATE_SCHEMA = json_object_schema(
     ["cohort", "source_snapshot_id", "sample_size", "selection_rule"],
     additional_properties=True,
 )
-FOLLOW_UP_REQUEST_SCHEMA = json_object_schema(
+ARTIFACT_V2_STATUS_SCHEMA = json_object_schema(
     {
-        "trigger": {"type": "string", "enum": sorted(FOLLOW_UP_TRIGGERS)},
-        "suggested_role": {"type": "string", "enum": sorted(FOLLOW_UP_ROLES)},
-        "question": {"type": "string", "minLength": 1},
-        "reason": {"type": "string", "minLength": 1},
-        "materiality": {"type": "string", "enum": sorted(FOLLOW_UP_MATERIALITY)},
-        "required_inputs": STRING_LIST_SCHEMA,
-        "trigger_evidence_refs": STRING_LIST_SCHEMA,
-        "suggested_consent_posture": {
-            "type": "string",
-            "enum": sorted(FOLLOW_UP_CONSENT_POSTURE),
-        },
-        "blocked_actions": STRING_LIST_SCHEMA,
+        "handoff": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
+        "evidence_readiness": {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]},
+        "action_readiness": {"type": "string", "enum": ["research-only", "portfolio-review", "draft-eligible", "blocked"]},
+        "confidence": {"type": "string", "enum": ["low", "medium", "high"]},
+        "confidence_basis": {"type": "string", "minLength": 1},
+        "missing_evidence": STRING_LIST_DEFINITION,
+        "blocked_actions": STRING_LIST_DEFINITION,
     },
-    ["trigger", "suggested_role", "question", "reason", "materiality"],
+    ["handoff", "evidence_readiness", "action_readiness", "confidence", "confidence_basis"],
     additional_properties=False,
 )
-IMPROVEMENT_SCHEMA = json_object_schema(
+ARTIFACT_V2_LINEAGE_SCHEMA = json_object_schema(
     {
-        "improvement_type": {"type": "string", "enum": sorted(IMPROVEMENT_TYPES)},
-        "improvement": {"type": "string", "minLength": 1},
-        "reason": {"type": "string", "minLength": 1},
-        "materiality": {"type": "string", "enum": sorted(FOLLOW_UP_MATERIALITY)},
-        "suggested_role": {
+        "workflow_run_id": {"type": "string", "minLength": 1, "maxLength": 180},
+        "knowledge_cutoff": {
             "type": "string",
-            "enum": sorted({*FOLLOW_UP_ROLES, "head-manager"}),
+            "format": "date-time",
+            "description": "RFC 3339 point-in-time knowledge cutoff with an explicit timezone. Use at least the maximum service-returned snapshot known_at and every bound Dataset cutoff; it must not be later than the service receipt time.",
         },
-        "evidence_refs": STRING_LIST_SCHEMA,
-        "applies_to": STRING_LIST_SCHEMA,
-        "blocked_actions": STRING_LIST_SCHEMA,
+        "input_artifact_ids": STRING_LIST_DEFINITION,
+        "source_snapshot_ids": STRING_LIST_DEFINITION,
+        "dataset_ids": STRING_LIST_DEFINITION,
+        "calculation_run_ids": STRING_LIST_DEFINITION,
+        "evidence_lane": {"type": "string", "enum": ["historical_replay", "historical_holdout", "live_forward"]},
+        "research_spec_id": {"type": "string"},
+        "replay_manifest_id": {"type": "string"},
     },
-    ["improvement_type", "improvement", "reason"],
     additional_properties=False,
 )
-
-
-RESEARCH_ARTIFACT_METADATA_FIELDS = {
-    "knowledge_cutoff": {
-        "type": "string",
-        "format": "date-time",
-        "description": "Optional RFC 3339 cutoff with an explicit timezone. It must not be later than the service receipt time and must cover every bound Dataset cutoff; with source_snapshot_ids, use at least the maximum service-returned snapshot known_at. Omit rather than guess.",
-    },
-    "context_summary": {"type": "string"},
-    "reader_summary": {"type": "string"},
-    "handoff_state": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
-    "confidence": {
-        "type": ["string", "number"],
-        "description": "Prefer low, medium, or high; numeric values remain supported.",
-    },
-    "missing_evidence": {"type": "array"},
-    "next_recipient": {"type": "string"},
-    "next_action": {"type": "string"},
-    "blocked_actions": {"type": "array"},
-    "source_snapshot_ids": {"type": "array", "items": {"type": "string"}},
-    "dataset_ids": {
-        "type": "array",
-        "maxItems": 50,
-        "items": {
-            "type": "string",
-            "pattern": r"^dataset-[0-9a-f]{24}$",
+ARTIFACT_V2_MEMORY_SCHEMA = json_object_schema(
+    {
+        "cutoff": {"type": "string", "format": "date-time"},
+        "initial_view": {"type": "string", "minLength": 1},
+        "refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": json_object_schema(
+                {
+                    "kind": {"type": "string", "enum": ["decision_snapshot", "judgment_snapshot", "postmortem", "lesson"]},
+                    "id": {"type": "string", "minLength": 1},
+                },
+                ["kind", "id"],
+                additional_properties=False,
+            ),
         },
-        "description": "Immutable Dataset IDs consumed by the artifact.",
-    },
-    "calculation_run_ids": {
-        "type": "array",
-        "maxItems": 50,
-        "items": {"type": "string", "minLength": 1, "maxLength": 180},
-        "description": "Current-workflow Calculation Run IDs used in the conclusion.",
-    },
-    "evidence_lane": {"type": "string", "enum": ["historical_replay", "historical_holdout", "live_forward"]},
-    "research_spec_id": {"type": "string"},
-    "replay_manifest_id": {"type": "string"},
-    "decision_snapshot_id": {"type": "string"},
-    "strategy_name": {"type": "string"},
-    "strategy_hash": {"type": "string"},
-    "investment_brain_id": {"type": "string"},
-    "investment_brain_version": {"type": "string"},
-    "investment_brain_content_digest": {"type": "string"},
-    "investor_context_applied": {"type": "boolean"},
-    "investor_context_hash": {"type": "string"},
-    "decision_memory_consulted": {"type": "boolean"},
-    "decision_memory_cutoff": {"type": "string"},
-    "forecast_required": {"type": "boolean"},
-    "decision_quality_required": {"type": "boolean"},
-    "investor_context_gate_required": {"type": "boolean"},
-    "anti_overfit_required": {"type": "boolean"},
-    "anti_overfit_checks": ANTI_OVERFIT_CHECKS_SCHEMA,
-    "forecast_allowed": {"type": "boolean"},
-    "forecast_block_reason": {"type": "string"},
-    "forecast_target": {"type": "string"},
-    "forecast_horizon": {"type": "string"},
-    "probability": {},
-    "probability_range": PROBABILITY_RANGE_SCHEMA,
-    "base_rate": {
-        "type": "object",
-        "description": (
-            "Artifact metadata only. To create a ledger forecast, call issue_forecast after this artifact is accepted "
-            "and use its complete base_rate contract."
+        "delta": json_object_schema(
+            {
+                "direction": {"type": "string", "enum": ["unchanged", "strengthened", "weakened", "reversed"]},
+                "summary": {"type": "string", "minLength": 1},
+            },
+            ["direction", "summary"],
+            additional_properties=False,
         ),
     },
-    "missing_base_rate_note": {"type": "string"},
-    "evidence_ids": {"type": "array"},
-    "contrary_evidence": {"type": "array"},
-    "resolution_source": {"type": "string"},
-    "review_date": {"type": "string"},
-    "update_triggers": {"type": "array"},
-    "invalidation_conditions": {"type": "array"},
-    "source_trust_notes": {"type": "array"},
-    "scenario_cases": {"type": "array"},
-    "scenario_summary": {"type": "string"},
-    "thesis_lifecycle": THESIS_LIFECYCLE_SCHEMA,
-    "current_price_as_of": {"type": "string"},
-    "market_anchor_as_of": {"type": "string"},
-    "investor_context_gaps": {"type": "array"},
-    "follow_up_requests": {"type": "array", "items": FOLLOW_UP_REQUEST_SCHEMA},
-    "improvements": {"type": "array", "items": IMPROVEMENT_SCHEMA},
+    ["cutoff", "initial_view", "refs", "delta"],
+    additional_properties=False,
+)
+ARTIFACT_V2_WRITE_PROPERTIES = {
+    "artifact_id": {"type": "string"},
+    "artifact_type": {"type": "string", "minLength": 1},
+    "title": {"type": "string", "minLength": 1},
+    "universe": {"type": "string", "minLength": 1},
+    "symbol": {"type": "string"},
+    "markdown": {"type": "string", "minLength": 1},
+    "summary": {"type": "string", "minLength": 1},
+    "status": ARTIFACT_V2_STATUS_SCHEMA,
+    "lineage": ARTIFACT_V2_LINEAGE_SCHEMA,
+    "requirements": {"type": "array", "uniqueItems": True, "items": {"type": "string", "enum": ["decision_quality", "forecast", "investor_context", "anti_overfit"]}},
+    "decision_quality": {"type": "object"},
+    "memory": ARTIFACT_V2_MEMORY_SCHEMA,
+    "forecast": {"type": "object"},
+    "valuation": {"type": "object"},
+    "anti_overfit": {"type": "object"},
+    "follow_up_requests": {"type": "array", "items": {"type": "object"}},
 }
-RESEARCH_ARTIFACT_WORKFLOW_FIELDS = {
-    "workflow_run_id": {"type": "string", "minLength": 1, "maxLength": 180},
-    "input_artifact_ids": {
-        "type": "array",
-        "maxItems": 50,
-        "items": {"type": "string", "minLength": 1, "maxLength": 180},
-    },
-}
-RESEARCH_ARTIFACT_SCHEMA_DEFS = {
-    "antiOverfitCheck": ANTI_OVERFIT_CHECK_SCHEMA,
-    "stringList": STRING_LIST_DEFINITION,
-}
-
-
-def research_artifact_schema(
-    properties: dict[str, Any],
-    required: list[str] | None = None,
-) -> dict[str, Any]:
-    schema = object_schema(properties, required)
-    schema["$defs"] = RESEARCH_ARTIFACT_SCHEMA_DEFS
-    return schema
 RESEARCH_SPEC_FIELDS = {
     "spec_id": {"type": "string"},
     "created_at": {"type": "string"},
@@ -1037,12 +932,11 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             {
                 "artifact_type": {"type": "string"},
                 "universe": {"type": "string"},
-                "workflow_type": {"type": "string"},
                 "workflow_run_id": {"type": "string"},
                 "symbol": {"type": "string"},
-                "readiness_label": {"type": "string"},
-                "handoff_state": {"type": "string"},
-                "created_by": {"type": "string"},
+                "evidence_readiness": {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]},
+                "action_readiness": {"type": "string", "enum": ["research-only", "portfolio-review", "draft-eligible", "blocked"]},
+                "handoff": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
                 "producer_role": {"type": "string"},
                 "detail_level": {"type": "string", "enum": ["full", "card"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200},
@@ -1063,21 +957,11 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("create_research_artifact"),
         handler_name="create_research_artifact",
-        input_schema=research_artifact_schema({
-            "artifact_id": {"type": "string"},
-            "artifact_type": {"type": "string"},
-            "universe": {"type": "string"},
-            "workflow_type": {"type": "string"},
-            "symbol": {"type": "string"},
-            "title": {"type": "string"},
-            "markdown": {"type": "string"},
-            "markdown_path": {"type": "string"},
-            "export_path": {"type": "string"},
-            "source_as_of": {"type": "string"},
-            "readiness_label": {"type": "string"},
-            **RESEARCH_ARTIFACT_METADATA_FIELDS,
-            **RESEARCH_ARTIFACT_WORKFLOW_FIELDS,
-        }),
+        input_schema=object_schema(
+            ARTIFACT_V2_WRITE_PROPERTIES,
+            ["artifact_type", "title", "universe", "markdown", "summary", "status", "lineage", "requirements"],
+            additional_properties=False,
+        ),
         capability_required="research_artifact.write",
     ),
     McpToolSpec(
@@ -1087,16 +971,11 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         risk_level="write",
         allowed_roles=roles_with_mcp_tool("append_research_artifact_version"),
         handler_name="append_research_artifact_version",
-        input_schema=research_artifact_schema({
-            "artifact_id": {"type": "string"},
-            "workflow_type": {"type": "string"},
-            "markdown": {"type": "string"},
-            "markdown_path": {"type": "string"},
-            "source_as_of": {"type": "string"},
-            "readiness_label": {"type": "string"},
-            **RESEARCH_ARTIFACT_METADATA_FIELDS,
-            **RESEARCH_ARTIFACT_WORKFLOW_FIELDS,
-        }, ["artifact_id"]),
+        input_schema=object_schema(
+            ARTIFACT_V2_WRITE_PROPERTIES,
+            ["artifact_type", "title", "universe", "markdown", "summary", "status", "lineage", "requirements"],
+            additional_properties=False,
+        ),
         capability_required="research_artifact.write",
     ),
     McpToolSpec(
@@ -1147,12 +1026,11 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             {
                 "artifact_type": {"type": "string"},
                 "universe": {"type": "string"},
-                "workflow_type": {"type": "string"},
                 "workflow_run_id": {"type": "string"},
                 "symbol": {"type": "string"},
-                "readiness_label": {"type": "string"},
-                "handoff_state": {"type": "string"},
-                "created_by": {"type": "string"},
+                "evidence_readiness": {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]},
+                "action_readiness": {"type": "string", "enum": ["research-only", "portfolio-review", "draft-eligible", "blocked"]},
+                "handoff": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
                 "producer_role": {"type": "string"},
                 "detail_level": {"type": "string", "enum": ["full", "card"]},
                 "limit": {"type": "integer", "minimum": 1, "maximum": 200},
@@ -1187,8 +1065,9 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             "universe": {"type": "string"},
             "symbol": {"type": "string"},
             "workflow_run_id": {"type": "string"},
-            "readiness_label": {"type": "string"},
-            "handoff_state": {"type": "string"},
+            "evidence_readiness": {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]},
+            "action_readiness": {"type": "string", "enum": ["research-only", "portfolio-review", "draft-eligible", "blocked"]},
+            "handoff": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
             "compatibility": {"type": "string", "enum": ["full", "legacy_partial", "invalid"]},
             "knowledge_cutoff": {"type": "string"},
             "include_invalid": {"type": "boolean"},
@@ -1208,8 +1087,9 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
             "universe": {"type": "string"},
             "symbol": {"type": "string"},
             "workflow_run_id": {"type": "string"},
-            "readiness_label": {"type": "string"},
-            "handoff_state": {"type": "string"},
+            "evidence_readiness": {"type": "string", "enum": ["factual", "screen", "decision-grade", "insufficient"]},
+            "action_readiness": {"type": "string", "enum": ["research-only", "portfolio-review", "draft-eligible", "blocked"]},
+            "handoff": {"type": "string", "enum": ["accepted", "revise", "blocked", "waiting"]},
             "compatibility": {"type": "string", "enum": ["full", "legacy_partial"]},
             "knowledge_cutoff": {"type": "string"},
             "limit": {"type": "integer", "minimum": 1, "maximum": 200},
@@ -1952,6 +1832,61 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         }, additional_properties=False),
     ),
     McpToolSpec(
+        name="record_judgment_snapshot",
+        description="Freeze an evaluable accepted synthesis as evidence-only judgment. Factual and screening synthesis are rejected.",
+        category="research",
+        risk_level="write",
+        allowed_roles=roles_with_mcp_tool("record_judgment_snapshot"),
+        handler_name="record_judgment_snapshot",
+        input_schema=object_schema(
+            {
+                "workflow_run_id": {"type": "string", "minLength": 1},
+                "judgment_id": {"type": "string"},
+                "forecast_ids": STRING_LIST_DEFINITION,
+                "forecast_block_reason": {"type": "string"},
+            },
+            ["workflow_run_id"],
+            additional_properties=False,
+        ),
+        capability_required="research_artifact.write",
+    ),
+    McpToolSpec(
+        name="get_judgment_snapshot",
+        description="Get and verify an immutable JudgmentSnapshot.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_judgment_snapshot"),
+        handler_name="get_judgment_snapshot",
+        input_schema=object_schema({"judgment_id": {"type": "string"}}, ["judgment_id"], additional_properties=False),
+    ),
+    McpToolSpec(
+        name="list_judgment_snapshots",
+        description="List verified JudgmentSnapshots.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("list_judgment_snapshots"),
+        handler_name="list_judgment_snapshots",
+        input_schema=object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 200}}, additional_properties=False),
+    ),
+    McpToolSpec(
+        name="list_decision_episodes",
+        description="List read-only Decision Episode projections grouped by workflow run.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("list_decision_episodes"),
+        handler_name="list_decision_episodes",
+        input_schema=object_schema({"limit": {"type": "integer", "minimum": 1, "maximum": 200}}, additional_properties=False),
+    ),
+    McpToolSpec(
+        name="get_decision_episode",
+        description="Get one read-only Decision Episode projection without creating workflow state.",
+        category="research",
+        risk_level="read",
+        allowed_roles=roles_with_mcp_tool("get_decision_episode"),
+        handler_name="get_decision_episode",
+        input_schema=object_schema({"workflow_run_id": {"type": "string", "minLength": 1}}, ["workflow_run_id"], additional_properties=False),
+    ),
+    McpToolSpec(
         name="create_evaluation_corpus",
         description="Freeze the research-only investment and model-upgrade evaluation corpus.",
         category="evaluation",
@@ -2452,12 +2387,14 @@ def raw_call_tool(
         audit,
         brokers,
         calculations,
+        decision_episodes,
         datasets,
         evaluation_lab,
         execution_gateway,
         forecasting,
         investment_analysis,
         investment_brains,
+        judgments,
         knowledge_wikis,
         orders,
         policy,
@@ -2490,6 +2427,8 @@ def raw_call_tool(
         return build_update_status(workspace_root, check_latest_release=True)
 
     def get_authorized_research_artifact() -> dict[str, Any]:
+        from tradingcodex_service.application.artifact_v2 import project_artifact
+
         detail_level = str(args.get("detail_level") or "full")
         include_markdown = (
             args.get("include_markdown", True) is not False and detail_level != "card"
@@ -2505,13 +2444,14 @@ def raw_call_tool(
         if workflow_run_id and not analysis_runs.read_analysis_run(workspace_root, workflow_run_id):
             raise PermissionError("research artifact does not belong to a recorded analysis run")
         if workflow_run_id:
-            artifact_bindings.verify_authenticated_artifact_binding(workspace_root, artifact)
-        return research.project_research_artifact(
+            artifact["authentication"] = artifact_bindings.verify_authenticated_artifact_binding(workspace_root, artifact)
+        projected = research.project_research_artifact(
             artifact,
             detail_level=detail_level,
             markdown_start=args.get("markdown_start"),
             markdown_max_chars=args.get("markdown_max_chars"),
         )
+        return project_artifact(projected, include_markdown=include_markdown)
 
     def authenticate_research_listing(
         response: dict[str, Any],
@@ -2519,6 +2459,8 @@ def raw_call_tool(
         artifact_key: str,
         mirror_artifact_paths: bool = False,
     ) -> dict[str, Any]:
+        from tradingcodex_service.application.artifact_v2 import project_card
+
         artifacts = response.get(artifact_key)
         if not isinstance(artifacts, list):
             raise ValueError("research artifact listing returned an invalid artifact collection")
@@ -2547,13 +2489,7 @@ def raw_call_tool(
             )
 
         def finalized_response(*, has_more: bool) -> dict[str, Any]:
-            result = {**authenticated, artifact_key: list(projected)}
-            if mirror_artifact_paths and detail_level == "card":
-                result["artifacts"] = [
-                    str(artifact.get("path") or "")
-                    for artifact in projected
-                    if artifact.get("path")
-                ]
+            result = {"items": list(projected)}
             if verified_count:
                 result["run_bound_authentication"] = {
                     "status": "verified",
@@ -2569,7 +2505,7 @@ def raw_call_tool(
             }
             if has_more:
                 page["next_offset"] = offset + len(projected)
-            result["artifact_page"] = page
+            result["page"] = page
             return result
 
         for index, artifact in enumerate(page_candidates):
@@ -2581,10 +2517,7 @@ def raw_call_tool(
                     workspace_root,
                     artifact,
                 )
-            projection = research.project_research_artifact(
-                artifact,
-                detail_level=detail_level,
-            )
+            projection = project_card(artifact)
             projected.append(projection)
             if run_bound:
                 verified_count += 1
@@ -2617,9 +2550,16 @@ def raw_call_tool(
         requested_limit = int(args.get("limit") or 50)
         source_limit = min(200, offset + requested_limit + 1)
         return {
-            **{key: value for key, value in args.items() if key != "offset"},
+            **{key: value for key, value in args.items() if key not in {"offset", "handoff"}},
+            **({"handoff_state": args["handoff"]} if args.get("handoff") else {}),
             "detail_level": "full",
             "limit": source_limit,
+        }
+
+    def catalog_args() -> dict[str, Any]:
+        return {
+            **{key: value for key, value in args.items() if key != "handoff"},
+            **({"handoff_state": args["handoff"]} if args.get("handoff") else {}),
         }
 
     def list_authorized_research_artifacts() -> dict[str, Any]:
@@ -2644,19 +2584,65 @@ def raw_call_tool(
             mirror_artifact_paths=True,
         )
 
+    def search_authorized_research_artifacts() -> dict[str, Any]:
+        from tradingcodex_service.application.artifact_v2 import project_authenticated_card
+
+        response = research.search_research_artifacts(workspace_root, args)
+        artifacts = response.pop("artifacts", [])
+        canonical_artifacts = []
+        for artifact in artifacts:
+            if not isinstance(artifact, dict):
+                continue
+            artifact_id = str(artifact.get("artifact_id") or "")
+            canonical = research.find_workspace_research_artifact_read_only(
+                workspace_root,
+                artifact_id,
+            )
+            if canonical is None:
+                raise ValueError(
+                    f"search result has no canonical research artifact: {artifact_id}"
+                )
+            canonical_artifacts.append(canonical)
+        return {
+            "items": [
+                project_authenticated_card(workspace_root, item)
+                for item in canonical_artifacts
+            ],
+            "page": {
+                "returned_count": len(canonical_artifacts),
+                "has_more": False,
+            },
+            **{key: value for key, value in response.items() if key not in {"db_canonical", "file_sot", "workspace_native", "workspace_context"}},
+        }
+
     def store_authenticated_research_artifact(*, append: bool = False) -> dict[str, Any]:
+        from tradingcodex_service.application.artifact_v2 import (
+            canonicalize_write_request,
+            project_artifact,
+        )
+
+        canonical_request = canonicalize_write_request(args, append=append)
         bound_args = _principal_bound_research_args(
             workspace_root,
-            args,
+            canonical_request,
             principal_id,
             append=append,
         )
         authorized_args = research.authenticated_service_research_args(bound_args)
-        return research.store_authenticated_research_artifact(
+        stored = research.store_authenticated_research_artifact(
             workspace_root,
             authorized_args,
             append=append,
         )
+        artifact = research.get_research_artifact(
+            workspace_root,
+            {"artifact_id": stored["artifact_id"], "include_markdown": False},
+        )
+        artifact["authentication"] = artifact_bindings.verify_authenticated_artifact_binding(
+            workspace_root,
+            artifact,
+        )
+        return project_artifact(artifact)
 
     def begin_agent_analysis_run() -> dict[str, Any]:
         requested_run_id = str(args.get("workflow_run_id") or "").strip()
@@ -2956,9 +2942,9 @@ def raw_call_tool(
         "append_research_artifact_version": lambda: store_authenticated_research_artifact(append=True),
         "get_research_artifact": get_authorized_research_artifact,
         "list_research_artifacts": list_authorized_research_artifacts,
-        "search_research_artifacts": lambda: research.search_research_artifacts(workspace_root, args),
-        "list_artifact_catalog": lambda: artifact_catalog.list_artifact_catalog(workspace_root, args),
-        "search_artifact_catalog": lambda: artifact_catalog.search_artifact_catalog(workspace_root, args),
+        "search_research_artifacts": search_authorized_research_artifacts,
+        "list_artifact_catalog": lambda: artifact_catalog.list_artifact_catalog(workspace_root, catalog_args()),
+        "search_artifact_catalog": lambda: artifact_catalog.search_artifact_catalog(workspace_root, catalog_args()),
         "export_research_artifact_md": lambda: research.export_research_artifact_md(workspace_root, args),
         "record_source_snapshot": lambda: research.record_source_snapshot(
             workspace_root,
@@ -3008,6 +2994,23 @@ def raw_call_tool(
         "get_forecast": lambda: forecasting.get_forecast(workspace_root, args),
         "list_forecasts": lambda: forecasting.list_forecasts(workspace_root, args),
         "get_forecast_calibration_report": lambda: forecasting.calibration_report(workspace_root, args),
+        "record_judgment_snapshot": lambda: judgments.record_judgment_snapshot(
+            workspace_root,
+            {**args, "created_by": role_for_principal(principal_id)},
+        ),
+        "get_judgment_snapshot": lambda: judgments.get_judgment_snapshot(
+            workspace_root,
+            str(args["judgment_id"]),
+        ),
+        "list_judgment_snapshots": lambda: judgments.list_judgment_snapshots(
+            workspace_root,
+            int(args.get("limit") or 50),
+        ),
+        "list_decision_episodes": lambda: decision_episodes.list_decision_episodes(workspace_root, args),
+        "get_decision_episode": lambda: decision_episodes.get_decision_episode(
+            workspace_root,
+            str(args["workflow_run_id"]),
+        ),
         "create_evaluation_corpus": lambda: evaluation_lab.create_evaluation_corpus(workspace_root, {**args, "created_by": principal_id}),
         "record_evaluation_run": lambda: evaluation_lab.record_evaluation_run(workspace_root, {**args, "created_by": principal_id}),
         "create_blind_review_assignment": lambda: evaluation_lab.create_blind_review_assignment(workspace_root, {**args, "assigned_by": principal_id}),
@@ -3077,6 +3080,9 @@ def _canonical_analysis_artifact_binding(
     if len(input_ids) != len(set(input_ids)):
         raise ValueError("input_artifact_ids must not contain duplicates")
     hashes: dict[str, str] = {}
+    inherited_requirements: set[str] = set()
+    input_roles: set[str] = set()
+    input_roles_by_id: dict[str, str] = {}
     for artifact_id in input_ids:
         artifact = find_workspace_research_artifact_read_only(
             Path(workspace_root),
@@ -3084,16 +3090,30 @@ def _canonical_analysis_artifact_binding(
         )
         if not artifact:
             raise ValueError(f"input research artifact does not exist: {artifact_id}")
-        verify_authenticated_artifact_binding(workspace_root, artifact)
+        authentication = verify_authenticated_artifact_binding(workspace_root, artifact)
+        verified_artifact = {
+            **artifact,
+            **(
+                authentication.get("run_lineage")
+                if isinstance(authentication.get("run_lineage"), dict)
+                else {}
+            ),
+        }
         if str(artifact.get("workflow_run_id") or "") != workflow_run_id:
             raise ValueError(f"input research artifact belongs to another analysis run: {artifact_id}")
         if str(artifact.get("handoff_state") or "") != "accepted":
             raise ValueError(f"input research artifact is not an accepted handoff: {artifact_id}")
+        input_role = str(artifact.get("producer_role") or artifact.get("role") or "")
+        input_roles.add(input_role)
+        input_roles_by_id[artifact_id] = input_role
+        requirements = artifact.get("requirements")
+        if isinstance(requirements, list):
+            inherited_requirements.update(str(item) for item in requirements if item)
         content_hash = str(artifact.get("content_hash") or "")
         if not content_hash:
             raise ValueError(f"input research artifact has no content hash: {artifact_id}")
         for field, expected in lineage.items():
-            if artifact.get(field) != expected:
+            if verified_artifact.get(field) != expected:
                 raise ValueError(f"input research artifact has different run provenance: {artifact_id}")
         hashes[artifact_id] = content_hash
     input_hash_sources = (
@@ -3104,11 +3124,51 @@ def _canonical_analysis_artifact_binding(
     for supplied in _research_values("input_artifact_hashes", *input_hash_sources):
         if supplied != hashes:
             raise ValueError("input_artifact_hashes are service-derived from input_artifact_ids")
+    requested_requirements = args.get("requirements", [])
+    if not isinstance(requested_requirements, list):
+        raise ValueError("requirements must be an array")
+    requested_requirement_set = {str(item) for item in requested_requirements}
+    effective_requirements = requested_requirement_set | inherited_requirements
+    action_readiness = str(args.get("action_readiness") or "")
+    evidence_readiness = str(args.get("evidence_readiness") or "")
+    if action_readiness in {"portfolio-review", "draft-eligible"} and evidence_readiness != "decision-grade":
+        raise ValueError(f"{action_readiness} requires decision-grade evidence")
+    if action_readiness == "draft-eligible":
+        if not {"portfolio-manager", "risk-manager"}.issubset(input_roles):
+            raise ValueError("draft-eligible requires accepted portfolio-manager and risk-manager inputs")
+        if not bool(lineage.get("investor_context_applied")):
+            raise ValueError("draft-eligible requires an applicable Investor Context")
+    if "investor_context" in effective_requirements and not bool(lineage.get("investor_context_applied")):
+        raise ValueError("investor_context requirement requires an applicable Investor Context")
+    if "forecast" in effective_requirements and not isinstance(args.get("forecast"), dict):
+        raise ValueError("inherited forecast requirement requires forecast posture")
+    if "anti_overfit" in effective_requirements and not isinstance(args.get("anti_overfit"), dict):
+        raise ValueError("inherited anti_overfit requirement requires anti_overfit")
+    if "decision_quality" in effective_requirements:
+        decision_quality = args.get("decision_quality")
+        review_ids = (
+            decision_quality.get("review_artifact_ids")
+            if isinstance(decision_quality, dict)
+            else None
+        )
+        if not isinstance(review_ids, list) or not review_ids:
+            raise ValueError("decision_quality requires review_artifact_ids")
+        invalid_review_ids = [
+            str(review_id)
+            for review_id in review_ids
+            if input_roles_by_id.get(str(review_id)) != "judgment-reviewer"
+        ]
+        if invalid_review_ids:
+            raise ValueError(
+                "decision_quality review_artifact_ids must identify accepted judgment-reviewer inputs: "
+                + ", ".join(invalid_review_ids)
+            )
     return {
         "workflow_run_id": workflow_run_id,
-        "artifact_schema_version": 1,
+        "artifact_schema_version": int(args.get("artifact_schema_version") or 2),
         "input_artifact_ids": input_ids,
         "input_artifact_hashes": hashes,
+        "requirements": sorted(effective_requirements),
         **lineage,
     }
 
@@ -3192,12 +3252,32 @@ def _principal_bound_research_args(
         or existing.get("artifact_type")
         or "research_memo"
     )
+    if artifact_type == "synthesis_report":
+        run_id = str(args.get("workflow_run_id") or "").strip()
+        if not run_id:
+            raise ValueError("head-manager synthesis requires a canonical workflow_run_id")
+        derived_id = f"synthesis-{run_id}"
+        if append:
+            existing = find_workspace_research_artifact_read_only(
+                workspace_root,
+                derived_id,
+            ) or {}
+            if existing:
+                verify_current_artifact_binding_before_append(workspace_root, existing)
+        args = {
+            **args,
+            "artifact_id": derived_id,
+            "export_path": f"trading/reports/head-manager/{derived_id}.md",
+        }
     if "created_by" in args:
         raise ValueError("research artifact created_by is derived from the authenticated MCP principal")
     expected = {"role": role, "producer_role": role, "created_by": principal_id}
     for field, expected_value in expected.items():
         supplied = [args.get(field), metadata.get(field), source.get(field)]
-        if append:
+        if append and not (
+            int(existing.get("artifact_schema_version") or 1) >= 2
+            and field in {"role", "created_by"}
+        ):
             supplied.append(existing.get(field))
         if any(str(value) != expected_value for value in supplied if value not in (None, "")):
             raise PermissionError(f"research artifact {field} must match the authenticated MCP principal")
@@ -3216,6 +3296,10 @@ def _principal_bound_research_args(
     if append and existing:
         canonical_args.pop("path", None)
         canonical_args["export_path"] = str(existing["path"])
+        existing_cutoff = str(existing.get("knowledge_cutoff") or "")
+        requested_cutoff = str(args.get("knowledge_cutoff") or "")
+        if int(existing.get("artifact_schema_version") or 1) >= 2 and requested_cutoff != existing_cutoff:
+            raise ValueError("a changed knowledge_cutoff requires a new analysis run")
     workflow_values = _research_values("workflow_run_id", args, metadata, source, existing)
     if len({str(value) for value in workflow_values}) > 1:
         raise ValueError("research artifact workflow_run_id inputs disagree")

@@ -10,6 +10,8 @@ from tradingcodex_service.api import api
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/viewer/", viewer_api.snapshot, name="viewer-snapshot"),
+    path("api/viewer/episodes/", viewer_api.episodes, name="viewer-episodes"),
+    path("api/viewer/episodes/<str:workflow_run_id>/", viewer_api.episode_detail, name="viewer-episode-detail"),
     path("api/viewer/skills/<str:skill_id>/", viewer_api.skill_detail, name="viewer-skill-detail"),
     path("api/viewer/wiki-pages/", viewer_api.wiki_pages, name="viewer-wiki-pages"),
     path(

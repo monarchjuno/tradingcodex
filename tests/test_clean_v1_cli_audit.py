@@ -107,8 +107,8 @@ def test_native_permissions_and_rules_own_agent_shell_policy(tmp_path: Path) -> 
 
     native_permission_commands = (
         "./tcx mcp call create_research_artifact --principal fundamental-analyst",
-        "./tcx research create --markdown-file trading/research/.drafts/note.md --universe public_equity",
-        "./tcx research append note-1 --markdown-file trading/research/.drafts/note.md",
+        "./tcx research create create-v2.json --principal fundamental-analyst",
+        "./tcx research append append-v2.json --principal fundamental-analyst",
         "./tcx research spec create spec.json --principal fundamental-analyst",
         "./tcx research replay create replay.json --principal fundamental-analyst",
         "./tcx research experiment record run.json --principal technical-analyst",
@@ -121,7 +121,7 @@ def test_native_permissions_and_rules_own_agent_shell_policy(tmp_path: Path) -> 
         "./tcx risk-check ticket-1",
         "./tcx approve ticket-1 --approved-by risk-manager",
         "./tcx postmortem create review.json --created-by judgment-reviewer",
-        "tcx.cmd research create --markdown-file trading/research/.drafts/note.md --universe public_equity",
+        "tcx.cmd research create create-v2.json --principal fundamental-analyst",
         "./tcx research list",
         "./tcx forecast list",
         "./tcx quality-check trading/research/note.md --strict",

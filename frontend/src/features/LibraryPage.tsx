@@ -7,7 +7,7 @@ import { EmptyState, ErrorNotice, FieldList, LoadingState, PageHeader, SectionHe
 import { collectionViewState } from "../viewer-data.js";
 
 export function LibraryPage({ artifacts, error, loading }: { artifacts: Artifact[]; error: string; loading: boolean }) {
-  const requestedArtifact = sessionStorage.getItem("tcx-selected-artifact") || "";
+  const requestedArtifact = requestedArtifactFromLocation() || sessionStorage.getItem("tcx-selected-artifact") || "";
   const [query, setQuery] = useState("");
   const [type, setType] = useState("all");
   const [selectedId, setSelectedId] = useState(requestedArtifact);
@@ -87,12 +87,15 @@ function ArtifactReader({ artifact, detail, loading, error }: { artifact: Artifa
   if (artifact.resourceKind === "calculation") {
     return <CalculationReader artifact={artifact} detail={detail} loading={loading} error={error} />;
   }
-  const data = { ...artifact.raw, ...detail };
+  const projected = asRecord(detail.artifact);
+  const status = asRecord(projected.status);
+  const decisionQuality = asRecord(projected.decision_quality);
+  const data = { ...artifact.raw, ...projected };
   const html = asText(asRecord(detail.preview).html);
   const contrary = asStringList(data.contrary_evidence);
-  const invalidation = asStringList(data.invalidation_conditions);
-  const updates = asStringList(data.update_triggers);
-  const blocked = asStringList(data.blocked_actions);
+  const invalidation = asStringList(decisionQuality.invalidation_conditions ?? data.invalidation_conditions);
+  const updates = asStringList(decisionQuality.update_triggers ?? data.update_triggers);
+  const blocked = asStringList(status.blocked_actions ?? data.blocked_actions);
   const evidenceGroups = [
     ["Contrary evidence", contrary],
     ["Invalidation conditions", invalidation],
@@ -107,6 +110,11 @@ function ArtifactReader({ artifact, detail, loading, error }: { artifact: Artifa
     {loading ? <LoadingState label="Loading the sanitized research report…" /> : html ? <section className="full-report"><div className="rendered-content" dangerouslySetInnerHTML={{ __html: html }} /></section> : <p className="muted">A full sanitized preview is not available for this artifact.</p>}
     {blocked.length > 0 && <details className="boundary-disclosure"><summary>Outside this analysis</summary><FieldList values={blocked} /></details>}
   </>;
+}
+
+function requestedArtifactFromLocation(): string {
+  const query = window.location.hash.split("?", 2)[1] || "";
+  try { return new URLSearchParams(query).get("artifact") || ""; } catch { return ""; }
 }
 
 function DatasetReader({ artifact, detail, loading, error }: { artifact: Artifact; detail: Record<string, unknown>; loading: boolean; error: string }) {

@@ -37,12 +37,13 @@ Corroborate in proportion to consequence. Independently check a
 conclusion-driving claim when it is surprising, disputed, transformed from raw
 data, or weakly attributed; do not require a fixed source count for ordinary
 well-supported facts. One missing, stale, or ambiguous field invalidates only
-dependent claims. Use `ready-for-portfolio-risk` when every
+dependent claims. Use `evidence_readiness: decision-grade` when every
 conclusion-driving claim has fit-for-purpose support, the relevant market
 anchor is current, and material conflicts and gaps are explicit.
-Use `screen-grade` or `not-decision-ready` only when a material unresolved gap
+Use `evidence_readiness: screen` or `insufficient` only when a material unresolved gap
 prevents responsible decision support, not merely because a primary source is
-absent. Record confidence separately from readiness.
+absent. Record `action_readiness` and confidence separately from evidence
+readiness; evidence quality alone never creates order or execution authority.
 
 Judge freshness relative to the requested as-of, the source's publication or
 observation cadence, the instrument or venue session when applicable, and the

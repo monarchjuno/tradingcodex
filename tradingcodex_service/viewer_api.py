@@ -9,6 +9,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 
 from tradingcodex_service.application.common import local_or_staff_source
+from tradingcodex_service.application.decision_episodes import (
+    get_decision_episode,
+    list_decision_episodes,
+)
 from tradingcodex_service.application.viewer import (
     get_artifact_detail,
     get_calculation_detail,
@@ -59,6 +63,24 @@ def skill_detail(request: HttpRequest, skill_id: str) -> JsonResponse:
 @_read_allowed
 def artifact_detail(request: HttpRequest, artifact_id: str) -> JsonResponse:
     return _read_response(lambda: get_artifact_detail(request.tradingcodex_workspace_root, artifact_id))
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def episodes(request: HttpRequest) -> JsonResponse:
+    try:
+        limit = int(request.GET.get("limit", "100"))
+    except (TypeError, ValueError):
+        return _error("invalid_request", "Episode limit must be an integer.", 400)
+    return _read_response(lambda: list_decision_episodes(request.tradingcodex_workspace_root, {"limit": limit}))
+
+
+@csrf_exempt
+@require_GET
+@_read_allowed
+def episode_detail(request: HttpRequest, workflow_run_id: str) -> JsonResponse:
+    return _read_response(lambda: get_decision_episode(request.tradingcodex_workspace_root, workflow_run_id))
 
 
 @csrf_exempt

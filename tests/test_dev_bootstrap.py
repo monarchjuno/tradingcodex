@@ -95,7 +95,7 @@ def test_dev_update_preserves_existing_home_and_db_override(
     monkeypatch.setattr(
         bootstrap,
         "validate_generated_workspace",
-        lambda _target: {
+        lambda _target, **_options: {
             "module_lock": {
                 "tradingcodex_package_spec": "local-explicit",
                 "tradingcodex_home": str(home),
@@ -137,7 +137,7 @@ def test_dev_update_rejects_release_workspace(
     monkeypatch.setattr(
         bootstrap,
         "validate_generated_workspace",
-        lambda _target: {
+        lambda _target, **_options: {
             "module_lock": {
                 "tradingcodex_package_spec": "tradingcodex",
             }
