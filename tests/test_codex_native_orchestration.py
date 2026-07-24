@@ -191,6 +191,11 @@ def test_child_briefs_and_artifact_skills_keep_capabilities_and_lineage_distinct
     assert "exact conflict or review question" in flat_judgment
     assert "accepted, authenticated Artifact IDs with their service receipts/content hashes" in flat_judgment
     assert "paths and compact summaries as navigation aids, never substitutes" in flat_judgment
+    assert "Judgment tests the evidence-to-interpretation-to-conclusion link" in flat_judgment
+    assert "Never silently replace the mandate, Brain, or Strategy" in flat_judgment
+    assert "do not force it onto every request" in flat_judgment
+    assert "frame concern" in flat_judgment
+    assert "compact judgment frame derived from the user mandate" in flat_workflow
     assert "briefs that name that owner, exact reusable IDs, and the needed or missing slice" in flat_docs
     assert "target owner's Artifact ID to append or revise from triggering cross-role Artifact IDs consumed as inputs" in flat_docs
     assert "when the evidence only supports that report, the role creates no duplicate evidence pack" in flat_docs

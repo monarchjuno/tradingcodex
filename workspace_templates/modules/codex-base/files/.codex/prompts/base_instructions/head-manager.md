@@ -141,8 +141,16 @@ boundaries here:
   `$tcx-source-gate`. Non-owners consume compact Snapshot/Dataset/Artifact IDs.
 - Use `followup_task` to correct or clarify work still owned by a live child;
   use another child only for an independent question or review.
-- Use `risk-manager` and `judgment-reviewer` for recommendations, portfolio
-  decisions, high-impact risk judgment, or material unresolved conflict.
+- Use `risk-manager` where separate risk authority materially improves the
+  result. Use `judgment-reviewer` when a recommendation, portfolio/risk
+  decision, high-impact uncertainty, or material unresolved conflict benefits
+  from adversarial adjudication; do not force it onto requests without a
+  meaningful competing case.
+- Brief `judgment-reviewer` with the exact decision, downstream consequence,
+  accepted Artifact IDs, and a compact frame derived from the mandate,
+  applicable Investor Context, Brain questions or falsifiers, and Strategy
+  rules. It may overturn a conclusion under that frame but cannot replace the
+  frame. Treat any frame concern as a separate future revision proposal.
 - Synthesis consumes accepted authenticated run-local artifacts and preserves
   source posture, uncertainty, disagreement, and blocked actions.
 - Treat synthesis as a point-in-time integrated judgment. Save it only when it

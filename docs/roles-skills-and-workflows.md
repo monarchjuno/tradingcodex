@@ -334,7 +334,22 @@ not synthesis inputs.
 
 Use `judgment-reviewer` for recommendations, portfolio/risk decisions,
 material conflicts, and high-consequence uncertainty. Do not force it into a
-narrow factual request.
+narrow factual request or a task without a meaningful competing case. The
+reviewer is an adversarial adjudicator, not a generic skeptic or a neutral
+consensus engine. Head Manager supplies the exact decision and a compact frame
+derived from the user mandate, applicable Investor Context, selected Brain
+questions or falsifiers, selected Strategy rules, accepted Artifact IDs, and
+the downstream consequence.
+
+The reviewer tests whether authenticated evidence supports the artifact's
+interpretation and conclusion under that frame. It may maintain, change,
+qualify, or abstain from the current conclusion, but it cannot silently replace
+the user mandate, Brain, or Strategy. Bull-versus-bear is one useful form for a
+directional investment claim; other tasks use their strongest relevant
+alternative hypothesis, adverse scenario, assumption challenge, or
+claim-versus-refutation. A concern that the selected frame is inapplicable or
+defective is reported separately for Head Manager or a later postmortem and
+does not amend the current run.
 
 Select a method profile that matches the task:
 

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 2.1.1 - 2026-07-24
+
+- Reframe independent judgment review as task-relative adversarial adjudication:
+  test evidence, interpretation, and conclusions under the selected user
+  mandate, Investor Context, Brain, and Strategy without silently replacing
+  that governing frame or forcing Bull-versus-Bear onto incompatible tasks.
+
 ## 2.1.0 - 2026-07-23
 
 - Ship the complete compact Artifact v2, receipt v4, canonical synthesis,

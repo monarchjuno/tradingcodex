@@ -39,6 +39,8 @@ def test_head_manager_owns_typed_brain_translation_and_conflicts() -> None:
     assert "independent current-run evidence view" in flat_prompt
     assert "post-memory decision" in flat_prompt
     assert "caller-authored Brain lineage" in flat_prompt
+    assert "compact frame derived from the mandate" in flat_prompt
+    assert "may overturn a conclusion under that frame but cannot replace the frame" in flat_prompt
 
 
 def test_tcx_workflow_keeps_context_and_routing_native() -> None:
@@ -64,6 +66,8 @@ def test_tcx_workflow_keeps_context_and_routing_native() -> None:
     assert "load `$tcx-source-gate`" in flat_skill
     assert "current-workflow Snapshot/Dataset candidates" in flat_skill
     assert "Preserve an independent current view before Decision Memory" in flat_skill
+    assert "compact judgment frame derived from the user mandate" in flat_skill
+    assert "not replace the frame" in flat_skill
     assert "[Research Framing playbook](playbooks/research-framing.md)" in skill
     assert "Skip the playbook for a narrow fact or recorded order" in flat_skill
     assert "Frame research as a provisional causal map, not a request-shaped checklist" in flat_framing

@@ -35,8 +35,11 @@ that needs fresh evidence or more than one distinct expertise.
    decision-relevant unknowns, and choose the smallest useful role set. Skip the
    playbook for a narrow fact or recorded order, approval, or execution status.
    Dispatch only for distinct expertise or independent challenge. Use
-   `risk-manager` and `judgment-reviewer` for recommendations, portfolio
-   decisions, high-impact risk judgment, or material conflict.
+   `risk-manager` where its separate risk authority materially improves the
+   result. Use `judgment-reviewer` when a recommendation, portfolio/risk
+   decision, material conflict, or high-consequence uncertainty benefits from
+   adversarial adjudication; do not force it onto narrow facts or requests
+   without a meaningful competing case.
 5. Use an exact fixed role when one is available. Only an unavailable
    evidence-producing role may use a generic child for the same bounded brief
    and no-order boundary; it cannot approve, execute, access secrets, or act as
@@ -111,6 +114,11 @@ Illustrative ownership examples, not a mandatory sequence:
   limit.
 - Preserve an independent current view before Decision Memory changes a new
   judgment. Memory is evidence, not authority.
+- Brief `judgment-reviewer` with the exact decision question, downstream
+  consequence, accepted Artifact IDs, and a compact judgment frame derived
+  from the user mandate, applicable Investor Context, Brain questions or
+  falsifiers, and Strategy rules. Ask it to test application under that frame,
+  not replace the frame.
 - Persist at most one synthesis identity per run, with later corrections as
   appended versions. Save it only when multiple artifacts are actually
   integrated; a recommendation, valuation, forecast, portfolio/risk judgment,
