@@ -323,11 +323,13 @@ Generated workspaces contain:
   reference a Head Manager may pass onward
 - deterministic root-native action interception: before allocating an analysis
   run, `UserPromptSubmit` reserves immediate `$tcx-order-submit` and
-  `$tcx-order-cancel`, accepts only their complete exact `--name value`
-  grammar from a root native user turn, creates a workspace-bound `native-user`
+  `$tcx-order-cancel`, accepts their complete literal `--name value`
+  grammar from a root native user turn while tolerating ASCII skill-name case
+  and whitespace line wrapping, creates a workspace-bound `native-user`
   mandate, and calls the canonical Django execution gateway in-process. It also
-  reserves a first-meaningful-line `$tcx-order-allow --mode
-  paper|validation|live`, issues one workspace/session/turn/prompt/mode-bound
+  reserves a first-meaningful `$tcx-order-allow` invocation followed by
+  `--mode paper|validation|live` and a non-empty request on the same or later
+  lines, issues one workspace/session/turn/prompt/mode-bound
   `OrderTurnGrant`, and then continues the normal workflow. Malformed reserved
   actions, subagent actions, and retired
   `$execute-paper-order` actions fail closed

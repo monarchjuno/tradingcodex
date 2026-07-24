@@ -46,7 +46,10 @@ NATIVE_TURN_GRANT_SOURCE = "native_codex_turn_grant"
 ORDER_TURN_GRANT_TTL = timedelta(hours=1)
 ORDER_TURN_GRANT_MODES = frozenset({"paper", "validation", "live"})
 ORDER_TURN_GRANT_ACTIONS = frozenset({"submit", "cancel"})
-_ORDER_ALLOW_LINE = re.compile(r"^\$tcx-order-allow --mode (paper|validation|live)$")
+_ORDER_ALLOW_BODY = re.compile(
+    r"^--mode[ \t\n]+(?P<mode>paper|validation|live)[ \t\n]+(?P<request>.+)$",
+    re.ASCII | re.DOTALL | re.IGNORECASE,
+)
 
 _RESERVED_SKILL_TOKENS = frozenset(
     {
@@ -192,9 +195,12 @@ def parse_native_execution_invocation(
     if len(raw.encode("utf-8")) > _MAX_PROMPT_BYTES:
         raise NativeExecutionInvocationError("native execution invocation is too long")
     lines = meaningful_lines(raw)
-    if len(lines) != 1:
-        raise NativeExecutionInvocationError("native execution invocation must be one action-only line")
-    value = token + (f" {invocation.tail}" if invocation.tail else "")
+    remaining_lines = [line for _, line in lines[1:]]
+    value = " ".join(
+        part
+        for part in (token, invocation.tail, *remaining_lines)
+        if part
+    )
     if any(_is_control_character(character) for character in value):
         raise NativeExecutionInvocationError("native execution invocation contains a control character")
     if any(character in value for character in ("'", '"', "\\")):
@@ -253,7 +259,7 @@ def parse_order_allow_invocation(
     prompt: Any,
     workspace_root: Path | str | None = None,
 ) -> str | None:
-    """Return a first-meaningful-line turn-grant mode for an exact invocation."""
+    """Return a turn-grant mode from a reserved first invocation."""
 
     raw = raw_prompt(prompt)
     try:
@@ -266,14 +272,22 @@ def parse_order_allow_invocation(
         raise NativeExecutionInvocationError(str(exc)) from exc
     if invocation is None:
         return None
-    match = _ORDER_ALLOW_LINE.fullmatch(f"{ORDER_ALLOW_SKILL} {invocation.tail}")
+    lines = meaningful_lines(raw)
+    body = "\n".join(
+        part
+        for part in (invocation.tail, *(line for _, line in lines[1:]))
+        if part
+    )
+    match = _ORDER_ALLOW_BODY.fullmatch(body)
     if match is None:
         raise NativeExecutionInvocationError(
-            "$tcx-order-allow must use exact syntax: $tcx-order-allow --mode paper|validation|live"
+            "$tcx-order-allow requires --mode paper|validation|live followed by a non-empty request"
         )
-    lines = meaningful_lines(raw)
-    if len(lines) < 2 or not any(has_visible_content(line) for _, line in lines[1:]):
-        raise NativeExecutionInvocationError("$tcx-order-allow requires a non-empty request after its invocation")
+    request = match.group("request")
+    if not has_visible_content(request):
+        raise NativeExecutionInvocationError("$tcx-order-allow requires a non-empty request")
+    if request.lstrip().startswith("--"):
+        raise NativeExecutionInvocationError("$tcx-order-allow contains an unsupported option")
     incompatible = (
         "$tcx-build",
         "$tcx-brain",
@@ -287,7 +301,7 @@ def parse_order_allow_invocation(
         mixed = next(
             (
                 found
-                for _, line in lines[1:]
+                for _, line in meaningful_lines(request)
                 if (
                     found := parse_line_invocation(
                         line,
@@ -306,7 +320,7 @@ def parse_order_allow_invocation(
         )
     if len(raw.encode("utf-8")) > _MAX_TURN_GRANT_PROMPT_BYTES:
         raise NativeExecutionInvocationError("$tcx-order-allow prompt is too long")
-    return match.group(1)
+    return match.group("mode").lower()
 
 
 def issue_order_turn_grant(

@@ -27,6 +27,11 @@ Build the smallest evidence set that can answer the assigned question.
    classes; mark missing universe support or unavailable routes as gaps.
 2. Apply `tcx-source-gate` before external retrieval and retain its returned
    source IDs and gaps.
+   If analysis exposes a material gap, conflict, stale anchor, or identifier
+   mismatch within your assigned question and specialty, collect the additional
+   evidence needed to resolve it without waiting for a new field-by-field
+   instruction. Use evidence value, not a fixed source or call count, as the
+   stopping rule.
 3. Distinguish observations, source or management claims, analysis, and
    assumptions in natural prose where ambiguity matters. Use opened filings,
    releases, and exchange/regulator records when source-of-record status
@@ -42,7 +47,8 @@ Build the smallest evidence set that can answer the assigned question.
 
 Carry Snapshot, Dataset, and Artifact IDs plus a compact card into calculation
 or handoff context. Do not summarize away used Dataset rows or repeat an
-unchanged source call.
+unchanged source call. Do not expand into another role's complete data family
+or broad just-in-case collection; hand off a genuinely cross-specialty gap.
 
 For `record_source_snapshot`, omit caller-owned `snapshot_id`, `retrieved_at`,
 and `recorded_at`. Supply `known_at` only when an exact timezone-aware knowable

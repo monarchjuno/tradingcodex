@@ -898,8 +898,9 @@ TOOL_SPECS: tuple[McpToolSpec, ...] = (
         name=ORDER_TURN_GRANT_TOOL,
         description=(
             "Use the single order effect authorized for this root Codex turn. "
-            "The call is rejected unless UserPromptSubmit accepted an exact $tcx-order-allow "
-            "invocation on the first meaningful line and PreToolUse injects its one-time proof."
+            "The call is rejected unless UserPromptSubmit accepted a first-meaningful "
+            "$tcx-order-allow invocation with a valid mode and non-empty request, and "
+            "PreToolUse injects its one-time proof."
         ),
         category="execution",
         risk_level="execution",

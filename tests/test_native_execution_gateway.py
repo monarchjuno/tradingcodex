@@ -145,6 +145,26 @@ def test_native_invocation_accepts_formatting_and_exact_workspace_link(workspace
     assert mandate.prompt_sha256 == hashlib.sha256(prompt.encode()).hexdigest()
 
 
+@pytest.mark.parametrize(
+    "prompt",
+    [
+        "$TCX-ORDER-SUBMIT --ticket-id ticket-1 --approval-receipt-id receipt-1",
+        "$tcx-order-submit\n--ticket-id ticket-1\n--approval-receipt-id receipt-1",
+        "$tcx-order-submit --ticket-id ticket-1\n--approval-receipt-id receipt-1",
+    ],
+)
+def test_native_invocation_accepts_case_and_line_wrapping(
+    workspace: Path,
+    prompt: str,
+) -> None:
+    mandate = parse_native_execution_invocation(prompt, workspace)
+
+    assert mandate is not None
+    assert mandate.action == NATIVE_SUBMIT_ACTION
+    assert mandate.ticket_id == "ticket-1"
+    assert mandate.approval_receipt_id == "receipt-1"
+
+
 def test_native_invocation_rejects_mismatched_workspace_link(workspace: Path) -> None:
     prompt = (
         f"[$tcx-order-submit]({workspace / '.agents/skills/tcx-order-cancel/SKILL.md'}) "
@@ -166,7 +186,6 @@ def test_native_invocation_rejects_mismatched_workspace_link(workspace: Path) ->
         "$tcx-order-submit ticket-1 --approval-receipt-id receipt-1",
         "$tcx-order-submit --ticket-id 'ticket-1' --approval-receipt-id receipt-1",
         "$tcx-order-submit --ticket-id ticket\\-1 --approval-receipt-id receipt-1",
-        "$tcx-order-submit --ticket-id ticket-1\n--approval-receipt-id receipt-1",
         "$tcx-order-submit --ticket-id ticket-1 --approval-receipt-id receipt-1 extra",
         "$tcx-order-submit --ticket-id ticket-1 --approval-receipt-id receipt-1 "
         "$tcx-order-cancel --ticket-id ticket-1",

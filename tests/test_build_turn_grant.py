@@ -107,7 +107,7 @@ def test_build_parser_accepts_first_meaningful_line_and_workspace_links(workspac
     for prompt in accepted:
         assert parse_build_invocation(prompt, workspace) is True
     assert parse_build_invocation("Research how $tcx-build works without changing files.") is None
-    assert parse_build_invocation("$TCX-build\nUpdate the provider.") is None
+    assert parse_build_invocation("$TCX-build\nUpdate the provider.") is True
     assert parse_build_invocation("\u200b$tcx-build\nUpdate the provider.") is None
     assert parse_build_invocation("$tcx-buіld\nUpdate the provider.") is None
 

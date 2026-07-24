@@ -144,6 +144,9 @@ def test_order_allow_parser_accepts_format_only_variants(workspace: Path, mode: 
     target = workspace / ".agents/skills/tcx-order-allow/SKILL.md"
     prompts = (
         order_allow_prompt(mode),
+        f"$TCX-ORDER-ALLOW --mode {mode}\nRun the requested task.",
+        f"$tcx-order-allow --mode {mode} Run the requested task.",
+        f"$tcx-order-allow\n--mode\n{mode}\nRun the requested task.",
         f"$tcx-order-allow --mode {mode}\r\nRun the requested scheduled task.",
         f"\ufeff\n \t$tcx-order-allow --mode {mode} \t\u2028Run the requested task.\n",
         f"\u00a0$tcx-order-allow\u3000--mode {mode}\u00a0\nRun the requested task.",
@@ -161,7 +164,6 @@ def test_order_allow_parser_accepts_format_only_variants(workspace: Path, mode: 
         "$tcx-order-allow --mode paper\n\ufeff",
         "$tcx-order-allow",
         "$tcx-order-allow --mode=paper\nSubmit it.",
-        "$tcx-order-allow --mode PAPER\nSubmit it.",
         "$tcx-order-allow --mode paper --extra yes\nSubmit it.",
         "$tcx-order-allow --mode paper\n$tcx-build\nChange the connector.",
         "$tcx-order-allow --mode paper\n\u200b$tcx-build\nChange the connector.",

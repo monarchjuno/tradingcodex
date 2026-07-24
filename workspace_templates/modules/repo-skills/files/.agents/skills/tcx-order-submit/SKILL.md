@@ -10,9 +10,9 @@ This skill carries no tool authority. The `UserPromptSubmit` hook validates the
 complete prompt and calls the service-owned execution boundary before any model
 or subagent can act.
 
-## Exact Invocation
+## Invocation
 
-Enter one of these forms as the only meaningful line of the complete user
+Enter one of these forms as the only meaningful action in the complete user
 prompt:
 
 ```text
@@ -23,7 +23,8 @@ $tcx-order-submit --ticket-id <ticket-id> --approval-receipt-id <approval-receip
 Replace every placeholder with the canonical identifier or confirmation token.
 The skill token may instead be a Markdown link only when its label and target
 match this workspace's projected `tcx-order-submit/SKILL.md`. Leading blank
-lines and normalized line-ending variants are harmless. Use literal
+lines, ASCII letter case in the skill name, normalized line endings, and
+line-wrapped arguments are harmless. Use literal
 `--name value` pairs. Do not add prose, comments, another skill, quotes,
 escaped values, aliases, or `--name=value` syntax.
 

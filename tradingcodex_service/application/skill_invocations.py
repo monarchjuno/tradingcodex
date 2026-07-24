@@ -17,8 +17,13 @@ _NEWLINE_TRANSLATION = str.maketrans(
     }
 )
 _SKILL_ID = r"[a-z0-9]+(?:-[a-z0-9]+)*"
+_SKILL_ID_INPUT = r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)*"
 _MARKDOWN_SKILL_LINK = re.compile(
-    rf"\[(?P<label>\${_SKILL_ID})\]\((?P<target><[^\r\n>]+>|[^\s)]+)\)"
+    rf"\[(?P<label>\${_SKILL_ID_INPUT})\]\((?P<target><[^\r\n>]+>|[^\s)]+)\)"
+)
+_ASCII_UPPER_TO_LOWER = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "abcdefghijklmnopqrstuvwxyz",
 )
 
 
@@ -105,10 +110,13 @@ def parse_line_invocation(
     value = _strip_horizontal_whitespace(str(line))
     candidates = tuple(dict.fromkeys(str(marker) for marker in markers))
     for marker in candidates:
-        if value == marker:
+        token = value[: len(marker)]
+        if _ascii_lower(token) == marker and len(value) == len(marker):
             return SkillInvocation(marker=marker, tail="", line_index=line_index, linked=False)
-        if value.startswith(marker) and len(value) > len(marker) and _is_horizontal_whitespace(
-            value[len(marker)]
+        if (
+            _ascii_lower(token) == marker
+            and len(value) > len(marker)
+            and _is_horizontal_whitespace(value[len(marker)])
         ):
             return SkillInvocation(
                 marker=marker,
@@ -118,8 +126,9 @@ def parse_line_invocation(
             )
 
     link = _MARKDOWN_SKILL_LINK.match(value)
-    if link is not None and link.group("label") in candidates:
-        marker = link.group("label")
+    linked_marker = _ascii_lower(link.group("label")) if link is not None else ""
+    if link is not None and linked_marker in candidates:
+        marker = linked_marker
         _validate_workspace_skill_link(marker, link.group("target"), workspace_root)
         suffix = value[link.end() :]
         if suffix and not _is_horizontal_whitespace(suffix[0]):
@@ -132,7 +141,7 @@ def parse_line_invocation(
         )
 
     for marker in candidates:
-        if value.startswith(f"[{marker}]"):
+        if _ascii_lower(value[: len(marker) + 2]) == f"[{marker}]":
             raise SkillInvocationError(f"{marker} must use a valid workspace Markdown skill link")
     return None
 
@@ -148,7 +157,7 @@ def explicit_skill_ids(
     if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", namespace):
         raise ValueError("skill namespace is invalid")
     value = normalize_prompt(prompt)
-    marker_pattern = rf"\${re.escape(namespace)}-[a-z0-9]+(?:-[a-z0-9]+)*"
+    marker_pattern = rf"\${re.escape(namespace)}-{_SKILL_ID_INPUT}"
     _validate_selector_candidates(value, namespace)
     names: list[str] = []
     masked = list(value)
@@ -156,24 +165,27 @@ def explicit_skill_ids(
     valid_links = {
         match.start(): match
         for match in _MARKDOWN_SKILL_LINK.finditer(value)
-        if re.fullmatch(marker_pattern, match.group("label"))
+        if re.fullmatch(marker_pattern, _ascii_lower(match.group("label")))
     }
     bracketed_selector = re.compile(
-        rf"\[(?P<label>\${re.escape(namespace)}-[^\]\r\n]*)\]"
+        rf"\[(?P<label>\$[A-Za-z0-9-]+)\]"
     )
     for bracket in bracketed_selector.finditer(value):
         label = bracket.group("label")
+        canonical_label = _ascii_lower(label)
+        if not canonical_label.startswith(f"${namespace}-"):
+            continue
         match = valid_links.get(bracket.start())
         if match is None or match.group("label") != label:
             raise SkillInvocationError(
                 f"{label or f'${namespace}-*'} must use a valid workspace Markdown skill link"
             )
-        _validate_workspace_skill_link(label, match.group("target"), workspace_root)
-        names.append(label.removeprefix("$"))
+        _validate_workspace_skill_link(canonical_label, match.group("target"), workspace_root)
+        names.append(canonical_label.removeprefix("$"))
         masked[match.start() : match.end()] = " " * (match.end() - match.start())
 
     masked_value = "".join(masked)
-    plain = re.compile(marker_pattern)
+    plain = re.compile(marker_pattern, re.ASCII | re.IGNORECASE)
     for match in plain.finditer(masked_value):
         before = masked_value[match.start() - 1] if match.start() else ""
         after = masked_value[match.end()] if match.end() < len(masked_value) else ""
@@ -181,7 +193,7 @@ def explicit_skill_ids(
             after and _is_selector_boundary_character(after)
         ):
             continue
-        names.append(match.group(0).removeprefix("$"))
+        names.append(_ascii_lower(match.group(0)).removeprefix("$"))
     return list(dict.fromkeys(names))
 
 
@@ -210,6 +222,12 @@ def _strip_horizontal_whitespace(value: str) -> str:
     return value[start:end]
 
 
+def _ascii_lower(value: str) -> str:
+    """Case-fold ASCII presentation without normalizing Unicode lookalikes."""
+
+    return value.translate(_ASCII_UPPER_TO_LOWER)
+
+
 def _validate_privileged_invocation_characters(value: str, marker: str) -> None:
     if any(
         character not in {"\t", "\n"} and unicodedata.category(character).startswith("C")
@@ -233,12 +251,19 @@ def _validate_selector_candidates(value: str, namespace: str) -> None:
     prefix = f"${namespace}-"
     start = 0
     while True:
-        marker_index = value.find(prefix, start)
+        marker_index = next(
+            (
+                index
+                for index in range(start, max(start, len(value) - len(prefix) + 1))
+                if _ascii_lower(value[index : index + len(prefix)]) == prefix
+            ),
+            -1,
+        )
         if marker_index < 0:
             return
         if marker_index:
             previous = value[marker_index - 1]
-            if unicodedata.category(previous).startswith("C"):
+            if previous not in {"\t", "\n"} and unicodedata.category(previous).startswith("C"):
                 raise SkillInvocationError(
                     f"{prefix}* selector contains an unsupported control or zero-width character"
                 )
@@ -246,30 +271,38 @@ def _validate_selector_candidates(value: str, namespace: str) -> None:
         ascii_id: list[str] = []
         while cursor < len(value):
             character = value[cursor]
-            if "a" <= character <= "z" or "0" <= character <= "9" or character == "-":
-                ascii_id.append(character)
+            if (
+                "a" <= character <= "z"
+                or "A" <= character <= "Z"
+                or "0" <= character <= "9"
+                or character == "-"
+            ):
+                ascii_id.append(_ascii_lower(character))
                 cursor += 1
                 continue
+            if character in {"\t", "\n"}:
+                break
             category = unicodedata.category(character)
             if (
                 character == "_"
-                or "A" <= character <= "Z"
                 or category[0] in {"C", "L", "M", "N"}
                 or _is_selector_confusable_separator(character)
             ):
                 raise SkillInvocationError(
-                    f"{prefix}* selector must use an exact lowercase ASCII skill id"
+                    f"{prefix}* selector must use an ASCII skill id"
                 )
             break
         candidate_id = "".join(ascii_id)
         if candidate_id and re.fullmatch(_SKILL_ID, candidate_id) is None:
             raise SkillInvocationError(
-                f"{prefix}* selector must use an exact lowercase ASCII skill id"
+                f"{prefix}* selector must use an ASCII skill id"
             )
         start = marker_index + len(prefix)
 
 
 def _is_selector_boundary_character(character: str) -> bool:
+    if character in {"\t", "\n"}:
+        return False
     return bool(
         character in {"$", "_", "-"}
         or unicodedata.category(character)[0] in {"C", "L", "M", "N"}

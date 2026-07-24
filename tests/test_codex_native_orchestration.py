@@ -70,7 +70,10 @@ def test_fixed_role_prompts_use_natural_evidence_distinctions() -> None:
     assert "Keep disposable work under `$TRADINGCODEX_SCRATCH`" in flat_base
     assert "never read audit records" in flat_base
     assert "treat the new request as a bounded delta" in flat_base
-    assert "retrieve only missing coverage" in flat_base
+    assert "collect additional evidence whenever a newly discovered gap or conflict" in flat_base
+    assert "do not need a follow-up from Head Manager naming every field or source first" in flat_base
+    assert "there is no fixed search or tool-call count" in flat_base
+    assert "retrieve the coverage needed to resolve the delta" in flat_base
     assert "answers the exact assigned question" in flat_base
     assert "If the requested delta belongs to another specialty" in flat_base
     for prompt in [base, *role_prompts, *role_skills]:
@@ -166,7 +169,7 @@ def test_child_briefs_and_artifact_skills_keep_capabilities_and_lineage_distinct
     assert "triggering cross-role Artifact IDs (inputs)" in flat_fixed
     assert "create a new artifact only when the brief explicitly says so" in flat_fixed
     assert "Honor the brief's data-family owner" in flat_fixed
-    assert "do not recollect another role's complete family" in flat_fixed
+    assert "Do not recollect another role's complete family" in flat_fixed
     assert "Do not load `tcx-calculation` merely to quote or compare source-reported figures" in flat_fixed
 
     assert "brief every child with that ownership, exact reusable IDs, and the missing slice" in flat_workflow

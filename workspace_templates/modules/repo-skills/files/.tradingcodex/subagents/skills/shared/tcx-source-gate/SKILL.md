@@ -14,6 +14,16 @@ Use this order for each missing fact or series:
 5. Use another reliable web source.
 6. State the remaining data gap clearly.
 
+Treat this as a fallback preference, not a one-call budget or a requirement to
+ask Head Manager before every additional lookup. While answering the assigned
+question, investigate a newly discovered gap, contradiction, stale anchor, or
+identifier problem when it could materially change the conclusion, readiness,
+or confidence and remains within your specialty, the user's scope, and
+read-only authority. Choose the number and mix of useful sources
+proportionately; stop when another obtainable source is unlikely to change the
+answer. Do not gather broad just-in-case data or recreate another role's whole
+data family.
+
 Complete the reusable Snapshot/Dataset check before an external network call.
 For structured prices, OHLCV, fundamentals, estimates, or macro series, try one
 relevant callable direct OpenBB tool before public web or direct HTTP unless the
@@ -21,7 +31,12 @@ user named another provider or a clearly relevant enabled capability. Generic
 web, browser, and shell HTTP access are public-web fallbacks, not step 2 user
 capabilities.
 
-Name the provider when a tool supports one. Do not call the same source again with unchanged inputs. When a source partially succeeds, retain its valid result and ask only the missing field, identifier, or period from the next source. This is an operating procedure, not a service-side trust rating or a guarantee about third-party capabilities.
+Name the provider when a tool supports one. Do not call the same source again
+with unchanged inputs. A changed query or another source is appropriate when
+it resolves a material gap or conflict. When a source partially succeeds,
+retain its valid result and seek the unsupported field, identifier, or period
+without refetching what is already adequate. This is an operating procedure,
+not a service-side trust rating or a guarantee about third-party capabilities.
 
 Judge evidence against the claim and intended use, not a provider label. Prefer
 an original public record when exact legal, regulatory, contractual,

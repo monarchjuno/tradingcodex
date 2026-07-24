@@ -67,10 +67,15 @@ adequate Snapshot/Dataset
   -> explicit gap
 ```
 
-Partial success is retained and only missing coverage falls through. External
-sources become SourceSnapshots; reusable structured rows become immutable
-Datasets. Handoffs carry compact Snapshot/Dataset/Artifact IDs rather than raw
-source dumps. This is skill guidance, not a provider router or trust engine.
+Partial success is retained and unsupported coverage falls through without
+refetching adequate evidence. Within its assigned question and specialty, an
+evidence-producing child may autonomously investigate a newly discovered
+material gap or conflict; no fixed source or tool-call count applies. Broad
+just-in-case collection and another role's complete data family remain out of
+scope. External sources become SourceSnapshots; reusable structured rows
+become immutable Datasets. Handoffs carry compact Snapshot/Dataset/Artifact IDs
+rather than raw source dumps. This is skill guidance, not a provider router or
+trust engine.
 
 ## Hook Boundary
 

@@ -132,6 +132,12 @@ def test_analysis_run_seals_enabled_context_and_respects_workspace_default(tmp_p
 
 def test_explicit_strategy_invocation_never_guesses_from_natural_language() -> None:
     assert explicit_strategy_invocation("Use $strategy-quality-watch for this review.") == "strategy-quality-watch"
+    assert explicit_strategy_invocation(
+        "$Strategy-Quality-Watch\nReview this portfolio."
+    ) == "strategy-quality-watch"
+    assert explicit_strategy_invocation(
+        "$investment-brain-quality-growth\n$strategy-quality-watch\nReview this portfolio."
+    ) == "strategy-quality-watch"
     assert explicit_strategy_invocation("Use strategy-quality-watch for this review.") == ""
     assert explicit_strategy_invocation("Use $tcx-strategy to create a reusable strategy.") == ""
     with pytest.raises(ValueError, match="exactly one"):
@@ -146,6 +152,10 @@ def test_explicit_strategy_invocation_accepts_only_the_projected_skill_link(tmp_
 
     assert explicit_strategy_invocation(prompt, tmp_path) == "strategy-quality-watch"
     assert explicit_strategy_invocation(f"{prompt} $strategy-quality-watch", tmp_path) == "strategy-quality-watch"
+    assert explicit_strategy_invocation(
+        f"[$Strategy-Quality-Watch]({skill})\nReview it.",
+        tmp_path,
+    ) == "strategy-quality-watch"
     with pytest.raises(ValueError, match="must target"):
         explicit_strategy_invocation(
             f"Use [$strategy-quality-watch]({tmp_path / 'other/SKILL.md'}).",

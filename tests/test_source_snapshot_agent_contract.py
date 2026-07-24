@@ -203,6 +203,10 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     assert "Treat\nOpenBB as access to its returned provider" in source_gate
     assert "Secondary does not mean screen-only" in source_gate
     assert "do not require a fixed source count" in source_gate
+    assert "not a one-call budget" in source_gate
+    assert "newly discovered gap, contradiction, stale anchor, or\nidentifier problem" in source_gate
+    assert "number and mix of useful sources" in source_gate
+    assert "another source is appropriate when\nit resolves a material gap or conflict" in source_gate
     assert "Use `evidence_readiness: decision-grade` when every\nconclusion-driving claim" in source_gate
     assert "not merely because a primary source is\nabsent" in source_gate
     assert "latest completed period can be the current usable anchor" in source_gate
@@ -222,6 +226,8 @@ def test_source_snapshot_api_tool_and_role_instructions_align() -> None:
     assert "SourceSnapshot" in openbb_reference and "Dataset" in openbb_reference
     for field in ("snapshot_id", "retrieved_at", "recorded_at", "known_at"):
         assert f"`{field}`" in collect_evidence
+    assert "without waiting for a new field-by-field\n   instruction" in collect_evidence
+    assert "Use evidence value, not a fixed source or call count" in collect_evidence
 
     artifact_cutoff = TOOL_REGISTRY["create_research_artifact"].input_schema[
         "properties"

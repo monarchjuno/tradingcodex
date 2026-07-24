@@ -18,22 +18,23 @@ raise quality without becoming executable authorization.
 Every final submit or cancel action follows one of two native-user entries:
 
 ```text
-exact immediate root action -> deterministic hook parse -> native-user permission
+literal action-only root invocation -> deterministic hook parse -> native-user permission
   -> policy -> payload validation -> approval/duplicate-request check
   -> mandatory intent audit -> connection -> finalized/uncertain audit
 
-exact first-meaningful-line $tcx-order-allow -> workspace/session/turn/prompt/mode grant
+first-meaningful $tcx-order-allow invocation -> workspace/session/turn/prompt/mode grant
   -> canonical workflow state -> protected tool + PreToolUse proof
   -> consume once -> the same policy/approval/idempotency/live/audit gates
 ```
 
 This order matters:
 
-1. Exact user admission: require either one action-only immediate submit/cancel
-   prompt or an exact first meaningful line `$tcx-order-allow --mode
-   paper|validation|live` on the current root turn. A matching projected
-   Markdown skill link may replace only the skill token; all arguments stay
-   literal.
+1. Explicit user admission: require either one action-only immediate
+   submit/cancel prompt or a first-meaningful `$tcx-order-allow` invocation with
+   `--mode paper|validation|live` and a non-empty request on the current root
+   turn. A matching projected Markdown skill link may replace only the skill
+   token. ASCII skill-name case and whitespace layout are presentation details;
+   all arguments stay literal.
 2. Parse: create a workspace-bound immediate mandate, or a workspace-,
    session-, turn-, full-prompt-, and mode-bound single-use turn grant before
    any model or subagent runs.
@@ -69,13 +70,14 @@ no local-loopback mutation exception. Remote mutation use always requires
 staff/API-key authentication. Loopback is not generic mutation authority.
 
 Immediate final submit and cancel do not use an agent MCP or REST identity. The
-`UserPromptSubmit` hook accepts only an exact root native action prompt, binds a
+`UserPromptSubmit` hook accepts only a literal action-only root native prompt, binds a
 short-lived mandate to the original prompt hash and workspace provenance, and
 calls the canonical execution gateway in-process as `native-user`.
 
 For a workflow that creates or selects canonical identifiers later in the
-turn, the same hook accepts only an exact first-meaningful-line
-`$tcx-order-allow` mode, requires current Codex `session_id` and `turn_id`, and issues a grant
+turn, the same hook accepts a first-meaningful `$tcx-order-allow` invocation,
+mode, and non-empty request across arbitrary normalized whitespace, requires
+current Codex `session_id` and `turn_id`, and issues a grant
 bound to workspace, session, turn, original full prompt hash, Codex permission mode, and
 execution mode. Plan mode rejects both immediate execution and turn-grant
 issuance or use; the user must start a new non-Plan root turn. The grant expires
@@ -579,19 +581,20 @@ has an approval receipt, and `submit_approved_order` includes
   $tcx-order-cancel --ticket-id <ticket-id> --broker-order-id <broker-order-id> --approval-receipt-id <approval-receipt-id> --live-confirmation <token>
   ```
 
-- The deterministic parser accepts only literal `--name value` pairs. It rejects
+- The deterministic parser accepts only literal `--name value` pairs, while
+  allowing normalized whitespace and line breaks between tokens. It rejects
   prose, aliases, quotes, escapes, comments, duplicate or unknown flags,
   `--name=value`, multiple actions, subagent turns, and the
   retired `$execute-paper-order` invocation. A malformed prompt beginning with a
   reserved token is blocked rather than falling through to analysis. One UTF-8
-  BOM, normalized line endings, leading/trailing blank lines, and a Markdown
+  BOM, ASCII skill-name case, normalized line endings, leading/trailing blank lines, and a Markdown
   link whose label and target match the projected action skill do not relax
   that action-only grammar.
 - The two root skill bundles document this protocol but carry no tool authority.
   The hook creates the in-memory mandate from the original user prompt, records
   a redacted prompt hash and normalized identifiers, and calls the Django
   gateway synchronously before normal Head Manager orchestration.
-- A workflow may instead put one exact invocation on its first meaningful line:
+- A workflow may instead begin with one order-allow invocation:
 
   ```text
   $tcx-order-allow --mode paper
@@ -599,8 +602,9 @@ has an approval receipt, and `submit_approved_order` includes
   $tcx-order-allow --mode live
   ```
 
-  The skill token may be its matching projected Markdown link. The remainder
-  must contain a non-empty normal interactive or Scheduled Task prompt. The line
+  The skill token may be its matching projected Markdown link. The mode and
+  non-empty normal interactive or Scheduled Task request may share the first
+  meaningful line or wrap across later lines. This invocation
   admits at most one later submit or cancel and does not itself perform an
   effect. A free-form mention, later-line token, malformed mode, or subagent
   turn grants nothing. The browser viewer exposes no prompt entrypoint. Scheduled and interactive prompts use the
@@ -621,8 +625,9 @@ has an approval receipt, and `submit_approved_order` includes
   materially ambiguous, Head Manager asks the user or stops at `waiting` or
   `blocked`.
 - Order drafting and approval retain their role-owned structured tools. Final
-  cancellation and execution additionally require either the exact immediate
-  native grammar and parser-issued mandate or the exact first-meaningful-line turn grant
+  cancellation and execution additionally require either the literal
+  action-only native grammar and parser-issued mandate or the first-meaningful
+  turn grant
   plus protected proof, together with every deterministic principal,
   capability, policy, approval, idempotency, connection, and audit gate.
   Analytical prose cannot activate those paths.

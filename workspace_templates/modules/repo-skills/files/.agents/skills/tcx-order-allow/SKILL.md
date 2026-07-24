@@ -1,19 +1,18 @@
 ---
 name: tcx-order-allow
-description: "Authorize at most one TradingCodex order submission or cancellation later in the current root native Codex turn. Use only when the user intentionally places an exact `$tcx-order-allow --mode paper|validation|live` invocation on the first meaningful line, including a saved Codex app Scheduled Task prompt."
+description: "Authorize at most one TradingCodex order submission or cancellation later in the current root native Codex turn. Use only when the user's first meaningful invocation is `$tcx-order-allow` with mode paper, validation, or live, including a saved Codex app Scheduled Task prompt."
 ---
 
 # Order Allow
 
 Permit at most one final order submission or cancellation later in the current root native
 Codex turn. This skill carries no tool or broker authority. The deterministic
-`UserPromptSubmit` hook must validate the first meaningful line and issue the actual
+`UserPromptSubmit` hook must validate the first meaningful invocation and issue the actual
 workspace- and turn-bound grant before any model or subagent can act.
 
-## Exact Invocation
+## Invocation
 
-Use exactly one of these as the complete first meaningful line of the user
-prompt:
+Use one of these canonical forms at the start of the meaningful user prompt:
 
 ```text
 $tcx-order-allow --mode paper
@@ -23,15 +22,15 @@ $tcx-order-allow --mode live
 
 The skill token may instead be a Markdown link only when its label and target
 match this workspace's projected `tcx-order-allow/SKILL.md`. Leading blank
-lines and normalized line-ending variants are harmless. Put a non-empty work
-request on the following lines. `$tcx-workflow` is one valid runtime-skill
-example, not a required part of every order-allow prompt. Do not add prose,
-comments, another skill, quotes, escaped values, aliases, extra flags, or
-`--mode=<value>` syntax to the invocation line.
+lines, ASCII letter case in the skill name, and normalized line endings are
+harmless. The skill token, `--mode`, mode value, and non-empty work request may
+share a line or wrap across lines. `$tcx-workflow` is one valid runtime-skill
+example, not a required part of every order-allow prompt. Do not use quotes,
+escaped values, aliases, extra mode flags, or `--mode=<value>` syntax.
 
 ## Grant Contract
 
-- The valid first meaningful line admits execution only for the current root turn. It does
+- The valid first meaningful invocation admits execution only for the current root turn. It does
   not submit an order when the prompt arrives.
 - The grant is single-use and bound to the workspace, prompt, session and turn,
   Codex permission mode, and selected mode. A scheduled task receives a fresh

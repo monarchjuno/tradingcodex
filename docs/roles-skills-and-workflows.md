@@ -68,9 +68,10 @@ external package safety limits remain separate from this authoring rule.
 TradingCodex uses one lexical contract for managed, selection, and order
 skills. It removes one UTF-8 BOM, normalizes CRLF, CR, NEL, and Unicode
 line/paragraph separators to LF, tolerates leading and trailing blank lines,
-and trims horizontal whitespace for recognizing an invocation. It does not
-case-fold skill ids, normalize confusable characters, or ignore zero-width
-characters.
+and trims horizontal whitespace for recognizing an invocation. ASCII letter
+case in a skill id is presentation-only and resolves to the canonical lowercase
+id, which accommodates Codex app skill-chip rendering. The parser does not
+normalize Unicode lookalikes, confusable separators, or zero-width characters.
 
 A plain `$skill-id` and a Markdown link are equivalent only when the link label
 is that exact id and its target resolves to the matching projected
@@ -81,12 +82,14 @@ distinct managed markers remain invalid. Brain and Strategy selection accepts a 
 projected link, deduplicates repeated references to the same id, and rejects
 distinct multiple ids.
 
-Order syntax is intentionally narrower. `$tcx-order-allow --mode
-paper|validation|live` occupies the complete first meaningful line and requires
-a non-empty request below it. Immediate submit/cancel remains an action-only
-prompt with exact `--name value` pairs. A matching projected Markdown skill
-link may replace only the skill token; it does not relax flags, values, or the
-single-effect rule. Grant, mandate, and audit bindings continue to hash the
+Order syntax is intentionally narrower than research selection, but whitespace
+layout is not an authority boundary. `$tcx-order-allow`, its `--mode
+paper|validation|live` argument, and the non-empty request may share a line or
+wrap across lines. Immediate submit/cancel remains an action-only prompt with
+literal `--name value` pairs, which may wrap across lines. A matching projected
+Markdown skill link may replace only the skill token; case and whitespace
+normalization do not relax flags, identifiers, duplicate detection, mode, or
+the single-effect rule. Grant, mandate, and audit bindings continue to hash the
 original unnormalized prompt.
 
 ## Fixed Team
@@ -210,18 +213,23 @@ only current-workflow artifact candidates and Dataset cards/manifests. It
 assigns one producing owner and gives relevant children briefs that name that
 owner, exact reusable IDs, and the needed or missing slice; roles do not browse
 a whole catalog. A stale, incomplete, or mismatched record still contributes
-its valid portion, while only the owner retrieves missing coverage. Head Manager
-then gives the evidence producer the smallest missing-data question and other
-roles compact SourceSnapshot, Dataset, and ResearchArtifact IDs. The producer
-follows the canonical `tcx-source-gate` procedure: reuse supplied evidence, use
-one relevant enabled user capability, use optional direct OpenBB, prefer
-original public records, then reliable web sources, and state a remaining gap.
+its valid portion. The producing owner may autonomously collect additional
+evidence when a newly discovered gap or conflict could materially change its
+assigned answer, readiness, or confidence and remains within the user's scope
+and that role's specialty; it does not need a Head Manager follow-up naming
+every field or source. Other roles receive compact SourceSnapshot, Dataset, and
+ResearchArtifact IDs. The producer follows the canonical `tcx-source-gate`
+preference: reuse supplied evidence, use one relevant enabled user capability,
+use optional direct OpenBB, prefer original public records, then reliable web
+sources, and state a remaining gap.
 
 This is agent guidance, not a Django routing state machine. The role names the
 provider where possible, does not repeat unchanged calls to the same source,
-and preserves a partial result while seeking only the missing field, identifier,
-or period. User capabilities remain BYOR; TradingCodex does not install,
-classify, proxy, approve, or audit them.
+and preserves a partial result while seeking unsupported coverage rather than
+refetching adequate coverage. There is no fixed source, search, or tool-call
+count. Broad just-in-case collection and recreation of another role's complete
+data family remain out of scope. User capabilities remain BYOR; TradingCodex
+does not install, classify, proxy, approve, or audit them.
 
 Use `record_source_snapshot` for every external source. Create a Dataset only
 for reusable structured rows, and bind the resulting Snapshot and Dataset IDs to
@@ -547,8 +555,8 @@ consumer; without proof injected by `PreToolUse` for the current exact
 `$tcx-order-allow` turn, it has no execution authority.
 
 For already-known canonical identifiers, the final external effect remains
-available from a root native Codex user turn whose meaningful content matches
-one exact action-only skill invocation. The canonical plain forms are:
+available from a root native Codex user turn whose meaningful content contains
+one action-only skill invocation. The canonical single-line forms are:
 
 ```text
 $tcx-order-submit --ticket-id <ticket-id> --approval-receipt-id <approval-receipt-id>
@@ -557,8 +565,9 @@ $tcx-order-cancel --ticket-id <ticket-id> --broker-order-id <broker-order-id> --
 $tcx-order-cancel --ticket-id <ticket-id> --broker-order-id <broker-order-id> --approval-receipt-id <approval-receipt-id> --live-confirmation <token>
 ```
 
-The leading skill token may be its matching projected Markdown link; every
-other part of the grammar remains literal. These two root skill bundles
+The leading skill token is ASCII case-insensitive and may be its matching
+projected Markdown link. Whitespace, including normalized line breaks, may
+separate tokens; every other part of the grammar remains literal. These two root skill bundles
 describe a protocol and disable implicit invocation; they carry no MCP or
 broker authority. `UserPromptSubmit` recognizes the reserved invocation,
 rejects malformed or subagent forms,
@@ -567,7 +576,7 @@ parses the complete prompt deterministically, creates a workspace-bound
 an analysis run begins.
 
 For a workflow that creates or selects identifiers during the turn, the first
-meaningful line must instead contain exactly one canonical mode invocation:
+meaningful invocation must instead be the order-allow skill:
 
 ```text
 $tcx-order-allow --mode paper
@@ -575,9 +584,10 @@ $tcx-order-allow --mode validation
 $tcx-order-allow --mode live
 ```
 
-The skill token may be its matching projected Markdown link, but no prose or
-extra flag may share the line and a non-empty workflow request must follow. The
-hook requires a root native Codex `session_id` and `turn_id`, issues one grant
+The skill token may be its matching projected Markdown link. Its mode and
+non-empty workflow request may follow on the same line or later lines; line
+layout does not change the grant. The hook requires a root native Codex
+`session_id` and `turn_id`, issues one grant
 bound to workspace, session, turn, original complete prompt hash, Codex permission
 mode, and execution mode, then continues ordinary orchestration. Plan mode
 rejects immediate order effects plus grant issuance and use. The grant expires

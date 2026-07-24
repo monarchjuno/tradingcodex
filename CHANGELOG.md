@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 2.1.2 - 2026-07-24
+
+- Treat ASCII skill-name case and normalized whitespace layout as presentation
+  details, so Codex app skill-chip capitalization, Brain/Strategy selectors on
+  separate lines, and line-wrapped order arguments bind to their canonical
+  lowercase skills without weakening order flags, single-effect grants,
+  approvals, policy, idempotency, or audit enforcement.
+- Let evidence-producing subagents autonomously fill newly discovered material
+  gaps and conflicts within their assigned question, specialty, user scope, and
+  read-only authority, using evidence value instead of fixed search or tool-call
+  counts while preserving source provenance, deduplication, and role ownership.
+
 ## 2.1.1 - 2026-07-24
 
 - Reframe independent judgment review as task-relative adversarial adjudication:

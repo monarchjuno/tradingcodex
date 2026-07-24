@@ -123,6 +123,12 @@ def _research_args(artifact_id: str, artifact_type: str, run_id: str, *, inputs:
 
 def test_explicit_brain_invocation_is_exact_and_single() -> None:
     assert explicit_investment_brain_invocation(f"Use ${BRAIN_ID}.") == BRAIN_ID
+    assert explicit_investment_brain_invocation(
+        "$Investment-Brain-Quality-Growth\nAnalyze ACME."
+    ) == BRAIN_ID
+    assert explicit_investment_brain_invocation(
+        f"${BRAIN_ID}\n$strategy-quality-watch\nAnalyze ACME."
+    ) == BRAIN_ID
     assert explicit_investment_brain_invocation(f"Use {BRAIN_ID}.") == ""
     assert explicit_investment_brain_invocation(f"${BRAIN_ID} then ${BRAIN_ID}") == BRAIN_ID
     with pytest.raises(ValueError, match="exactly one"):
@@ -159,6 +165,10 @@ def test_explicit_brain_invocation_accepts_only_the_projected_skill_link(
     prompt = f"Use [${BRAIN_ID}]({target}) and ${BRAIN_ID}."
 
     assert explicit_investment_brain_invocation(prompt, workspace) == BRAIN_ID
+    assert explicit_investment_brain_invocation(
+        f"Use [$Investment-Brain-Quality-Growth]({target}).",
+        workspace,
+    ) == BRAIN_ID
     with pytest.raises(ValueError, match="must target"):
         explicit_investment_brain_invocation(
             f"Use [${BRAIN_ID}]({workspace / '.agents/skills/tcx-build/SKILL.md'}).",
