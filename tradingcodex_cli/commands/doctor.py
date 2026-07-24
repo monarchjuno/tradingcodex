@@ -391,7 +391,8 @@ def _fixed_role_dispatch_checks(root: Path) -> list[dict[str, Any]]:
             "Only an unavailable\n   evidence-producing role may use a generic child",
             "Do not replace an independent\n   `risk-manager` or `judgment-reviewer` review",
             "`followup_task`",
-            "`risk-manager` and",
+            "Use `judgment-reviewer` when",
+            "without a meaningful competing case",
         )
     )
     return [
@@ -1087,7 +1088,7 @@ def _improvement_checks(root: Path) -> list[dict[str, Any]]:
     checks.append(path_check(root, "improvement", "skill index projected", ".tradingcodex/generated/skill-index.json", False))
     checks.append(path_check(root, "improvement", "projection manifest projected", ".tradingcodex/generated/projection-manifest.json", False))
     checks.append(text_check(root, "improvement", "bounded evidence fallback installed", ".agents/skills/tcx-workflow/SKILL.md", "Only an unavailable\n   evidence-producing role may use a generic child", False))
-    checks.append(text_check(root, "improvement", "decision quality review installed", ".agents/skills/tcx-workflow/SKILL.md", "high-impact risk judgment", False))
+    checks.append(text_check(root, "improvement", "decision quality review installed", ".agents/skills/tcx-workflow/SKILL.md", "high-consequence uncertainty", False))
     checks.append(text_check(root, "improvement", "method profile routing installed", ".codex/prompts/base_instructions/head-manager.md", "listed-equity FCFF DCF", False))
     checks.append(text_check(root, "improvement", "Codex-native workflow skill installed", ".agents/skills/tcx-workflow/SKILL.md", "## Fast Path", False))
     checks.append(text_check(root, "improvement", "turn grant revocation hook installed", ".codex/hooks/tradingcodex_hook.py", "revoke_prior_order_turn", True))
