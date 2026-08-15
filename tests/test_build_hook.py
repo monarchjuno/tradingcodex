@@ -51,6 +51,13 @@ def tool_payload(tool_name: str, tool_input: dict[str, object]) -> dict[str, obj
     }
 
 
+def test_stop_hook_emits_valid_empty_decision(workspace: Path) -> None:
+    # Codex parses Stop hook stdout as JSON and treats empty output as
+    # "hook returned invalid stop hook JSON output", so even a no-op stop
+    # must emit {} on stdout.
+    assert run_hook(workspace, "stop", {"session_id": "hook-session"}) == {}
+
+
 def test_native_workspace_work_does_not_need_build_grant(workspace: Path) -> None:
     assert run_hook(
         workspace,

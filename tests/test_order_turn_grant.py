@@ -807,7 +807,7 @@ def test_authorizing_order_effect_blocks_new_sensitive_turns_without_being_reset
                 workspace,
                 "stop",
                 {"session_id": session_id, "turn_id": turn_id},
-            ) is None
+            ) == {}
             grant.refresh_from_db()
             assert grant.status == OrderTurnGrant.STATUS_CONSUMED
             assert grant.result_status == "authorizing"
@@ -942,7 +942,7 @@ def test_stop_and_next_user_turn_revoke_unused_grants(workspace: Path) -> None:
         workspace,
         "stop",
         {"session_id": stop_session, "turn_id": stop_turn, "cwd": str(workspace)},
-    ) is None
+    ) == {}
     stopped = OrderTurnGrant.objects.get(session_id_hash=hashlib.sha256(stop_session.encode()).hexdigest())
     assert stopped.status == OrderTurnGrant.STATUS_REVOKED
     assert stopped.metadata["terminal_reason"] == "turn_stopped"

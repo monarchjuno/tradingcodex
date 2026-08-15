@@ -87,6 +87,13 @@ SENSITIVE_ARGUMENT_TEXT = re.compile(
 def main() -> None:
     event = sys.argv[1] if len(sys.argv) > 1 else "unknown"
     payload = read_payload(event)
+    if event == "stop":
+        if payload is not None:
+            revoke_stopped_order_grant(payload)
+        # Codex parses Stop hook stdout as JSON and rejects empty output, so a
+        # no-op stop must still emit a valid empty decision object.
+        print("{}")
+        return
     if payload is None:
         return
     if event == "session-start":
@@ -95,8 +102,6 @@ def main() -> None:
         user_prompt_submit(payload)
     elif event in {"pre-tool-use", "permission-request"}:
         policy_gate(event, payload)
-    elif event == "stop":
-        revoke_stopped_order_grant(payload)
 
 
 def read_payload(event: str) -> dict | None:
